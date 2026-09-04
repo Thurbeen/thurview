@@ -57,20 +57,18 @@ jobs:
             echo "No releasable commits since the last tag."
             echo "version=" >> "$GITHUB_OUTPUT"
           fi
-      - name: Bump version and tag
+      # Tag without a bump commit and push only the tag: main takes changes
+      # through pull requests only, so nothing here may push a commit to it.
+      # package.json keeps its last committed version; the publish step sets
+      # the released one in the job's working copy before building.
+      - name: Create the version tag
         if: steps.version.outputs.version != ''
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          # The first release ships the version package.json already carries.
-          if [ "$(node -p 'require("./package.json").version')" != "$VERSION" ]; then
-            npm version "$VERSION" --no-git-tag-version
-            git add package.json
-            git commit -m "chore(ci): release v$VERSION"
-          fi
-          cog bump --version "$VERSION"
-          git push --follow-tags origin HEAD:main
+          cog bump --version "$VERSION" --disable-bump-commit
+          git push origin "refs/tags/v$VERSION"
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         if: steps.version.outputs.version != ''
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -79,9 +77,15 @@ jobs:
           node-version: 26
           cache: pnpm
           registry-url: https://registry.npmjs.org
-      - name: Build
+      - name: Build at the released version
         if: steps.version.outputs.version != ''
-        run: pnpm install --frozen-lockfile && pnpm build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          pnpm install --frozen-lockfile
+          pnpm build
       # Needs the one-time npm trusted-publisher setup for this workflow; the
       # repository variable NPM_PUBLISH=true turns the step on once that is done.
       - name: Publish to npm
