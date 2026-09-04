@@ -101,7 +101,7 @@ jobs:
       - name: Lint markdown files
         uses: rvben/rumdl@50dbfef7cf08f1d28633b684c0884490a63094e3 # v0.2.60
         with:
-          args: check .
+          report-type: annotations
 
   shellcheck:
     name: ShellCheck
