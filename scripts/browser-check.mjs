@@ -1,10 +1,14 @@
 // Drive headless Chromium over the DevTools protocol: print console output, exceptions and
 // failed requests for a page, then screenshot it once its async rendering settled.
-// Usage: node scripts/browser-check.mjs <url> [seconds] [screenshot.png] [width] [height]
+// Pass `touch` as the sixth argument to emulate a coarse pointer with no hover,
+// which headless Chromium otherwise reports for every window size, so
+// hover-only affordances look permanently visible in a desktop screenshot.
+// Usage: node scripts/browser-check.mjs <url> [seconds] [shot.png] [width] [height] [touch|mouse]
 import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 
-const [url, secs = "5", shot, width = "1440", height = "900"] = process.argv.slice(2);
+const [url, secs = "5", shot, width = "1440", height = "900", pointer = "mouse"] =
+  process.argv.slice(2);
 if (!url) {
   console.error(
     "usage: node scripts/browser-check.mjs <url> [seconds] [screenshot.png] [width] [height]",
@@ -12,12 +16,22 @@ if (!url) {
   process.exit(2);
 }
 const port = 9333 + Math.floor(Math.random() * 500);
+// Headless Chromium has no pointing device, so it reports `hover: none` and
+// `pointer: coarse` at every window size and a desktop screenshot shows every
+// hover-only affordance as permanently visible. Blink settings are the only
+// lever that moves those media features; CDP's setEmulatedMedia does not cover
+// them. Values are Blink's enums: hover none=1 hover=2, pointer coarse=2 fine=4.
+const blink =
+  pointer === "touch"
+    ? "primaryHoverType=1,availableHoverTypes=1,primaryPointerType=2,availablePointerTypes=2"
+    : "primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4";
 const chrome = spawn(
   "chromium",
   [
     "--headless=new",
     "--no-sandbox",
     "--disable-gpu",
+    `--blink-settings=${blink}`,
     `--remote-debugging-port=${port}`,
     `--window-size=${width},${height}`,
     "about:blank",

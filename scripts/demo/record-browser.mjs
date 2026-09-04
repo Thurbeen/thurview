@@ -19,6 +19,10 @@ await mkdir(framesDir, { recursive: true });
 if (shotsDir) await mkdir(shotsDir, { recursive: true });
 
 const port = 9500 + Math.floor(Math.random() * 400);
+// Headless Chromium reports no pointing device, so `hover: none` matches and
+// every hover-only control renders as permanently visible. The demo is of the
+// desktop experience, so the pointer is forced to a mouse. Blink enums:
+// hover hover=2, pointer fine=4.
 const chrome = spawn(
   "chromium",
   [
@@ -26,6 +30,7 @@ const chrome = spawn(
     "--no-sandbox",
     "--disable-gpu",
     "--hide-scrollbars",
+    "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
     `--remote-debugging-port=${port}`,
     `--window-size=${W},${H}`,
     "about:blank",
