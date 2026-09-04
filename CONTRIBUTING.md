@@ -49,4 +49,17 @@ temporary directory. Re-record it when the UI or the CLI output changes.
 
 `cd.yml` runs on every push to `main`. cocogitto decides from the commits
 whether a version is due, tags it, publishes to npm with provenance and writes
-the GitHub release. There is no CHANGELOG file in the tree.
+the GitHub release. A version is cut only when a shipped file changed since
+the last tag (`src`, `bin`, `skills`, `package.json`, the lockfile); a
+`workflow_dispatch` with an explicit version skips that gate. There is no
+CHANGELOG file in the tree.
+
+npm publishing is off until it is set up once:
+
+1. `npm login`, then `npm publish` from a clean checkout to claim the name.
+2. On npmjs.com, add this repository and `.github/workflows/cd.yml` as a
+   trusted publisher of the package (OIDC, no token stored anywhere).
+3. `gh variable set NPM_PUBLISH --body true`, which turns the publish step on.
+
+`provenance` lives on the CI flag rather than in `package.json`, because a
+local publish has no attestation environment and would fail with it set.
