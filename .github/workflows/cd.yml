@@ -3,8 +3,8 @@
 # changelog and publishes the package to npm with provenance.
 #
 # npm publish uses trusted publishing (OIDC): configure this repository and
-# workflow as a trusted publisher of the `thurview` package on npmjs.com once;
-# no token is stored here.
+# workflow as a trusted publisher of the `thurview` package on npmjs.com once,
+# then set the repository variable NPM_PUBLISH=true; no token is stored here.
 name: Release
 
 on:
@@ -50,8 +50,9 @@ jobs:
             echo "version=$FORCED" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # cog prints the next tag with its prefix (v0.2.0); package.json wants 0.2.0.
           if cog bump --auto --dry-run >/tmp/next 2>/dev/null && [ -s /tmp/next ]; then
-            echo "version=$(cat /tmp/next)" >> "$GITHUB_OUTPUT"
+            echo "version=$(sed 's/^v//' /tmp/next)" >> "$GITHUB_OUTPUT"
           else
             echo "No releasable commits since the last tag."
             echo "version=" >> "$GITHUB_OUTPUT"
@@ -62,9 +63,12 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          npm version "$VERSION" --no-git-tag-version
-          git add package.json
-          git commit -m "chore(ci): release v$VERSION"
+          # The first release ships the version package.json already carries.
+          if [ "$(node -p 'require("./package.json").version')" != "$VERSION" ]; then
+            npm version "$VERSION" --no-git-tag-version
+            git add package.json
+            git commit -m "chore(ci): release v$VERSION"
+          fi
           cog bump --version "$VERSION"
           git push --follow-tags origin HEAD:main
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -78,8 +82,10 @@ jobs:
       - name: Build
         if: steps.version.outputs.version != ''
         run: pnpm install --frozen-lockfile && pnpm build
+      # Needs the one-time npm trusted-publisher setup for this workflow; the
+      # repository variable NPM_PUBLISH=true turns the step on once that is done.
       - name: Publish to npm
-        if: steps.version.outputs.version != ''
+        if: steps.version.outputs.version != '' && vars.NPM_PUBLISH == 'true'
         run: npm publish --provenance --access public
       - name: GitHub release
         if: steps.version.outputs.version != ''
