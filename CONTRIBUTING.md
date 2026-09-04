@@ -54,14 +54,13 @@ the last tag (`src`, `bin`, `skills`, `package.json`, the lockfile); a
 `workflow_dispatch` with an explicit version skips that gate. There is no
 CHANGELOG file in the tree.
 
-npm publishing is off until it is set up once:
-
-1. `npm login`, then `scripts/npm-publish.sh --otp <code>` on the commit the
-   latest tag points at, to claim the name. The script publishes the tag's
-   version and leaves `package.json` as it found it.
-2. On npmjs.com, add this repository and `.github/workflows/cd.yml` as a
-   trusted publisher of the package (OIDC, no token stored anywhere).
-3. `gh variable set NPM_PUBLISH --body true`, which turns the publish step on.
+npm publishing runs on trusted publishing: npmjs.com knows this repository
+and `.github/workflows/cd.yml` as the package's publisher, and the workflow's
+`id-token: write` permission is what it exchanges for a short-lived
+credential. Nothing is stored, and there is no switch to turn on.
 
 `provenance` lives on the CI flag rather than in `package.json`, because a
-local publish has no attestation environment and would fail with it set.
+publish run by hand has no attestation environment and would fail with it set.
+`scripts/npm-publish.sh` covers that case: it publishes the latest tag's
+version, refusing when shipped files have moved since, and restores
+`package.json` afterwards.
