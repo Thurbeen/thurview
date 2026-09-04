@@ -120,7 +120,10 @@ and open it.
 
 Everything runs locally against your checkout. The server listens on
 loopback and, when present, your Tailscale address, so a phone or another
-machine on the tailnet can open the same URL.
+machine on the tailnet can open the same URL. The layout follows: below 900px
+the rail and the split diff give way to one column, the peek and the threads
+panel become full-screen sheets, and the tabs and the decision stay on the
+bar.
 
 ## CLI
 

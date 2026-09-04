@@ -1,6 +1,6 @@
 import { api } from "../api.js";
 import { h } from "../dom.js";
-import { state, navigate } from "../state.js";
+import { state, navigate, isNarrow } from "../state.js";
 import { attachDefinitions, startLineComment, lineClick, codeSelectionHandler } from "../code.js";
 import { threadPinRow } from "../threads.js";
 import type { FileDiff, DiffRow } from "../../diff.js";
@@ -88,6 +88,8 @@ async function renderDiff(view: HTMLElement, path: string): Promise<void> {
     return;
   }
   view.innerHTML = "";
+  // Split needs two code columns; below the breakpoint there is room for one.
+  const split = state.splitDiff && inChanges && !isNarrow();
   const toggle = h(
     "button",
     {
@@ -130,7 +132,11 @@ async function renderDiff(view: HTMLElement, path: string): Promise<void> {
             fileThreads.length ? `File comments (${fileThreads.length})` : "Comment on file",
           )
         : null,
-      inChanges ? toggle : h("span", { class: "badge" }, `full file at ${side}`),
+      inChanges
+        ? isNarrow()
+          ? null
+          : toggle
+        : h("span", { class: "badge" }, `full file at ${side}`),
     ),
   );
   if (fileThreads.length)
@@ -149,7 +155,7 @@ async function renderDiff(view: HTMLElement, path: string): Promise<void> {
     (t): t is Thread & { target: { type: "file" } } =>
       t.target.type === "file" && t.target.path === path,
   );
-  const el = state.splitDiff && inChanges ? splitView(d, threads) : unifiedView(d, threads);
+  const el = split ? splitView(d, threads) : unifiedView(d, threads);
   view.appendChild(el);
   codeSelectionHandler(view);
   if (line) {

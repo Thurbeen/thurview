@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { h, append, clear, dialog, timeAgo } from "./dom.js";
-import { state, on, emit, readHash, navigate, isTerminal, type View } from "./state.js";
+import { state, on, emit, readHash, navigate, isTerminal, NARROW, type View } from "./state.js";
 import { renderPeek } from "./code.js";
 import { renderThreadsPanel, submitDialog, reload } from "./threads.js";
 import { renderReview } from "./views/review.js";
@@ -117,20 +117,24 @@ function renderTopbar(): void {
         `rev ${n}${n === r.revision ? " (current)" : ""}`,
       ),
     );
-  append(topbar, [
+  // Two rows, so a long title can never push the tabs or the decision button
+  // off the bar: the identity row truncates, the actions row does not.
+  const identity = h("div", { class: "bar-row bar-identity" }, [
     h("a", { href: "/", class: "brand", title: "All reviews" }, "thurview"),
-    h("span", { class: "title" }, r.title),
+    h("span", { class: "title", title: r.title }, r.title),
     h("span", { class: `badge ${statusClass(r.status)}` }, r.status),
-    r.revision > 1 ? revSel : h("span", { class: "badge" }, `rev ${r.revision}`),
+    r.revision > 1 ? revSel : h("span", { class: "badge bar-rev" }, `rev ${r.revision}`),
     h(
       "span",
       {
-        class: "muted mono",
+        class: "muted mono bar-binding",
         style: { fontSize: "12px" },
         title: `${r.pins.base} → ${r.pins.head}`,
       },
       r.binding.kind === "pr" ? `PR #${r.binding.name}` : r.binding.name,
     ),
+  ]);
+  const actions = h("div", { class: "bar-row bar-actions" }, [
     h(
       "div",
       { class: "tabs" },
@@ -155,10 +159,15 @@ function renderTopbar(): void {
       : h(
           "button",
           { class: pending ? "primary" : "ok", onclick: () => submitDialog() },
-          pending ? `Submit review (${pending})` : "Approve / Request changes",
+          pending ? `Submit${pending ? ` (${pending})` : ""}` : "Decide",
         ),
-    h("button", { class: "ghost", title: "More", onclick: (e: MouseEvent) => moreMenu(e) }, "⋯"),
+    h(
+      "button",
+      { class: "ghost bar-more", title: "More", onclick: (e: MouseEvent) => moreMenu(e) },
+      "⋯",
+    ),
   ]);
+  append(topbar, [identity, actions]);
 }
 
 function moreMenu(e: MouseEvent): void {
@@ -376,6 +385,7 @@ async function reviewPage(id: string): Promise<void> {
     readHash();
     emit("view");
   });
+  window.matchMedia(NARROW).addEventListener("change", () => emit("view"));
   emit("data");
   connectEvents();
 }

@@ -21,6 +21,12 @@ export interface State {
   splitDiff: boolean;
 }
 
+/** Below this the UI is one column: no TOC rail, no split diff, side as overlay. */
+export const NARROW = "(max-width: 900px)";
+export function isNarrow(): boolean {
+  return window.matchMedia(NARROW).matches;
+}
+
 export const state: State = {
   id: "",
   data: null,
