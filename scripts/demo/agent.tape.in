@@ -1,0 +1,41 @@
+# Agent side of the thurview demo. Rendered from this template by record.sh,
+# which fills __DEMO_REPO__ and __HOME__ and runs vhs from its work directory.
+Output agent.mp4
+Set Shell bash
+Set FontSize 15
+Set Width 1280
+Set Height 800
+Set Theme "Dracula"
+Set Padding 24
+Set TypingSpeed 40ms
+Set CursorBlink false
+
+Hide
+Type "cd __DEMO_REPO__ && export THURVIEW_HOME=__HOME__ && clear"
+Enter
+Show
+
+Type "thurview"
+Sleep 300ms
+Enter
+Sleep 2500ms
+
+Type "thurview publish --view review"
+Sleep 300ms
+Enter
+Sleep 3500ms
+
+Hide
+Type "source __WORK__/ask.sh && clear"
+Enter
+Show
+
+Type "thurview wait"
+Sleep 300ms
+Enter
+Sleep 3000ms
+
+Type `thurview threads reply "$TID" --body "A placeholder: nothing in the request named a number. Five keeps a laptop, a phone and a tab or two."`
+Sleep 300ms
+Enter
+Sleep 3000ms

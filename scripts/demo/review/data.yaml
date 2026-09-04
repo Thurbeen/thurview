@@ -1,0 +1,27 @@
+actors:
+  caller: { label: Caller }
+  auth: { label: auth.ts, map: svc.auth }
+  store: { label: store.ts, map: svc.store }
+  audit: { label: audit.ts, map: svc.audit }
+anchors:
+  login: { title: login(), peek: { file: src/auth.ts, from: 7, to: 18 } }
+  cap: { title: Session cap, detail: Fifth session for the same user is refused, peek: { file: src/auth.ts, from: 9, to: 12 } }
+  auditDenied: { title: audit login-denied, peek: { file: src/auth.ts, from: 10, to: 10 } }
+  auditLogin: { title: audit login, peek: { file: src/auth.ts, from: 16, to: 16 } }
+  logout: { title: logout(), peek: { file: src/auth.ts, from: 20, to: 25 } }
+  auditFn: { title: audit(), peek: { file: src/audit.ts, from: 5, to: 8 } }
+  appendLog: { title: append to audit.log, peek: { file: src/audit.ts, from: 7, to: 7 } }
+  loadSessions: { title: loadSessions(), peek: { file: src/store.ts, from: 9, to: 12 } }
+  saveSessions: { title: saveSessions(), peek: { file: src/store.ts, from: 14, to: 16 } }
+  maxSessions: { title: MAX_SESSIONS, peek: { file: src/auth.ts, from: 5, to: 5 } }
+stores:
+  sessions:
+    kind: document
+    label: sessions.json
+    documents:
+      sessions: { schema: { id: { type: string, pk: true }, user: { type: string }, createdAt: { type: iso-date } } }
+  auditLog:
+    kind: document
+    label: audit.log
+    documents:
+      events: { schema: { at: { type: iso-date }, event: { type: enum }, user: { type: string } } }

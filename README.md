@@ -12,6 +12,14 @@ approve or request changes. The agent answers and republishes.
 It does not review the code for you. It helps you understand it fast enough
 to review it yourself.
 
+![thurview demo: the agent publishes and answers in the terminal, the reader
+peeks, comments and decides in the browser](./media/thurview-demo.gif)
+
+The clip is the `/thurview` skill's loop end to end: `thurview publish`, a
+question arriving in `thurview wait`, the reply, then the reader following an
+anchor into the code, commenting on a line range in the diff, reading the
+answer in the threads panel and requesting changes.
+
 ```mermaid
 flowchart LR
   A[Branch, PR or range] --> B[Agent pins base and head]
@@ -125,6 +133,7 @@ pnpm check     # type-check server and UI, run the end-to-end tests
 pnpm build
 pnpm dev -- scaffold
 node scripts/browser-check.mjs <url> [seconds] [shot.png]   # console errors + screenshot of a view
+scripts/demo/record.sh                                       # re-record media/thurview-demo.{mp4,gif}
 ```
 
 Set `THURVIEW_HOME` to keep state elsewhere than `~/.thurview`.
