@@ -32,7 +32,17 @@ flowchart LR
 
 ## Install
 
-Requires Node 22 or later and git. `gh` for pull requests.
+Give your agent the skill, with the [skills](https://github.com/vercel-labs/skills)
+CLI. It works with Claude Code, Codex, Cursor, OpenCode and every agent that
+reads the Agent Skills format:
+
+```sh
+npx skills add Thurbeen/thurview --skill thurview
+```
+
+The skill drives the `thurview` command. Requires Node 22 or later and git;
+`gh` for pull requests. Until the package is on npm, build it from this
+checkout:
 
 ```sh
 pnpm install
@@ -40,16 +50,13 @@ pnpm build
 npm link                    # puts `thurview` on PATH
 ```
 
-Then wire it into your agent, either way or both:
+Optional, for ambient context: `thurview setup hooks` installs a
+SessionStart hook for Claude Code, Codex and OpenCode, so every session opens
+with the reviews of its working directory. `thurview setup skill` links the
+skill from this checkout instead of the `skills` CLI copy; use one or the
+other.
 
-```sh
-thurview setup hooks        # SessionStart hook for Claude Code, Codex, OpenCode:
-                            # every session opens with the reviews of its working directory
-thurview setup skill        # /thurview skill in ~/.claude/skills and ~/.agents/skills
-```
-
-The hook gives ambient context at the start of every session; the skill loads
-on demand when the task matches. Then, in any repository, ask your agent:
+Then, in any repository, ask your agent:
 
 ```text
 Use the thurview skill to review my current branch against up-to-date main

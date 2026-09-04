@@ -25,6 +25,9 @@ flowchart LR
   D -->|approve| F[done]
 ```
 
+Run the CLI as `thurview`. When it is not on PATH, `npx -y thurview` runs
+the published package with the same commands; substitute it everywhere below.
+
 Every command prints TOON on stdout: the result, then `help[]` with the next
 commands. Errors are structured on stdout too (`error`, `code`, `help`); exit
 code 1 is a failure, 2 a usage error such as an unknown flag. Progress goes to
