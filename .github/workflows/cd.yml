@@ -50,6 +50,18 @@ jobs:
             echo "version=$FORCED" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # A fix or feat that touches only CI, docs or demo media bumps nothing
+          # a user installs, so it must not cut a release. Only the shipped
+          # files count: what the npm package carries plus its lockfile.
+          LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          if [ -n "$LAST_TAG" ]; then
+            SHIPPED="$(git diff --name-only "$LAST_TAG" HEAD -- src bin skills package.json pnpm-lock.yaml | head -1)"
+            if [ -z "$SHIPPED" ]; then
+              echo "No shipped file changed since $LAST_TAG; not releasing."
+              echo "version=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           # cog prints the next tag (v0.2.0) among notes such as "Pre-Hooks and
           # Post-Hooks have been skipped", and exits non-zero when nothing bumps.
           # Keep only the tag and drop its prefix: package.json wants 0.2.0.
