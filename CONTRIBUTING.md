@@ -57,7 +57,14 @@ CHANGELOG file in the tree.
 npm publishing runs on trusted publishing: npmjs.com knows this repository
 and `.github/workflows/cd.yml` as the package's publisher, and the workflow's
 `id-token: write` permission is what it exchanges for a short-lived
-credential. Nothing is stored, and there is no switch to turn on.
+credential. Nothing is stored, and there is no switch to turn on. npm matches
+the workflow by its **filename** (`cd.yml`), not its path or its `name:`, and
+a mismatch fails the publish with `OIDC permission denied for this action`.
+
+The job publishes before it tags, deliberately. Tagging first leaves a tag
+behind whenever npm refuses, and since `cog bump --auto` reads the last tag it
+then sees no releasable commits and never retries, so the version is lost
+until the tag is deleted by hand.
 
 `provenance` lives on the CI flag rather than in `package.json`, because a
 publish run by hand has no attestation environment and would fail with it set.
