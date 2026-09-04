@@ -20,6 +20,34 @@ question arriving in `thurview wait`, the reply, then the reader following an
 anchor into the code, commenting on a line range in the diff, reading the
 answer in the threads panel and requesting changes.
 
+## What the reader sees
+
+Prose with every claim anchored to code, opened beside the text:
+
+![The review document, with a call stack diff, a storage view and an anchored
+peek open in the side panel](./media/review-review.png)
+
+The diff at the pinned commits, commenting on a selected line range:
+
+![The Files tab, split diff, with a comment on lines 9 to 12 of
+src/auth.ts](./media/review-files.png)
+
+The software map, showing what the change added and what it touched:
+
+![The Map tab: Auth and Session store changed, Audit trail added, with its
+files and code](./media/review-map.png)
+
+Threads: a question the agent already answered, and a comment held for the
+decision:
+
+![The threads panel, one answered question and one pending
+comment](./media/review-threads.png)
+
+Approve, or send it back with the comments:
+
+![The submit dialog, one pending comment, Approve or Request
+changes](./media/review-decision.png)
+
 ```mermaid
 flowchart LR
   A[Branch, PR or range] --> B[Agent pins base and head]
@@ -40,9 +68,16 @@ reads the Agent Skills format:
 npx skills add Thurbeen/thurview --skill thurview
 ```
 
-The skill drives the `thurview` command. Requires Node 22 or later and git;
-`gh` for pull requests. Until the package is on npm, build it from this
-checkout:
+The skill drives the `thurview` command, which needs Node 22 or later and
+git (`gh` for pull requests). Install it, or let the skill reach it through
+`npx`:
+
+```sh
+npm install -g thurview     # or: pnpm add -g thurview
+npx -y thurview             # no install; the skill falls back to this
+```
+
+To run from a checkout instead:
 
 ```sh
 pnpm install

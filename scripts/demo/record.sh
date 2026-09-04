@@ -42,7 +42,7 @@ sed -e "s|__DEMO_REPO__|$repo|g" -e "s|__HOME__|$THURVIEW_HOME|g" -e "s|__WORK__
 (cd "$work" && vhs agent.tape >"$work/vhs.log" 2>&1) || { tail -20 "$work/vhs.log" >&2; exit 1; }
 
 # Reader side, on the revision the tape published.
-node "$root/scripts/demo/record-browser.mjs" "http://127.0.0.1:$port/review/$uuid#/review" "$work/frames" 15
+node "$root/scripts/demo/record-browser.mjs" "http://127.0.0.1:$port/review/$uuid#/review" "$work/frames" 15 "$work/shots"
 ffmpeg -loglevel error -y -framerate 15 -i "$work/frames/f%05d.jpg" -c:v libx264 -pix_fmt yuv420p -vf "scale=1280:800" "$work/reader.mp4"
 
 # Join both halves.
@@ -51,4 +51,9 @@ printf "file '%s'\nfile '%s'\n" "$work/agent-n.mp4" "$work/reader.mp4" >"$work/l
 mkdir -p "$root/media"
 ffmpeg -loglevel error -y -f concat -safe 0 -i "$work/list.txt" -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$root/media/thurview-demo.mp4"
 ffmpeg -loglevel error -y -i "$root/media/thurview-demo.mp4" -vf "fps=8,scale=960:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=128[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5" "$root/media/thurview-demo.gif"
+
+# Stills of the review page, captured during the same run as the video.
+for shot in review files map threads decision; do
+  ffmpeg -loglevel error -y -i "$work/shots/$shot.png" -vf "scale=1100:-1:flags=lanczos" "$root/media/review-$shot.png"
+done
 ls -la "$root/media"
