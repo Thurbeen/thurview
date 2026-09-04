@@ -1,0 +1,116 @@
+# no-mistakes gate configuration for thurview.
+#
+# Reference: https://kunchenguid.github.io/no-mistakes/reference/repo-config/
+#
+# Gate-control fields are read only from the trusted default branch, never from
+# a pushed branch, so a contributor cannot weaken the gate that reviews their
+# own change.
+
+commands:
+  # Type-check server and UI, then Prettier. Explicit rather than
+  # agent-detected so the lint step is deterministic.
+  lint: "pnpm typecheck && pnpm fmt:check && rumdl check . && git ls-files -z '*.sh' | xargs -0 -r shellcheck"
+  # Run before the push step commits agent fixes.
+  format: "pnpm fmt"
+  # The end-to-end suite drives the CLI over a scratch git repository and the
+  # HTTP API of an in-process server.
+  test: "pnpm test && bats scripts/ci/*.bats"
+
+ignore_patterns:
+  - "pnpm-lock.yaml"
+  - "src/ui/assets/**"
+  - "dist/**"
+
+auto_fix:
+  review: 0
+
+ci:
+  rerun_transient: 0
+
+commit:
+  fix_message: "chore: no-mistakes {{.Step}} - {{.Summary}}"
+
+document:
+  instructions: |
+    Each class of fact has exactly one owner document. README.md owns the
+    introduction, install, the reader-facing feature list and the CLI table.
+    skills/thurview/SKILL.md owns the agent workflow, and its references own
+    the contracts: references/document-authoring.md the document rules,
+    references/components.md every data.yaml shape and fenced component,
+    references/lifecycle.md statuses, storage and threads,
+    references/software-map.md map.yaml, references/theme.md theme.yaml.
+    CONTRIBUTING.md owns the contribution process (commit conventions, the
+    prek hooks, the no-mistakes gate, squash merge) and the configuration of
+    external tooling such as .no-mistakes.yaml. A code change that adds or
+    changes a CLI command, an output field, a YAML key or a validation rule
+    updates the owning document in the same change. This repository has no
+    CHANGELOG.md; release notes are generated from conventional commits by
+    cocogitto. Do not create one.
+
+review:
+  path_instructions:
+    - path: "src/**"
+      instructions: |
+        The CLI is an AXI: every command prints TOON on stdout through
+        axi-sdk-js, errors are structured on stdout with an actionable help
+        list, exit code 2 marks a usage error, progress goes to stderr and
+        nothing prompts. A new command declares its flags in SPECS so unknown
+        flags fail loudly, returns a minimal default schema with counts and a
+        definitive empty state, truncates long bodies with a --full hint, and
+        ends with help[] next steps that use <id> placeholders.
+        Everything the reader sees is read from the pinned commits through
+        git show, never from the working tree, so a moved checkout changes
+        nothing. Publish is the validation boundary: an anchor whose file or
+        lines do not exist at its commit, a call stack claim the diff does
+        not support, a storage operation on an unknown field, a map edge to
+        an unknown node, or a theme font missing at head must fail there,
+        with a diagnostic naming the file and line, and never reach a sealed
+        revision. A failed publish keeps the last sealed revision.
+        Threads and decisions change only through src/threads.ts, from the
+        HTTP API and the CLI alike, so the two never disagree on what
+        "needs the agent" means.
+        This repository is test-driven: a bug fix starts with a test in
+        test/e2e.test.ts that reproduces it, so it fails before the fix and
+        passes after. Comments explain why, never what; no TODO, FIXME or
+        commented-out code. Read the change for structure as well as
+        correctness: names that reveal intent, one thing per function,
+        duplication folded, dead code gone, and no abstraction before real
+        duplication justifies it.
+    - path: "src/ui/**"
+      instructions: |
+        Vanilla TypeScript, no framework, bundled by esbuild; the DOM is built
+        with the h() helper and re-rendered from state on data, threads, view
+        and side events. Every surface the reader can point at - a document
+        block, a diff line or range, a map node - must offer a comment with an
+        "Add to review" or "Ask now" choice, and pins must stay attached to
+        their target across re-renders. Styling goes through the CSS custom
+        properties in app.css so a review's theme.yaml can override it; a
+        hard-coded color or font in a rule is a theme bug. The page must
+        render correctly in the default skin and under a light project theme.
+        Verify async views with scripts/browser-check.mjs rather than
+        Chromium's one-shot --screenshot, which fires before fetches resolve.
+    - path: "skills/**"
+      instructions: |
+        The agent-facing contract. SKILL.md is the workflow; a step that the
+        CLI no longer supports, or a flag, output field or YAML key the code
+        changed, is a defect here. Keep the reference files the single source
+        for each shape; do not duplicate a shape between two files. Nothing in
+        this tree names the projects that inspired thurview.
+    - path: "test/**"
+      instructions: |
+        One end-to-end file drives the real CLI through tsx over a scratch git
+        repository and calls the in-process server over HTTP. A new behaviour
+        is asserted through those interfaces, decoding TOON with the same
+        package the CLI encodes with, and covers the failure path (exit code
+        and diagnostic) as well as the happy path. A test that greps source
+        text proves nothing.
+    - path: "scripts/ci/**"
+      instructions: |
+        The two checkers are bash, linted by shellcheck and tested by bats;
+        a change to one moves its .bats file. check-pr-title.sh is the only
+        gate between a typo in a PR title and a main whose history no longer
+        parses, because squash merge discards branch commits.
+    - path: "README.md"
+      instructions: |
+        Prose. Do not request test coverage. It must stay accurate to the CLI
+        table and the setup commands; it never names the inspirations.

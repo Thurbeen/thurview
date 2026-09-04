@@ -1,0 +1,6 @@
+dist/
+node_modules/
+pnpm-lock.yaml
+src/ui/assets/
+skills/thurview/references/
+.rumdl_cache/

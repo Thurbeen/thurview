@@ -1,0 +1,21 @@
+[global]
+# The agent-tooling dirs. Their files follow each CLI's own skill/command
+# conventions — frontmatter first, no leading h1 — which this linter's
+# document rules reject (MD041) without anything being wrong with them.
+exclude = [".git", ".claude", ".pi", ".opencode", "node_modules", "dist", "skills"]
+
+[MD013]
+line_length = 100
+# Allow longer lines in tables and code blocks
+tables = false
+code_blocks = false
+
+[MD033]
+# Allow the HTML used for the README feature-wall layout
+allowed_elements = [
+  "table", "tr", "td", "img", "picture", "source", "a", "br", "div",
+  # The README collapses its secondary install routes behind a disclosure;
+  # <summary> takes <b> rather than ** because markdown emphasis inside raw
+  # HTML renders inconsistently.
+  "details", "summary", "b",
+]

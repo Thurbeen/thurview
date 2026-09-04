@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+# Cancel a superseded run when a new commit is pushed to the same PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Classify the PR diff so a docs-only or shell-only PR skips the irrelevant
+  # jobs. Job-level `if:` (not `paths-ignore:`) keeps the always-run
+  # `all-checks` gate reporting a status: a skipped job counts as success.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      shell: ${{ steps.filter.outputs.shell }}
+      markdown: ${{ steps.filter.outputs.markdown }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          # Every filter includes this workflow so editing it re-runs all jobs.
+          filters: |
+            code:
+              - 'src/**'
+              - 'test/**'
+              - 'bin/**'
+              - 'scripts/build-ui.mjs'
+              - 'scripts/browser-check.mjs'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - '.prettierrc.json'
+              - '.prettierignore'
+              - '.github/workflows/ci.yml'
+            shell:
+              - '**/*.sh'
+              - '**/*.bats'
+              - '.shellcheckrc'
+              - '.github/workflows/ci.yml'
+            markdown:
+              - '**/*.md'
+              - '.rumdl.toml'
+              - '.github/workflows/ci.yml'
+
+  check:
+    name: Type-check, format, test
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm fmt:check
+      - run: pnpm build
+      - run: pnpm test
+
+  conventional-commits:
+    name: Conventional Commits
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Install cocogitto
+        uses: cocogitto/cocogitto-action@52d0023b4396897f1815648e553db2ab8d782f3a # v4.2.0
+        with:
+          install-only: true
+      - name: Install bats-core
+        run: sudo apt-get update && sudo apt-get install -y bats
+      - name: Test the commit checker
+        run: bats scripts/ci/check-conventional-commits.bats
+      - name: Test the PR title checker
+        run: bats scripts/ci/check-pr-title.bats
+      - name: Check conventional commits
+        run: scripts/ci/check-conventional-commits.sh
+
+  markdown-lint:
+    name: Markdown Lint
+    needs: changes
+    if: needs.changes.outputs.markdown == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Lint markdown files
+        uses: rvben/rumdl@50dbfef7cf08f1d28633b684c0884490a63094e3 # v0.2.60
+        with:
+          args: check .
+
+  shellcheck:
+    name: ShellCheck
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Run shellcheck
+        run: git ls-files -z '*.sh' | xargs -0 shellcheck
+
+  all-checks:
+    name: All Checks
+    if: always()
+    needs:
+      - changes
+      - check
+      - conventional-commits
+      - markdown-lint
+      - shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all checks passed
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]] || \
+             [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more checks failed or were cancelled"
+            exit 1
+          fi
+          echo "All checks passed"

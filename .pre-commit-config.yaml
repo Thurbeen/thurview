@@ -1,0 +1,57 @@
+# Run with prek: `prek install` once, then every commit and push is gated.
+default_stages: [pre-commit]
+default_install_hook_types:
+  - commit-msg
+  - pre-commit
+  - pre-push
+repos:
+  - repo: local
+    hooks:
+      - id: cocogitto-verify
+        name: Verify conventional commit message
+        entry: cog verify
+        language: system
+        stages: [commit-msg]
+        args: ["--file"]
+      - id: prettier-check
+        name: Prettier format check
+        entry: pnpm fmt:check
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: typecheck
+        name: TypeScript (server and UI)
+        entry: pnpm typecheck
+        language: system
+        types_or: [ts, javascript]
+        pass_filenames: false
+      - id: vitest
+        name: End-to-end tests
+        entry: pnpm test
+        language: system
+        types_or: [ts, javascript, json, yaml]
+        pass_filenames: false
+      - id: shellcheck
+        name: ShellCheck
+        entry: shellcheck
+        language: system
+        types: [shell]
+      - id: ci-script-tests
+        name: CI script tests
+        entry: bash -c 'bats scripts/ci/*.bats'
+        language: system
+        files: ^scripts/ci/
+        pass_filenames: false
+      - id: rumdl-check
+        name: Markdown lint check
+        entry: rumdl check .
+        language: system
+        types: [markdown]
+        pass_filenames: false
+      - id: cocogitto-check
+        name: Check commit history
+        entry: scripts/ci/check-conventional-commits.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

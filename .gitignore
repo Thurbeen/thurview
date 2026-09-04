@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+
+# no-mistakes and cocogitto scratch
+.no-mistakes/
+CHANGELOG.md
+.rumdl_cache/

@@ -1,0 +1,92 @@
+# Release on push to main: cocogitto decides from the conventional commits
+# whether a version is due, tags it, writes the GitHub release from the
+# changelog and publishes the package to npm with provenance.
+#
+# npm publish uses trusted publishing (OIDC): configure this repository and
+# workflow as a trusted publisher of the `thurview` package on npmjs.com once;
+# no token is stored here.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact version to release (e.g. 1.0.0). Empty = auto from commits."
+        required: false
+        default: ""
+        type: string
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: Tag, release, publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Install cocogitto
+        uses: cocogitto/cocogitto-action@52d0023b4396897f1815648e553db2ab8d782f3a # v4.2.0
+        with:
+          install-only: true
+      - name: Decide the version
+        id: version
+        env:
+          FORCED: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$FORCED" ]; then
+            echo "version=$FORCED" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if cog bump --auto --dry-run >/tmp/next 2>/dev/null && [ -s /tmp/next ]; then
+            echo "version=$(cat /tmp/next)" >> "$GITHUB_OUTPUT"
+          else
+            echo "No releasable commits since the last tag."
+            echo "version=" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Bump version and tag
+        if: steps.version.outputs.version != ''
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          npm version "$VERSION" --no-git-tag-version
+          git add package.json
+          git commit -m "chore(ci): release v$VERSION"
+          cog bump --version "$VERSION"
+          git push --follow-tags origin HEAD:main
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        if: steps.version.outputs.version != ''
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.version.outputs.version != ''
+        with:
+          node-version: 26
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: Build
+        if: steps.version.outputs.version != ''
+        run: pnpm install --frozen-lockfile && pnpm build
+      - name: Publish to npm
+        if: steps.version.outputs.version != ''
+        run: npm publish --provenance --access public
+      - name: GitHub release
+        if: steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          cog changelog --at "v$VERSION" > /tmp/notes.md || true
+          gh release create "v$VERSION" --title "v$VERSION" --notes-file /tmp/notes.md

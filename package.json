@@ -1,0 +1,54 @@
+{
+  "name": "thurview",
+  "version": "0.1.0",
+  "description": "Guided, evidence-anchored reviews of agent-written code. A coding agent authors the review; you read, ask, comment and decide in the browser.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "thurview": "./bin/thurview.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/build-ui.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.ui.json",
+    "fmt": "prettier --write .",
+    "fmt:check": "prettier --check .",
+    "lint": "pnpm typecheck && pnpm fmt:check",
+    "test": "vitest run",
+    "check": "pnpm lint && pnpm test",
+    "dev": "tsx src/main.ts",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@toon-format/toon": "2.3.1",
+    "axi-sdk-js": "0.1.11",
+    "diff": "9.0.0",
+    "markdown-it": "15.0.1",
+    "open": "11.0.2",
+    "shiki": "4.4.3",
+    "yaml": "2.9.0",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/diff": "8.0.0",
+    "@types/node": "26.4.1",
+    "esbuild": "0.28.2",
+    "prettier": "3.9.6",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  },
+  "packageManager": "pnpm@11.24.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Thurbeen/thurview.git"
+  },
+  "homepage": "https://github.com/Thurbeen/thurview"
+}
