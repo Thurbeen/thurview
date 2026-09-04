@@ -10,7 +10,9 @@
   "files": [
     "bin",
     "dist",
-    "skills"
+    "skills",
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=22"
@@ -50,5 +52,20 @@
     "type": "git",
     "url": "git+https://github.com/Thurbeen/thurview.git"
   },
-  "homepage": "https://github.com/Thurbeen/thurview"
+  "homepage": "https://github.com/Thurbeen/thurview",
+  "keywords": [
+    "code-review",
+    "agent",
+    "skill",
+    "axi",
+    "cli",
+    "review",
+    "diff",
+    "claude-code",
+    "agent-skills"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
 }

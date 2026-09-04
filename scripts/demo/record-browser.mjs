@@ -1,12 +1,13 @@
 // Reader side of the thurview demo: drive the review in headless Chromium over
 // the DevTools protocol with a visible pointer, capture a screencast, and write
 // it as a frame sequence for ffmpeg.
-// Usage: node scripts/demo/record-browser.mjs <review-url> <frames-dir> [fps]
+// Stills of the moments worth showing on their own are written to <shots-dir>.
+// Usage: node scripts/demo/record-browser.mjs <review-url> <frames-dir> [fps] [shots-dir]
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const [url, framesDir, fpsArg = "15"] = process.argv.slice(2);
+const [url, framesDir, fpsArg = "15", shotsDir] = process.argv.slice(2);
 if (!url || !framesDir) {
   console.error("usage: record-browser.mjs <review-url> <frames-dir> [fps]");
   process.exit(2);
@@ -15,6 +16,7 @@ const W = 1280;
 const H = 800;
 const FPS = Number(fpsArg);
 await mkdir(framesDir, { recursive: true });
+if (shotsDir) await mkdir(shotsDir, { recursive: true });
 
 const port = 9500 + Math.floor(Math.random() * 400);
 const chrome = spawn(
@@ -116,10 +118,30 @@ async function click(selector, { nth = 0, shift = false, offsetX = 0 } = {}) {
   await sleep(350);
   return true;
 }
+async function clickByText(selector, text) {
+  const nth = await evalJs(
+    `[...document.querySelectorAll(${JSON.stringify(selector)})].findIndex((b) => b.textContent.includes(${JSON.stringify(text)}))`,
+  );
+  if (nth < 0) {
+    console.error("no", selector, "matching", text);
+    return false;
+  }
+  return click(selector, { nth });
+}
+
 async function scrollCenter(y, ms = 900) {
   await evalJs(`document.querySelector(".center").scrollTo({ top: ${y}, behavior: "smooth" })`);
   await sleep(ms);
 }
+// A still of the current page, captured mid-recording so the shots and the
+// video always show the same review.
+async function shot(name) {
+  if (!shotsDir) return;
+  await sleep(250);
+  const { data } = await call("Page.captureScreenshot", { format: "png" });
+  await writeFile(join(shotsDir, `${name}.png`), Buffer.from(data, "base64"));
+}
+
 async function type(text) {
   for (const ch of text) {
     await call("Input.insertText", { text: ch });
@@ -144,6 +166,7 @@ await sleep(1800);
 await scrollCenter(700, 1200); // sequence diagram
 await click(".seq .msg text", { nth: 2 }); // audit("login-denied")
 await sleep(1600);
+await shot("review");
 await click(".side-head button.ghost"); // close the peek
 
 // 2. Files: a range comment held for the review.
@@ -160,28 +183,32 @@ await type(
   "Log the denied attempt after the throw is decided, so a failing audit write cannot mask the cap.",
 );
 await sleep(500);
+await sleep(400);
+await shot("files");
 await click(".comment-popover button.ok");
 await sleep(1600);
 
 // 3. Map: what the change added.
 await evalJs(`location.hash = "#/map?node=svc.audit"`);
 await sleep(2200);
+await shot("map");
 
-// 4. Threads, then the decision.
+// 4. Threads, then the decision. Both bar buttons can carry `primary` at once
+// (the threads toggle while its panel is open), so they are matched by text.
 await evalJs(`location.hash = "#/review"`);
 await sleep(900);
-await click(".topbar button", {
-  nth: await evalJs(
-    `[...document.querySelectorAll(".topbar button")].findIndex((b) => b.textContent.startsWith("Threads"))`,
-  ),
-});
+await clickByText(".topbar button", "Threads");
 await sleep(1800);
-await click(".topbar button.primary");
+await shot("threads");
+await clickByText(".topbar button", "Submit review");
 await sleep(1200);
+// Typing goes to the focused element, and a freshly opened dialog focuses none.
+await click(".dialog textarea");
 await type("One change before I approve, see the comment on the cap.");
 await sleep(400);
-await click(".dialog .row button", { nth: 1 }); // Request changes
-await sleep(2200);
+await shot("decision");
+await clickByText(".dialog .row button", "Request changes");
+await sleep(2400);
 
 await call("Page.stopScreencast");
 chrome.kill();
