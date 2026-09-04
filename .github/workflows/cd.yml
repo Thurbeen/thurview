@@ -2,9 +2,10 @@
 # whether a version is due, tags it, writes the GitHub release from the
 # changelog and publishes the package to npm with provenance.
 #
-# npm publish uses trusted publishing (OIDC): configure this repository and
-# workflow as a trusted publisher of the `thurview` package on npmjs.com once,
-# then set the repository variable NPM_PUBLISH=true; no token is stored here.
+# npm publish uses trusted publishing (OIDC): this repository and this workflow
+# are registered as a trusted publisher of the `thurview` package on npmjs.com,
+# which is what `id-token: write` below exchanges for a short-lived credential.
+# No token is stored here, and npm attaches provenance from the same identity.
 name: Release
 
 on:
@@ -102,10 +103,8 @@ jobs:
           npm version "$VERSION" --no-git-tag-version --allow-same-version
           pnpm install --frozen-lockfile
           pnpm build
-      # Needs the one-time npm trusted-publisher setup for this workflow; the
-      # repository variable NPM_PUBLISH=true turns the step on once that is done.
       - name: Publish to npm
-        if: steps.version.outputs.version != '' && vars.NPM_PUBLISH == 'true'
+        if: steps.version.outputs.version != ''
         run: npm publish --provenance --access public
       - name: GitHub release
         if: steps.version.outputs.version != ''
