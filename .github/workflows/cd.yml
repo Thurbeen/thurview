@@ -50,9 +50,13 @@ jobs:
             echo "version=$FORCED" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # cog prints the next tag with its prefix (v0.2.0); package.json wants 0.2.0.
-          if cog bump --auto --dry-run >/tmp/next 2>/dev/null && [ -s /tmp/next ]; then
-            echo "version=$(sed 's/^v//' /tmp/next)" >> "$GITHUB_OUTPUT"
+          # cog prints the next tag (v0.2.0) among notes such as "Pre-Hooks and
+          # Post-Hooks have been skipped", and exits non-zero when nothing bumps.
+          # Keep only the tag and drop its prefix: package.json wants 0.2.0.
+          RAW="$(cog bump --auto --disable-bump-commit --dry-run 2>/dev/null || true)"
+          NEXT="$(printf '%s\n' "$RAW" | grep -oE '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.]+)?$' | tail -1 || true)"
+          if [ -n "$NEXT" ]; then
+            echo "version=${NEXT#v}" >> "$GITHUB_OUTPUT"
           else
             echo "No releasable commits since the last tag."
             echo "version=" >> "$GITHUB_OUTPUT"
