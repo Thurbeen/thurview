@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "thurview": "./bin/thurview.js"
+    "thurview": "bin/thurview.js"
   },
   "files": [
     "bin",
