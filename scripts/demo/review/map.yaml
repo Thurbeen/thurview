@@ -1,0 +1,19 @@
+nodes:
+  - { id: user, kind: person, label: User }
+  - { id: svc, kind: system, label: Session service, description: "Login, logout and, from this change, an audit trail." }
+  - { id: svc.auth, kind: container, label: Auth, description: Entry points login() and logout(), files: ["src/auth.ts"], anchor: login }
+  - { id: svc.store, kind: component, label: Session store, description: sessions.json read and written whole, files: ["src/store.ts"], anchor: loadSessions }
+  - { id: svc.audit, kind: component, label: Audit trail, description: Appends one JSON line per event to audit.log, files: ["src/audit.ts"], anchor: auditFn }
+edges:
+  - { from: user, to: svc.auth, label: logs in and out }
+  - { from: svc.auth, to: svc.store, label: reads and writes sessions }
+  - { from: svc.auth, to: svc.audit, label: records every attempt }
+base:
+  nodes:
+    - { id: user, kind: person, label: User }
+    - { id: svc, kind: system, label: Session service, description: Login and logout. }
+    - { id: svc.auth, kind: container, label: Auth, files: ["src/auth.ts"] }
+    - { id: svc.store, kind: component, label: Session store, files: ["src/store.ts"] }
+  edges:
+    - { from: user, to: svc.auth, label: logs in and out }
+    - { from: svc.auth, to: svc.store, label: reads and writes sessions }

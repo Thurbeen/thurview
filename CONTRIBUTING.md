@@ -35,6 +35,16 @@ locally.
   for every authored file's shape.
 - `test/e2e.test.ts`: the suite, driving the CLI and the server end to end.
 
+## Demo media
+
+`scripts/demo/record.sh` re-records `media/thurview-demo.{mp4,gif}` from
+scratch: it builds the demo repository (`make-repo.sh`), publishes the review
+under `scripts/demo/review/`, records the agent side with VHS
+(`agent.tape.in`) and the reader side with a Chromium screencast
+(`record-browser.mjs`), and joins both with ffmpeg. It needs `vhs`, `ttyd`,
+`ffmpeg`, `chromium` and `thurview` on PATH, and touches nothing outside a
+temporary directory. Re-record it when the UI or the CLI output changes.
+
 ## Releases
 
 `cd.yml` runs on every push to `main`. cocogitto decides from the commits

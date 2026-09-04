@@ -4,3 +4,5 @@ pnpm-lock.yaml
 src/ui/assets/
 skills/thurview/references/
 .rumdl_cache/
+media/
+scripts/demo/review/

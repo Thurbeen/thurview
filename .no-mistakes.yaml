@@ -18,6 +18,7 @@ commands:
 
 ignore_patterns:
   - "pnpm-lock.yaml"
+  - "media/**"
   - "src/ui/assets/**"
   - "dist/**"
 
@@ -110,6 +111,13 @@ review:
         a change to one moves its .bats file. check-pr-title.sh is the only
         gate between a typo in a PR title and a main whose history no longer
         parses, because squash merge discards branch commits.
+    - path: "scripts/demo/**"
+      instructions: |
+        The demo recorder. The review under scripts/demo/review/ must keep
+        validating against the repository make-repo.sh builds: a changed line
+        range in the demo sources moves the anchors in data.yaml. The tape is a
+        template; VHS takes no absolute Output path and no escaped quotes in a
+        typed string, which is why the API call lives in a sourced helper.
     - path: "README.md"
       instructions: |
         Prose. Do not request test coverage. It must stay accurate to the CLI
