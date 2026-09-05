@@ -111,7 +111,7 @@ const FAMILY: Record<string, string> = {
   elixir: "elixir",
 };
 
-async function catFiles(
+export async function catFiles(
   cwd: string,
   commit: string,
   paths: string[],
