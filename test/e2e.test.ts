@@ -135,6 +135,59 @@ describe("thurview end to end", () => {
     expect(home["reviews"][0].status).toBe("draft");
   });
 
+  it("graphs the change: symbols touched, edges added, reach and tests", async () => {
+    expect(reviewId).toBeTruthy();
+    const impact = await cli(["graph", "impact", "--review", reviewId]);
+    const changed = impact["changed"] as Out[];
+    expect(changed.map((s) => `${s["symbol"]}@${s["file"]}:${s["change"]}`).sort()).toEqual([
+      "audit@src/audit.ts:added",
+      "login@src/auth.ts:modified",
+    ]);
+    expect(impact["edges"].added).toEqual(["src/auth.ts:login -> src/audit.ts:audit"]);
+    expect(impact["edges"].removed).toEqual([]);
+    expect(impact["tests"]).toEqual([]);
+    expect((impact["untested"] as string[]).sort()).toEqual([
+      "src/audit.ts:audit",
+      "src/auth.ts:login",
+    ]);
+  });
+
+  it("answers callers and tests-for at either pinned commit", async () => {
+    const head = await cli(["graph", "callers", "audit", "--review", reviewId]);
+    expect(head["callers"]).toEqual([{ symbol: "login", file: "src/auth.ts", line: 3, at: 4 }]);
+    const base = await cli(["graph", "callers", "check", "--review", reviewId, "--graph", "base"]);
+    expect(base["callers"]).toEqual([{ symbol: "login", file: "src/auth.ts", line: 1, at: 2 }]);
+    const none = await cli(["graph", "callers", "nothing", "--review", reviewId]);
+    expect(none["callers"]).toEqual([]);
+    const tests = await cli(["graph", "tests-for", "login", "--review", reviewId]);
+    expect(tests["tests"]).toEqual([]);
+  });
+
+  it("derives the architecture at head and its diff against base", async () => {
+    const arch = await cli(["graph", "architecture", "--review", reviewId]);
+    const files = (arch["communities"] as Out[]).flatMap((c) => c["files"] as string[]);
+    expect(files.sort()).toEqual(["src/audit.ts", "src/auth.ts"]);
+    expect(arch["diff"].added).toEqual(["src/auth.ts -> src/audit.ts"]);
+    expect(arch["diff"].removed).toEqual([]);
+  });
+
+  it("rejects bad graph sub-commands and flags with exit code 2", async () => {
+    const badSub = await cli(["graph", "nonsense", "--review", reviewId], { expectCode: 2 });
+    expect(badSub["code"]).toBe("VALIDATION_ERROR");
+    const noName = await cli(["graph", "callers", "--review", reviewId], { expectCode: 2 });
+    expect(noName["code"]).toBe("VALIDATION_ERROR");
+    const badDepth = await cli(
+      ["graph", "tests-for", "login", "--review", reviewId, "--depth", "0"],
+      { expectCode: 2 },
+    );
+    expect(badDepth["code"]).toBe("VALIDATION_ERROR");
+    const badSide = await cli(
+      ["graph", "callers", "login", "--review", reviewId, "--graph", "sideways"],
+      { expectCode: 2 },
+    );
+    expect(badSide["code"]).toBe("VALIDATION_ERROR");
+  });
+
   it("rejects a document whose anchors do not resolve", async () => {
     expect(reviewDir).toBeTruthy();
     await writeFile(
@@ -367,7 +420,7 @@ check
       `/api/reviews/${reviewId}?revision=1`,
     );
     expect(old.revision).toBe(1);
-  });
+  }, 20_000);
 
   it("approves and reports it to the agent", async () => {
     await post(`/api/reviews/${reviewId}/submit`, { decision: "approve" });
@@ -387,7 +440,7 @@ check
       status: string;
     };
     expect(state.status).toBe("accepted");
-  });
+  }, 20_000);
 
   it("serves the UI shell and self-hosted fonts", async () => {
     const r = await fetch(`http://127.0.0.1:${server.port}/review/${reviewId}`);

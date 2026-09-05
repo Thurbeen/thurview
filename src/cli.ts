@@ -332,6 +332,22 @@ const SPECS: Record<
       "thurview threads resolve <threadId>",
     ],
   },
+  graph: {
+    description:
+      "Ask the code graph at the pinned commits: what the change reaches, callers, tests, architecture",
+    args: "impact|callers <name>|tests-for <name>|architecture",
+    flags: {
+      review: { kind: "string", help: "review id prefix" },
+      graph: { kind: "string", help: "callers, tests-for: head or base", default: "head" },
+      depth: { kind: "string", help: "how many caller hops to follow", default: "2" },
+    },
+    examples: [
+      "thurview graph impact",
+      "thurview graph callers login",
+      "thurview graph tests-for login --graph base",
+      "thurview graph architecture",
+    ],
+  },
   delete: {
     description: "Delete a review and everything stored for it (the code is untouched)",
     flags: { review: { kind: "string", help: "review id prefix (required)" } },
@@ -574,6 +590,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       guidance: await guidanceFiles(worktree),
       help: [
         `Edit ${join(dir, "review.md")} and data.yaml, then run \`thurview publish --review ${short(review.id)}\``,
+        `Run \`thurview graph impact --review ${short(review.id)}\` to see what the change reaches`,
         stat.additions + stat.deletions < 300
           ? `Small change: run \`thurview publish --review ${short(review.id)} --view files --open\` now, then write the document`
           : `Run \`git diff ${base.slice(0, 12)} ${head.slice(0, 12)}\` in ${worktree} to study the change`,
@@ -889,6 +906,82 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     throw new AxiError(`no reader activity within ${seconds}s`, "TIMEOUT", [
       `Run \`thurview wait --review ${id}\` again, or report that the reader has not responded`,
     ]);
+  },
+
+  async graph(args) {
+    const sub = args[0];
+    const rest = args.slice(1);
+    const s = spec("graph").flags;
+    const help = [
+      "thurview graph impact",
+      "thurview graph callers <name> [--graph base]",
+      "thurview graph tests-for <name> [--graph base]",
+      "thurview graph architecture",
+    ];
+    if (!sub || !["impact", "callers", "tests-for", "architecture"].includes(sub))
+      throw new AxiError(`unknown graph command${sub ? ` ${sub}` : ""}`, "VALIDATION_ERROR", help);
+    const named = sub === "callers" || sub === "tests-for";
+    const p = parseFlags(`graph ${sub}`, rest, s, named ? 1 : 0);
+    const name = p.positional[0];
+    if (named && !name)
+      throw new AxiError(`graph ${sub} needs a symbol name`, "VALIDATION_ERROR", help);
+    const depth = Number(str(p, "depth") ?? "2");
+    if (!Number.isInteger(depth) || depth < 1)
+      throw new AxiError("--depth must be a positive integer", "VALIDATION_ERROR", help);
+    const side = str(p, "graph") ?? "head";
+    if (side !== "head" && side !== "base")
+      throw new AxiError("--graph must be head or base", "VALIDATION_ERROR", help);
+    const graph = await import("./graph.js");
+    const review = await resolveReview(str(p, "review"));
+    const dir = reviewDir(review.id);
+    const at = (commit: string) => graph.graphAt(review.worktree, commit, dir);
+    if (sub === "callers" || sub === "tests-for") {
+      const g = await at(side === "base" ? review.pins.base : review.pins.head);
+      const pins = {
+        graph: side,
+        commit: short(g.commit),
+        languages: graph.LANGUAGES.join(","),
+        truncated: g.truncated,
+      };
+      if (sub === "callers")
+        return {
+          ...pins,
+          symbol: name,
+          callers: graph.callers(g, name!),
+          help: [`Run \`thurview graph tests-for ${name}\` to see what exercises it`],
+        };
+      return {
+        ...pins,
+        symbol: name,
+        depth,
+        tests: graph.testsFor(g, name!, depth),
+        help: [`Run \`thurview graph callers ${name}\` for every reference`],
+      };
+    }
+    const base = await at(review.pins.base);
+    const head = await at(review.pins.head);
+    const pins = {
+      base: short(base.commit),
+      head: short(head.commit),
+      languages: graph.LANGUAGES.join(","),
+    };
+    if (sub === "impact") {
+      const changes = await g.lineChanges(review.worktree, review.pins.base, review.pins.head);
+      return {
+        ...pins,
+        depth,
+        ...graph.impact(base, head, changes, depth),
+        help: [
+          "Run `thurview graph callers <name>` to follow one symbol",
+          "Run `thurview graph architecture` for the module structure and its diff",
+        ],
+      };
+    }
+    return {
+      ...pins,
+      ...graph.architecture(base, head),
+      help: ["Seed map.yaml nodes from communities and edges from diff.added"],
+    };
   },
 
   async threads(args) {

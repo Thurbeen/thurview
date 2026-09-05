@@ -102,11 +102,36 @@ this step.
 
 ### 3. Study the change
 
-Read the whole diff once (`git diff <base> <head>`). Then read each changed
-symbol's callers and callees at head. Trace the main flow through storage,
-network and configuration boundaries. Compare the stated intent (commit
-messages, PR description, the user's own words) with what the code does. The
-gap is the most valuable finding.
+Read the whole diff once (`git diff <base> <head>`). The diff tells you what
+changed. The code graph tells you what it means, which is what the review is
+for. thurview builds it from the pinned commits with tree-sitter and the
+definitions-and-references query each grammar ships, so ask it rather than
+re-deriving structure from hunks:
+
+```sh
+thurview graph impact --review <id>             # symbols touched, edges added and removed, what reaches them, what tests cover them
+thurview graph callers <symbol> --review <id>   # used, or speculative? (--graph base for the old side)
+thurview graph tests-for <symbol> --review <id>
+thurview graph architecture --review <id>       # file clusters with their hubs, the edges between them, the file-level diff
+```
+
+The graph covers TypeScript, JavaScript, Python, Go, Rust and Java; other
+files are absent from it, not empty. References resolve by name, so treat
+`unresolved` as the size of what it could not place, and `<module>` as code
+outside any definition. If `truncated` is true — `truncated.base`/
+`truncated.head` for impact and architecture, which look at both commits; a
+plain `truncated` for callers and tests-for, which look at one — the repo has
+more supported files than the graph could parse, and that answer is a partial
+view — say so rather than treating an empty result as "nothing there".
+
+Spend the review on what those answer: what the change reaches that the diff
+does not show, which boundaries it crosses, what now depends on what, what it left untested. Then compare the stated
+intent (commit messages, PR description, the user's own words) with what the
+code does. The gap is the most valuable finding.
+
+Do not spend the review on naming, formatting, import order, or missing
+defensive checks. Linters, type checkers and `/code-review` catch those, and a
+reader who wanted them would have run those instead.
 
 Read every range you anchor from the pinned commit, not the working tree:
 `git show <head>:<path>` or `git show <base>:<path>`.
@@ -140,6 +165,10 @@ Review directory: <dir>
 Source worktree: <worktree>
 Base commit: <base>
 Head commit: <head>
+
+Seed the structure from `thurview graph architecture --review <id>` rather
+than guessing it: communities and their hubs become nodes, its edges the
+edges, and its diff the difference between base and head.
 
 Author <dir>/map.yaml: the head structure under nodes/edges and the base
 structure under base. Do not edit review.md or data.yaml. Do not publish.

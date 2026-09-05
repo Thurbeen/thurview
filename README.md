@@ -90,6 +90,11 @@ npm install -g thurview     # or: pnpm add -g thurview
 npx -y thurview             # no install; the skill falls back to this
 ```
 
+The review reasons over a code graph thurview builds itself from the pinned
+commits with tree-sitter, so nothing else needs installing. `thurview graph`
+answers what a change reaches, who calls a symbol, what tests cover it and
+how files cluster, for TypeScript, JavaScript, Python, Go, Rust and Java.
+
 To run from a checkout instead:
 
 ```sh
@@ -140,17 +145,18 @@ bar.
 
 ## CLI
 
-| Command                                            | Purpose                                                      |
-| -------------------------------------------------- | ------------------------------------------------------------ |
-| `thurview scaffold [--pr N \| --base R --head R]`  | Create a review pinned to exact commits (`--update` re-pins) |
-| `thurview info [--all]`                            | Reviews bound to this worktree                               |
-| `thurview publish --review ID [--view T] [--open]` | Validate the document and map, seal a revision               |
-| `thurview open --review ID [--view T]`             | Start the server if needed and open the browser              |
-| `thurview wait --review ID [--timeout S]`          | Block until the reader needs the agent                       |
-| `thurview threads list\|get\|reply\|resolve`       | Read and answer threads                                      |
-| `thurview serve` / `thurview stop`                 | Run the server in the foreground / stop the background one   |
-| `thurview setup hooks\|skill\|status`              | Session hooks, agent skill, install state                    |
-| `thurview update`                                  | Self-update from npm                                         |
+| Command                                                   | Purpose                                                      |
+| --------------------------------------------------------- | ------------------------------------------------------------ |
+| `thurview scaffold [--pr N \| --base R --head R]`         | Create a review pinned to exact commits (`--update` re-pins) |
+| `thurview info [--all]`                                   | Reviews bound to this worktree                               |
+| `thurview publish --review ID [--view T] [--open]`        | Validate the document and map, seal a revision               |
+| `thurview open --review ID [--view T]`                    | Start the server if needed and open the browser              |
+| `thurview wait --review ID [--timeout S]`                 | Block until the reader needs the agent                       |
+| `thurview threads list\|get\|reply\|resolve`              | Read and answer threads                                      |
+| `thurview graph impact\|callers\|tests-for\|architecture` | Ask the code graph at the pinned commits                     |
+| `thurview serve` / `thurview stop`                        | Run the server in the foreground / stop the background one   |
+| `thurview setup hooks\|skill\|status`                     | Session hooks, agent skill, install state                    |
+| `thurview update`                                         | Self-update from npm                                         |
 
 thurview is an [AXI](https://axi.md): built for agents that drive it through a
 shell. Output is [TOON](https://toonformat.dev) on stdout, errors are
