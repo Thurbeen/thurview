@@ -937,7 +937,12 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const at = (commit: string) => graph.graphAt(review.worktree, commit, dir);
     if (sub === "callers" || sub === "tests-for") {
       const g = await at(side === "base" ? review.pins.base : review.pins.head);
-      const pins = { graph: side, commit: short(g.commit), languages: graph.LANGUAGES.join(",") };
+      const pins = {
+        graph: side,
+        commit: short(g.commit),
+        languages: graph.LANGUAGES.join(","),
+        truncated: g.truncated,
+      };
       if (sub === "callers")
         return {
           ...pins,
