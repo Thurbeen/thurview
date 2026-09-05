@@ -171,6 +171,23 @@ describe("thurview end to end", () => {
     expect(arch["diff"].removed).toEqual([]);
   });
 
+  it("rejects bad graph sub-commands and flags with exit code 2", async () => {
+    const badSub = await cli(["graph", "nonsense", "--review", reviewId], { expectCode: 2 });
+    expect(badSub["code"]).toBe("VALIDATION_ERROR");
+    const noName = await cli(["graph", "callers", "--review", reviewId], { expectCode: 2 });
+    expect(noName["code"]).toBe("VALIDATION_ERROR");
+    const badDepth = await cli(
+      ["graph", "tests-for", "login", "--review", reviewId, "--depth", "0"],
+      { expectCode: 2 },
+    );
+    expect(badDepth["code"]).toBe("VALIDATION_ERROR");
+    const badSide = await cli(
+      ["graph", "callers", "login", "--review", reviewId, "--graph", "sideways"],
+      { expectCode: 2 },
+    );
+    expect(badSide["code"]).toBe("VALIDATION_ERROR");
+  });
+
   it("rejects a document whose anchors do not resolve", async () => {
     expect(reviewDir).toBeTruthy();
     await writeFile(
