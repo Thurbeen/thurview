@@ -25,10 +25,11 @@ warns when the branch moved past them.
 | `awaiting-review`        | Reader reads, asks, comments, decides.                   |
 | `awaiting-agent-updates` | Agent addresses threads, resolves them, republishes.     |
 | `accepted`               | Terminal. Cannot be republished.                         |
-| `rejected`               | Terminal.                                                |
+| `closed`                 | Terminal. Ended without approval. Cannot be republished. |
 
 "Ask now" does not change the status. "Submit review" with "Request changes"
-sets `awaiting-agent-updates`; with "Approve" sets `accepted`.
+sets `awaiting-agent-updates`; with "Approve" sets `accepted`; with "Close"
+sets `closed`.
 
 Dismissal is separate: the reader removes the review from the active list and
 `wait` returns `review-dismissed`. A new publication restores it.
@@ -80,7 +81,7 @@ switch between revisions in the browser.
 
 `thurview wait --review <id> [--timeout <s>]` polls the review and returns
 `wait.reason` in `question`, `awaiting-agent-updates`, `accepted`,
-`rejected`, `review-dismissed`, `review-deleted`, with the threads that need
+`closed`, `review-dismissed`, `review-deleted`, with the threads that need
 you. After the timeout it fails with code `TIMEOUT` (exit 1). A question
 already answered by the agent is not reported again.
 

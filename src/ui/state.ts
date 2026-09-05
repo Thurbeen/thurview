@@ -81,7 +81,7 @@ export function readHash(): void {
 
 export function isTerminal(): boolean {
   const s = state.data?.review.status;
-  return s === "accepted" || s === "rejected";
+  return s === "accepted" || s === "closed";
 }
 
 export function readOnly(): boolean {

@@ -308,7 +308,12 @@ export async function startServer(
     }
     if (sub === "submit" && method === "POST") {
       const b = await readBody(req);
-      const decision = b["decision"] === "approve" ? "approve" : "request-changes";
+      const decision =
+        b["decision"] === "approve"
+          ? "approve"
+          : b["decision"] === "close"
+            ? "close"
+            : "request-changes";
       const body = String(b["body"] ?? "").trim();
       const t = await submitReview(id, decision, body || undefined);
       return { review: await readReview(id), decisions: t.decisions };

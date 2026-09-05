@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 export const SCHEMA = 1;
 
 export type ReviewStatus =
-  "draft" | "awaiting-review" | "awaiting-agent-updates" | "accepted" | "rejected";
+  "draft" | "awaiting-review" | "awaiting-agent-updates" | "accepted" | "closed";
 
 export interface Binding {
   kind: "branch" | "pr" | "range";
@@ -68,7 +68,7 @@ export interface Thread {
 
 export interface Decision {
   at: string;
-  decision: "approve" | "request-changes";
+  decision: "approve" | "request-changes" | "close";
   revision: number;
   body?: string;
 }

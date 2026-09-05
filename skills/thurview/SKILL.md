@@ -214,6 +214,7 @@ threads that need you:
   `threads` lists what to address and `wait.decision` the summary. Go to
   step 9.
 - `accepted`: approved. Report and stop.
+- `closed`: the reader ended the review without approving it. Report and stop.
 - `review-dismissed` or `review-deleted`: stop.
 - error `TIMEOUT` (exit code 1, after `--timeout` seconds, default 3600):
   wait again, or report that the reader has not responded.
@@ -248,4 +249,4 @@ Report completion only when all of these hold:
 - The reader has the URL of a published revision.
 - Every `error` diagnostic is resolved.
 - The map is published, or you said why it is not.
-- The review is waiting on the reader, accepted, dismissed or deleted.
+- The review is waiting on the reader, accepted, closed, dismissed or deleted.

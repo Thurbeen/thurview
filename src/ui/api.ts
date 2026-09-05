@@ -72,7 +72,7 @@ export const api = {
   reopen: (id: string, tid: string) => post<Thread>(`/api/reviews/${id}/threads/${tid}/reopen`, {}),
   deleteThread: (id: string, tid: string) =>
     post<{ ok: true }>(`/api/reviews/${id}/threads/${tid}/delete`, {}),
-  submit: (id: string, decision: "approve" | "request-changes", body: string) =>
+  submit: (id: string, decision: "approve" | "request-changes" | "close", body: string) =>
     post<{ review: ReviewState }>(`/api/reviews/${id}/submit`, { decision, body }),
   dismiss: (id: string, dismissed: boolean) =>
     post<ReviewState>(`/api/reviews/${id}/dismiss`, { dismissed }),

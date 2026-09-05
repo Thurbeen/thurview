@@ -130,7 +130,8 @@ and open it.
   added, removed or touched, linked to files and code.
 - **Threads**: _Ask now_ sends a question to the agent immediately and the
   answer lands in the same thread. _Add to review_ holds a comment until you
-  submit with _Approve_ or _Request changes_.
+  submit with _Approve_ or _Request changes_. _Close_ ends the review
+  without approving it.
 - **Revisions**: every publish is sealed; switch back to earlier ones.
 - **Theme**: the agent reads the project's design tokens and fonts and
   publishes them with the review, so each review looks like the code it

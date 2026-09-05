@@ -76,21 +76,29 @@ export async function deleteThread(reviewId: string, threadId: string): Promise<
   await writeThreads(reviewId, t);
 }
 
-/** Submit the review: pending comments become visible to the agent and the status moves. */
+/**
+ * Submit the review: pending comments become visible to the agent and the status moves.
+ * `close` ends the review without approving it.
+ */
 export async function submitReview(
   reviewId: string,
-  decision: "approve" | "request-changes",
+  decision: "approve" | "request-changes" | "close",
   body?: string,
 ): Promise<ThreadsFile> {
   const review = await readReview(reviewId);
   if (!review) throw new Error("review not found");
-  if (review.status === "accepted" || review.status === "rejected")
+  if (review.status === "accepted" || review.status === "closed")
     throw new Error(`review is ${review.status}`);
   const t = await readThreads(reviewId);
   for (const th of t.threads) if (!th.submitted) th.submitted = true;
   t.decisions.push({ at: now(), decision, revision: review.revision, ...(body ? { body } : {}) });
   await writeThreads(reviewId, t);
-  review.status = decision === "approve" ? "accepted" : "awaiting-agent-updates";
+  review.status =
+    decision === "approve"
+      ? "accepted"
+      : decision === "close"
+        ? "closed"
+        : "awaiting-agent-updates";
   await writeReview(review);
   return t;
 }

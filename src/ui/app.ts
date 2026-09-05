@@ -47,7 +47,7 @@ function statusClass(s: string): string {
     ? "ok"
     : s === "awaiting-agent-updates"
       ? "warn"
-      : s === "rejected"
+      : s === "closed"
         ? "del"
         : s === "awaiting-review"
           ? "accent"
@@ -313,6 +313,9 @@ function renderBanner(): void {
   } else if (d.review.status === "accepted") {
     banner.hidden = false;
     banner.append("Approved. This review is complete.");
+  } else if (d.review.status === "closed") {
+    banner.hidden = false;
+    banner.append("Closed without approval. This review is complete.");
   }
 }
 
