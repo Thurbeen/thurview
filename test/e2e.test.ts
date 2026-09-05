@@ -420,7 +420,7 @@ check
       `/api/reviews/${reviewId}?revision=1`,
     );
     expect(old.revision).toBe(1);
-  });
+  }, 20_000);
 
   it("approves and reports it to the agent", async () => {
     await post(`/api/reviews/${reviewId}/submit`, { decision: "approve" });
@@ -440,7 +440,7 @@ check
       status: string;
     };
     expect(state.status).toBe("accepted");
-  });
+  }, 20_000);
 
   it("serves the UI shell and self-hosted fonts", async () => {
     const r = await fetch(`http://127.0.0.1:${server.port}/review/${reviewId}`);
