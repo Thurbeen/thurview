@@ -118,7 +118,10 @@ thurview graph architecture --review <id>       # file clusters with their hubs,
 The graph covers TypeScript, JavaScript, Python, Go, Rust and Java; other
 files are absent from it, not empty. References resolve by name, so treat
 `unresolved` as the size of what it could not place, and `<module>` as code
-outside any definition.
+outside any definition. If `truncated.base` or `truncated.head` is true, the
+repo has more supported files than the graph could parse, and every answer
+above is a partial view — say so rather than treating an empty result as
+"nothing there".
 
 Spend the review on what those answer: what the change reaches that the diff
 does not show, which boundaries it crosses, what now depends on what, what it left untested. Then compare the stated

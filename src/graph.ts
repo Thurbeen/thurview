@@ -39,6 +39,8 @@ export interface CodeGraph {
   edges: Edge[];
   /** references that matched no definition, or several in other files */
   unresolved: number;
+  /** the file list was capped at MAX_FILES; the graph is incomplete */
+  truncated: boolean;
 }
 
 const MODULE = "<module>";
@@ -152,6 +154,14 @@ async function tagsOf(lang: string, text: string): Promise<Tag[]> {
 
 const SKIP = /(^|\/)(node_modules|dist|build|vendor|target|\.git)\//;
 
+/** A definition nested inside another (its qualified name has a dot) that isn't a class
+ *  method has no meaning outside the file that scopes it, so it can't be a cross-file
+ *  resolution target picked by the repo-wide-unique fallback. */
+function isNestedNonMethod(s: Sym): boolean {
+  const qualified = s.id.slice(s.file.length + 1).replace(/#\d+$/, "");
+  return qualified.includes(".") && s.kind !== "method";
+}
+
 export function isTestFile(path: string): boolean {
   const name = path.split("/").pop() ?? "";
   return (
@@ -160,11 +170,20 @@ export function isTestFile(path: string): boolean {
   );
 }
 
+const MAX_FILES = 4000;
+
+/** Cap a file list at MAX_FILES, reporting whether it had to be truncated. */
+export function capFiles(files: string[]): { files: string[]; truncated: boolean } {
+  return files.length > MAX_FILES
+    ? { files: files.slice(0, MAX_FILES), truncated: true }
+    : { files, truncated: false };
+}
+
 /** Parse every supported file at `commit` and resolve references to definitions by name. */
 export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph> {
-  const files = (await listFiles(cwd, commit))
-    .filter((p) => GRAMMARS[languageFor(p)] && !SKIP.test(p))
-    .slice(0, 4000);
+  const { files, truncated } = capFiles(
+    (await listFiles(cwd, commit)).filter((p) => GRAMMARS[languageFor(p)] && !SKIP.test(p)),
+  );
   const symbols: Sym[] = [];
   const byName = new Map<string, Sym[]>();
   const pending: { file: string; defs: Sym[]; refs: Tag[] }[] = [];
@@ -231,11 +250,12 @@ export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph
     };
     for (const r of refs) {
       const candidates = byName.get(r.name) ?? [];
+      const sole = candidates.length === 1 ? candidates[0]! : undefined;
       const target =
         candidates.find((c) => c.file === file) ??
-        (candidates.length === 1 ? candidates[0] : undefined);
+        (sole && !isNestedNonMethod(sole) ? sole : undefined);
       if (!target) {
-        if (candidates.length) unresolved++;
+        unresolved++;
         continue;
       }
       const from = enclosing(r.line);
@@ -245,7 +265,7 @@ export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph
       edges.push({ from: from.id, to: target.id, kind: r.kind, at: r.line });
     }
   }
-  return { commit, files, symbols, edges, unresolved };
+  return { commit, files, symbols, edges, unresolved, truncated };
 }
 
 /** Build the graph, or reuse the one cached under `dir` for that commit. */
@@ -347,6 +367,7 @@ export interface Impact {
   tests: { file: string; covers: string[] }[];
   untested: string[];
   unresolved: { base: number; head: number };
+  truncated: { base: boolean; head: boolean };
 }
 
 function edgeKey(e: Edge): string {
@@ -369,7 +390,15 @@ export function impact(
   const baseIds = new Map(base.symbols.map((s) => [s.id, s]));
   const headIds = new Map(head.symbols.map((s) => [s.id, s]));
   const deletedByBasePath = new Map<string, Set<number>>();
-  for (const [path, c] of changes) deletedByBasePath.set(c.oldPath ?? path, c.deleted);
+  const renamedTo = new Map<string, string>();
+  for (const [path, c] of changes) {
+    deletedByBasePath.set(c.oldPath ?? path, c.deleted);
+    if (c.oldPath) renamedTo.set(c.oldPath, path);
+  }
+  // a rename qualifies every id in the file under the new path, so the id itself can't
+  // be compared across base/head; re-derive the counterpart id under the other path first.
+  const rebase = (id: string, file: string, otherPath: string) =>
+    `${otherPath}${id.slice(file.length)}`;
 
   const changed: Changed[] = [];
   const row = (s: Sym, change: Changed["change"]): Changed => ({
@@ -382,17 +411,23 @@ export function impact(
   });
   for (const s of head.symbols) {
     if (s.name === MODULE) continue;
-    if (!baseIds.has(s.id)) {
+    const change = changes.get(s.file);
+    const oldPath = change?.oldPath;
+    const baseSym = baseIds.get(oldPath ? rebase(s.id, s.file, oldPath) : s.id);
+    if (!baseSym) {
       if (changes.has(s.file)) changed.push(row(s, "added"));
     } else if (
-      touches(s, changes.get(s.file)?.added) ||
-      touches(baseIds.get(s.id)!, deletedByBasePath.get(s.file))
+      touches(s, change?.added) ||
+      touches(baseSym, deletedByBasePath.get(oldPath ?? s.file))
     )
       changed.push(row(s, "modified"));
   }
-  for (const s of base.symbols)
-    if (s.name !== MODULE && !headIds.has(s.id) && deletedByBasePath.has(s.file))
+  for (const s of base.symbols) {
+    if (s.name === MODULE || !deletedByBasePath.has(s.file)) continue;
+    const newPath = renamedTo.get(s.file);
+    if (!headIds.has(newPath ? rebase(s.id, s.file, newPath) : s.id))
       changed.push(row(s, "removed"));
+  }
 
   const baseEdges = new Set(base.edges.map(edgeKey));
   const headEdges = new Set(head.edges.map(edgeKey));
@@ -434,6 +469,7 @@ export function impact(
       .sort((a, b) => a.file.localeCompare(b.file)),
     untested: roots.filter((id) => !tested.has(id)).sort(),
     unresolved: { base: base.unresolved, head: head.unresolved },
+    truncated: { base: base.truncated, head: head.truncated },
   };
 }
 
@@ -450,6 +486,7 @@ export interface Architecture {
   communities: Community[];
   edges: { from: string; to: string; references: number }[];
   diff: { added: string[]; removed: string[]; addedFiles: string[]; removedFiles: string[] };
+  truncated: { base: boolean; head: boolean };
 }
 
 function fileEdges(g: CodeGraph): Map<string, number> {
@@ -545,5 +582,6 @@ export function architecture(base: CodeGraph, head: CodeGraph): Architecture {
       addedFiles: head.files.filter((f) => !baseFiles.has(f)),
       removedFiles: base.files.filter((f) => !headFiles.has(f)),
     },
+    truncated: { base: base.truncated, head: head.truncated },
   };
 }
