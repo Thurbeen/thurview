@@ -68,6 +68,19 @@ reads the Agent Skills format:
 npx skills add Thurbeen/thurview --skill thurview
 ```
 
+That form tracks this repository's default branch: `skills update` takes
+whatever `main` holds, which can be ahead of the released command. To pin the
+skill to a release instead, install it from the tag, which the skill lock
+records and later updates keep:
+
+```sh
+npx skills add https://github.com/Thurbeen/thurview/tree/v0.1.4/skills/thurview
+```
+
+The npm package ships the same skill, so `thurview setup skill` links the copy
+that matches the command you have installed. Use that when you want the two to
+move together.
+
 The skill drives the `thurview` command, which needs Node 22 or later and
 git (`gh` for pull requests). Install it, or let the skill reach it through
 `npx`:
