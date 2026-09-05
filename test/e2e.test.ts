@@ -76,7 +76,6 @@ beforeAll(async () => {
     join(repo, "src", "auth.ts"),
     `export function login(user: string) {\n  return check(user);\n}\n\nfunction check(user: string) {\n  return user.length > 0;\n}\n`,
   );
-  await writeFile(join(repo, "README.md"), "# demo\n");
   await git("add", ".");
   await git("commit", "-q", "-m", "base");
   await git("checkout", "-q", "-b", "feature");
@@ -133,6 +132,22 @@ describe("thurview end to end", () => {
     const home = await cli([]);
     expect(home["reviews"]).toHaveLength(1);
     expect(home["reviews"][0].status).toBe("draft");
+  });
+
+  it("publishes the untouched stub, so the reader can read the diff before the walkthrough", async () => {
+    const ev = await cli(["scaffold", "--new"]);
+    const id = ev["review"].uuid as string;
+    expect(id).not.toBe(reviewId);
+    const out = await cli(["publish", "--review", id, "--view", "files"]);
+    expect(out["published"].rev).toBe(1);
+    expect(out["diagnostics"]).toBeUndefined();
+    const p = await api<{
+      document: { title: string; anchors: Record<string, unknown>; blocks: { type: string }[] };
+    }>(`/api/reviews/${id}`);
+    expect(p.document.title).toBe("feature");
+    expect(Object.keys(p.document.anchors)).toEqual([]);
+    expect(p.document.blocks.length).toBeGreaterThan(0);
+    await cli(["delete", "--review", id]);
   });
 
   it("graphs the change: symbols touched, edges added, reach and tests", async () => {
@@ -383,9 +398,11 @@ check
     expect(replied["thread"].messages).toBe(2);
     const got = await cli(["threads", "get", th.id, "--review", reviewId]);
     expect(got["messages"].map((m: Out) => m["role"])).toEqual(["reviewer", "agent"]);
-    // the answered question is not reported again
-    const again = await cli(["wait", "--review", reviewId, "--timeout", "1"], { expectCode: 1 });
-    expect(again["code"]).toBe("TIMEOUT");
+    // the answered question is not reported again; a quiet timeout is a result, not a failure
+    const again = await cli(["wait", "--review", reviewId, "--timeout", "1"]);
+    expect(again["wait"].reason).toBe("timeout");
+    expect(again["wait"].status).toBe("awaiting-review");
+    expect(String(again["help"])).toContain("thurview wait");
   });
 
   it("holds review comments until submit, then blocks republish until they are resolved", async () => {
@@ -398,8 +415,8 @@ check
     expect(c.submitted).toBe(false);
     const listed = await cli(["threads", "list", "--review", reviewId]);
     expect(listed["threads"].find((t: Out) => t["id"] === c.id).target).toBe("src/auth.ts:4-5");
-    const idle = await cli(["wait", "--review", reviewId, "--timeout", "1"], { expectCode: 1 });
-    expect(idle["code"]).toBe("TIMEOUT");
+    const idle = await cli(["wait", "--review", reviewId, "--timeout", "1"]);
+    expect(idle["wait"].reason).toBe("timeout");
     await post(`/api/reviews/${reviewId}/submit`, {
       decision: "request-changes",
       body: "One change.",
