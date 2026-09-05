@@ -45,6 +45,23 @@ under `scripts/demo/review/`, records the agent side with VHS
 `ffmpeg`, `chromium` and `thurview` on PATH, and touches nothing outside a
 temporary directory. Re-record it when the UI or the CLI output changes.
 
+## The skill and the command
+
+`skills/thurview/` is installed three ways, and only one of them keeps the
+skill and the command in step:
+
+| Route                                       | Tracks                    |
+| ------------------------------------------- | ------------------------- |
+| `skills add Thurbeen/thurview`              | `main`, whatever it holds |
+| `skills add .../tree/<tag>/skills/thurview` | that release              |
+| `thurview setup skill`                      | the installed command     |
+
+The skills CLI has no notion of a skill version: its lock file records a hash
+of the folder's contents, plus the `ref` when one was given. So a change here
+that depends on a new command, flag or output field is only safe once that
+change is released, and the skill tells the agent to run `thurview update` and
+retry when the command answers `unknown flag`.
+
 ## Releases
 
 `cd.yml` runs on every push to `main`. cocogitto decides from the commits

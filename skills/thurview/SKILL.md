@@ -27,6 +27,9 @@ flowchart LR
 
 Run the CLI as `thurview`. When it is not on PATH, `npx -y thurview` runs
 the published package with the same commands; substitute it everywhere below.
+If a command answers `unknown command` or `unknown flag` for something this
+skill tells you to run, the installed CLI is older than the skill: run
+`thurview update` and retry once, then report the mismatch if it persists.
 
 Every command prints TOON on stdout: the result, then `help[]` with the next
 commands. Errors are structured on stdout too (`error`, `code`, `help`); exit
