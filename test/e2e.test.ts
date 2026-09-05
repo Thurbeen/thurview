@@ -295,7 +295,7 @@ check
     await writeFile(join(reviewDir, "review.md"), doc);
     await writeFile(
       join(reviewDir, "theme.yaml"),
-      `name: demo-light\nsource: test\nmode: light\ncolors: { bg: "#ffffff", fg: "#111827", accent: "#2563eb" }\nshape: { radius: 6px, bevel: false, glow: false, scanlines: false }\ncode: { keyword: "#123456" }\nfonts: { files: [{ family: Missing, path: fonts/nope.woff2 }] }\n`,
+      `name: demo-light\nsource: test\nmode: light\ncolors: { bg: "#ffffff", fg: "#111827", accent: "#2563eb" }\nshape: { radius: 6px }\ncode: { keyword: "#123456" }\nfonts: { files: [{ family: Missing, path: fonts/nope.woff2 }] }\n`,
     );
     const badFont = await cli(["publish", "--review", reviewId], { expectCode: 1 });
     expect(
@@ -303,7 +303,7 @@ check
     ).toBe(true);
     await writeFile(
       join(reviewDir, "theme.yaml"),
-      `name: demo-light\nsource: test\nmode: light\ncolors: { bg: "#ffffff", fg: "#111827", accent: "#2563eb" }\nshape: { radius: 6px, bevel: false, glow: false, scanlines: false }\ncode: { keyword: "#123456" }\n`,
+      `name: demo-light\nsource: test\nmode: light\ncolors: { bg: "#ffffff", fg: "#111827", accent: "#2563eb" }\nshape: { radius: 6px, scanlines: true }\ncode: { keyword: "#123456" }\n`,
     );
     const out = await cli(["publish", "--review", reviewId]);
     expect(out["published"].rev).toBe(1);
@@ -327,7 +327,8 @@ check
     expect(p.theme.name).toBe("demo-light");
     expect(p.theme.css).toContain("--accent: #2563eb");
     expect(p.theme.css).toContain("--radius: 6px");
-    expect(p.theme.css).toContain("body::after { display: none; }");
+    expect(p.theme.css).toContain("color-scheme: light;");
+    expect(p.theme.css).toContain("body::after");
     expect(p.document.anchors["login"]!.peek!.lines.join("")).toMatch(/#123456/i);
     expect(p.review.title).toBe("Audit every login");
     const types = p.document.blocks.map((b) => b.type);
@@ -467,7 +468,7 @@ check
     const r = await fetch(`http://127.0.0.1:${server.port}/review/${reviewId}`);
     expect(r.headers.get("content-type")).toContain("text/html");
     expect(await r.text()).toContain("/app.js");
-    const f = await fetch(`http://127.0.0.1:${server.port}/assets/fonts/press-start-2p-400.woff2`);
+    const f = await fetch(`http://127.0.0.1:${server.port}/assets/fonts/inter-400.woff2`);
     expect(f.headers.get("content-type")).toBe("font/woff2");
     expect((await f.arrayBuffer()).byteLength).toBeGreaterThan(1000);
   });
