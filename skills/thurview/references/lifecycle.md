@@ -82,8 +82,11 @@ switch between revisions in the browser.
 `thurview wait --review <id> [--timeout <s>]` polls the review and returns
 `wait.reason` in `question`, `awaiting-agent-updates`, `accepted`,
 `closed`, `review-dismissed`, `review-deleted`, with the threads that need
-you. After the timeout it fails with code `TIMEOUT` (exit 1). A question
-already answered by the agent is not reported again.
+you, or `timeout` once `--timeout` seconds (default 3600) pass with nothing
+to report. A timeout is a result, not a failure: the command exits 0. Keep
+the timeout under your shell tool's own limit, since a command the tool kills
+prints nothing. A question already answered by the agent is not reported
+again.
 
 `thurview threads get <id>` truncates bodies over 1500 characters; pass
 `--full` when the hint says so.

@@ -192,30 +192,27 @@ async function guidanceFiles(repoRoot: string): Promise<string[]> {
   return [join(home(), "THURVIEW.md"), join(repoRoot, "THURVIEW.md")].filter((p) => existsSync(p));
 }
 
+// The stub is what the reader sees when the agent publishes before writing, so
+// it reads as a notice rather than as a form to fill in.
 const TEMPLATE_MD = (title: string) => `# ${title}
 
 **Summary**
 
-- what changed, in one line per point
-
-**Why**
-
-What problem this change solves, in the author's words when available.
-
-## Design
-
-Link claims to code: [the entry point](anchor:entry).
-
-\`\`\`peek
-entry
-\`\`\`
+- The agent is still writing this walkthrough. The Files tab already shows
+  the change at the pinned commits; this page offers the new revision when
+  the walkthrough lands.
 `;
-const TEMPLATE_DATA = `# Typed inputs for review.md. See the thurview skill reference for every shape.
+const TEMPLATE_DATA = `# Typed inputs for review.md: actors, anchors and stores. Every shape is in the
+# thurview skill, references/components.md. An anchor names a line range at a
+# pinned commit; review.md links to it with [text](anchor:<id>) or shows it
+# inline with a peek fence holding <id>. Example:
+#
+# anchors:
+#   spawn:
+#     title: PTY spawn site
+#     peek: { file: src/pty.ts, from: 214, to: 223 }   # add graph: base for the old side
 actors: {}
-anchors:
-  entry:
-    title: Entry point
-    peek: { file: README.md, from: 1, to: 1 }
+anchors: {}
 stores: {}
 `;
 const TEMPLATE_MAP = `# Software map: people, systems, containers, components, code. Empty nodes = no map.
@@ -312,7 +309,11 @@ const SPECS: Record<
       "Block until the reader needs the agent: a question, a submitted review, a decision, a close or dismissal",
     flags: {
       review: { kind: "string", help: "review id prefix" },
-      timeout: { kind: "string", help: "seconds before giving up", default: "3600" },
+      timeout: {
+        kind: "string",
+        help: "seconds before returning reason timeout; keep it under your shell tool's own limit",
+        default: "3600",
+      },
     },
     examples: ["thurview wait", "thurview wait --review <id> --timeout 600"],
   },
@@ -903,9 +904,12 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         };
       await new Promise((res) => setTimeout(res, 700));
     }
-    throw new AxiError(`no reader activity within ${seconds}s`, "TIMEOUT", [
-      `Run \`thurview wait --review ${id}\` again, or report that the reader has not responded`,
-    ]);
+    return {
+      wait: { reason: "timeout", id, status: review.status, seconds },
+      help: [
+        `Run \`thurview wait --review ${id}\` again, or report that the reader has not responded`,
+      ],
+    };
   },
 
   async graph(args) {

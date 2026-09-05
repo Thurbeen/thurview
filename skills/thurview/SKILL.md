@@ -64,22 +64,25 @@ write `theme.yaml`.
 
 ## Workflow
 
-### 1. Resolve the review
+### 1. Pin the change
 
-Run `thurview info` in the source worktree. It lists reviews bound to that
-worktree with `inSync` (HEAD equals the pinned head). Reuse a review that
-matches the requested change. Otherwise run `thurview scaffold` with the
-matching flags:
+Run `thurview scaffold` in the source worktree with the flags that match the
+request:
 
 ```sh
-thurview scaffold                      # current branch vs trunk fork point
-thurview scaffold --pr 123             # pull request (needs gh)
+thurview scaffold                          # current branch vs its trunk fork point
+thurview scaffold --pr 123                 # pull request (needs gh)
 thurview scaffold --base <ref> --head <ref>
-thurview scaffold --new                # another review for the same binding
-thurview scaffold --update --review <id>   # re-pin after the branch moved
 ```
 
-Record from the scaffold output: `review.id` (short id accepted everywhere),
+An active review bound to the same branch, pull request or range is reused
+and re-pinned (`review.reused` is true), so a second run for the same request
+continues the same review; pass `--new` for a separate one. After the branch
+moves, `thurview scaffold --update --review <id>` re-pins. `thurview info`
+lists the reviews bound to the worktree, with `inSync` (HEAD equals the pinned
+head), when you need to choose between several.
+
+Record from the output: `review.id` (the short id, accepted everywhere),
 `review.dir`, `review.base`, `review.head`, `files.document`, `files.data`,
 `files.map`, `files.theme`, `change` (files, additions, deletions) and
 `guidance`.
@@ -87,18 +90,19 @@ Record from the scaffold output: `review.id` (short id accepted everywhere),
 Resolve refs before passing them. Pass commit ids or plain ref names; do not
 pass `<rev>^` inside a jj workspace.
 
-### 2. Show small changes at once
+### 2. Let the reader start on a small change
 
-When `change.additions + change.deletions` is under 300, publish first and
-land the reader on the diff, then write the document:
+When `change.additions + change.deletions` is under 300, publish the stub now
+and land the reader on the diff:
 
 ```sh
 thurview publish --review <id> --view files --open
 ```
 
-The scaffolded stub validates as long as `README.md` exists at head; if it
-does not, point the `entry` anchor at any file that does. Larger changes skip
-this step.
+The stub tells the reader the walkthrough is on its way, so they read the diff
+while you write it, and the page offers the next revision as soon as you
+publish again. Skip this for larger changes: a diff that size is not readable
+cold, and the walkthrough is what makes it so.
 
 ### 3. Study the change
 
@@ -118,16 +122,17 @@ thurview graph architecture --review <id>       # file clusters with their hubs,
 The graph covers TypeScript, JavaScript, Python, Go, Rust and Java; other
 files are absent from it, not empty. References resolve by name, so treat
 `unresolved` as the size of what it could not place, and `<module>` as code
-outside any definition. If `truncated` is true — `truncated.base`/
+outside any definition. If `truncated` is true (`truncated.base` and
 `truncated.head` for impact and architecture, which look at both commits; a
-plain `truncated` for callers and tests-for, which look at one — the repo has
+plain `truncated` for callers and tests-for, which look at one), the repo has
 more supported files than the graph could parse, and that answer is a partial
-view — say so rather than treating an empty result as "nothing there".
+view: say so rather than treating an empty result as "nothing there".
 
 Spend the review on what those answer: what the change reaches that the diff
-does not show, which boundaries it crosses, what now depends on what, what it left untested. Then compare the stated
-intent (commit messages, PR description, the user's own words) with what the
-code does. The gap is the most valuable finding.
+does not show, which boundaries it crosses, what now depends on what, what it
+left untested. Then compare the stated intent (commit messages, PR
+description, the user's own words) with what the code does. The gap is the
+most valuable finding.
 
 Do not spend the review on naming, formatting, import order, or missing
 defensive checks. Linters, type checkers and `/code-review` catch those, and a
@@ -136,26 +141,11 @@ reader who wanted them would have run those instead.
 Read every range you anchor from the pinned commit, not the working tree:
 `git show <head>:<path>` or `git show <base>:<path>`.
 
-### 4. Author the document
-
-Edit `review.md` and `data.yaml` in the review directory following
-[Document authoring](references/document-authoring.md). Keep it short.
-Default to anchor links for evidence; use an inline peek only when the reader
-must see the code to follow the main claim.
-
-### 5. Theme the review after the project
-
-Read [Theme](references/theme.md). Decide the look in its order: what the
-user asked for, then the reviewed project's own design system read from its
-files at head, then the default skin. Write `theme.yaml` in the review
-directory when steps 1 or 2 yield tokens; leave it empty otherwise. Say
-which source you used when you hand over the review.
-
-### 6. Author the map
+### 4. Start the map
 
 Dispatch one sub-agent to write `map.yaml` per
-[Software map](references/software-map.md) while you write the document, with
-this prompt filled in:
+[Software map](references/software-map.md) now, so it works while you write
+the document, with this prompt filled in:
 
 ```text
 Use the thurview skill's software-map reference (`thurview skill` prints the
@@ -179,6 +169,20 @@ report the errors you could not fix.
 Without a sub-agent facility, write the map yourself after the document, or
 leave `nodes: []` and say the map is not published.
 
+### 5. Author the document
+
+Edit `review.md` and `data.yaml` in the review directory following
+[Document authoring](references/document-authoring.md). Keep it short.
+Default to anchor links for evidence; use an inline peek only when the reader
+must see the code to follow the main claim.
+
+### 6. Theme the review after the project
+
+Read [Theme](references/theme.md). Decide the look in its order: what the
+user asked for, then the reviewed project's own design system read from its
+files at head, then the default skin. Write `theme.yaml` in the review
+directory when steps 1 or 2 yield tokens; leave it empty otherwise.
+
 ### 7. Publish
 
 ```sh
@@ -187,39 +191,55 @@ thurview publish --review <id>
 
 Read every row of `diagnostics`. Fix each `error` and publish again. A
 `warning` does not block. `publish` refuses (code `THREADS_OPEN`) when a
-submitted comment thread is still open (see step 9). On success `published`
+submitted comment thread is still open (see step 10). On success `published`
 carries `rev` and `url`; the status becomes `awaiting-review`.
 
-Then open it for the reader:
+Then open it for the reader, unless step 2 already did:
 
 ```sh
 thurview open --review <id>            # prints url; --view files|commits|map
 ```
 
-Give the user the `url` from the output.
+### 8. Hand over
 
-### 8. Wait for the reader
+Tell the user, in a few lines and nothing more:
+
+- the `url`
+- what the review covers, in one sentence, and where to start: the Review tab
+  as a rule; the Files tab when the change is small and the diff is the story
+- which theme source you used: the user's request, the project's design
+  system (name the files), or the default skin
+- that you are now waiting for their questions and their decision
+
+The page explains its own controls; do not describe them.
+
+### 9. Wait for the reader
 
 ```sh
-thurview wait --review <id>
+thurview wait --review <id> --timeout <seconds>
 ```
 
-It blocks until the reader needs you and prints `wait.reason` with the
-threads that need you:
+It blocks until the reader needs you or `--timeout` seconds pass (default
+3600). Your shell tool has a limit of its own, and a command it kills prints
+nothing: keep `--timeout` under that limit and run `wait` again on `timeout`.
+When the tool can run a command in the background and wake you when it exits,
+run `wait` that way, so the user has the terminal back while they read.
+
+`wait.reason` says what happened, with the threads that need you:
 
 - `question`: an "Ask now" thread. Answer each thread in `threads` with
   `thurview threads reply <threadId> --review <id> --body "<answer>"`. Do
   not change the document for a question. Wait again.
 - `awaiting-agent-updates`: the reader submitted with "Request changes".
   `threads` lists what to address and `wait.decision` the summary. Go to
-  step 9.
+  step 10.
 - `accepted`: approved. Report and stop.
 - `closed`: the reader ended the review without approving it. Report and stop.
 - `review-dismissed` or `review-deleted`: stop.
-- error `TIMEOUT` (exit code 1, after `--timeout` seconds, default 3600):
-  wait again, or report that the reader has not responded.
+- `timeout`: nothing happened. Wait again, or tell the user the reader has not
+  responded and stop.
 
-### 9. Address requested changes
+### 10. Address requested changes
 
 For each thread in `thurview threads list --review <id> --open`:
 
@@ -232,8 +252,9 @@ For each thread in `thurview threads list --review <id> --open`:
 - `thurview threads resolve <threadId> --review <id>` once the requested
   change is present. Do not resolve a thread you did not address.
 
-Then publish again (step 7), and wait again (step 8). A republish requires
-zero open submitted comment threads; questions do not block.
+Then publish again (step 7), tell the user what changed since the previous
+revision in a line or two, and wait again (step 9). A republish requires zero
+open submitted comment threads; questions do not block.
 
 ## Architecture reviews
 
@@ -250,3 +271,7 @@ Report completion only when all of these hold:
 - Every `error` diagnostic is resolved.
 - The map is published, or you said why it is not.
 - The review is waiting on the reader, accepted, closed, dismissed or deleted.
+
+Close with the decision and its summary (`wait.decision`), and the URL. When
+the reader has not responded, say so and leave the review open; a later
+session picks it up from `thurview` in the same worktree.
