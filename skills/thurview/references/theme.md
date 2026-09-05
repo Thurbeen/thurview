@@ -53,11 +53,11 @@ fonts:
     - { family: Acme Sans, path: web/public/fonts/acme-sans.woff2, weight: "400 700" }
 
 shape:
-  radius: 8px                        # 0 in the default skin
-  bevel: false                       # pixel bevels on panels and buttons
-  glow: false                        # neon text glow on headings and tabs
-  scanlines: false                   # CRT overlay
-  headingTransform: none             # uppercase in the default skin
+  radius: 8px                        # 6px in the default skin
+  headingTransform: none             # none in the default skin
+  bevel: true                        # retro extras, all off unless set: pixel
+  glow: true                         #   bevels on panels, neon glow on headings
+  scanlines: true                    #   and tabs, a CRT overlay
 
 code:                                # syntax palette; any key optional
   keyword: "#7c3aed"
@@ -80,8 +80,7 @@ Rules:
 
 - Keep contrast readable: body text against `bg`, code against `code`.
 - A light project gets `mode: light` and light backgrounds; the default skin
-  is dark and its bevels, glow and scanlines are off by default only when you
-  set them so.
+  is dark and neutral, with one blue accent.
 - `fonts.files` paths must exist at the pinned head commit; `publish`
   rejects a missing one. Font stylesheets are fetched by the reader's
   browser.

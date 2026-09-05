@@ -127,24 +127,25 @@ export function parseTheme(yaml: string): { theme: Theme | null; diagnostics: Di
 }
 
 const DEFAULT_CODE = {
-  fg: "#e0e0e0",
-  keyword: "#ff8c8c",
-  string: "#6eff6e",
-  function: "#ffb627",
-  type: "#ffb627",
-  variable: "#00d9ff",
-  number: "#ffb627",
-  comment: "#948a7d",
-  punctuation: "#948a7d",
-  operator: "#ff5c54",
-  tag: "#ff5c54",
+  fg: "#e6e8eb",
+  keyword: "#ff7b72",
+  string: "#a5d6ff",
+  function: "#d2a8ff",
+  type: "#ffa657",
+  variable: "#79c0ff",
+  number: "#79c0ff",
+  comment: "#8b949e",
+  punctuation: "#8b949e",
+  operator: "#ff7b72",
+  tag: "#7ee787",
 };
+const DEFAULT_CODE_BG = "#0b0d10";
 
 export function shikiTheme(
   name: string,
   code: Partial<typeof DEFAULT_CODE>,
   mode: "dark" | "light",
-  bg = "#0d0b09",
+  bg = DEFAULT_CODE_BG,
 ): ThemeRegistration {
   const c = { ...DEFAULT_CODE, ...code };
   return {
@@ -256,25 +257,16 @@ export function compileTheme(theme: Theme, blobUrl: (path: string) => string): C
     "--bg2": c.bg2,
     "--bg3": c.bg3,
     "--bg-code": c.code,
-    "--hud-bg": c.bg2,
-    "--hud-deep": c.bg,
     "--fg": c.fg,
     "--fg2": c.fg2,
     "--muted": c.muted,
     "--line": c.line,
     "--line2": c.line,
-    "--hud-edge": c.line,
     "--accent": c.accent,
-    "--doom": c.accent,
-    "--doom-bright": c.accent,
-    "--ember": c.accent,
-    "--red": c.del ?? c.accent,
-    "--green": c.link ?? c.ok,
+    "--link": c.link,
     "--ok": c.ok,
-    "--yellow": c.warn,
     "--warn": c.warn,
     "--del": c.del,
-    "--blue": c.link,
     "--font-display": theme.fonts.display,
     "--font-body": theme.fonts.body,
     "--font-mono": theme.fonts.mono,
@@ -286,14 +278,19 @@ export function compileTheme(theme: Theme, blobUrl: (path: string) => string): C
   if (c.remove) v.push(`--del-bg: ${c.remove};`);
   if (c.select) v.push(`--sel: ${c.select};`);
   if (c.accent) v.push(`--accent-bg: color-mix(in srgb, ${c.accent} 16%, transparent);`);
-  if (theme.mode === "light") v.push("color-scheme: light;");
-  if (theme.shape.glow === false) v.push("--glow-red: none; --glow-green: none;");
-  else if (c.accent)
+  if (theme.mode === "light")
     v.push(
-      `--glow-red: 0 0 5px color-mix(in srgb, ${c.accent} 70%, transparent), 0 0 12px color-mix(in srgb, ${c.accent} 40%, transparent);`,
+      "color-scheme: light; --shadow: 0 1px 2px rgb(0 0 0 / 0.08); --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.14);",
     );
-  if (theme.shape.bevel === false)
-    v.push("--bevel: none; --bevel-glow-red: 0 0 0 1px var(--accent);");
+  // retro options, each off in the default skin
+  if (theme.shape.glow)
+    v.push(
+      "--glow: 0 0 5px color-mix(in srgb, var(--accent) 70%, transparent), 0 0 12px color-mix(in srgb, var(--accent) 40%, transparent);",
+    );
+  if (theme.shape.bevel)
+    v.push(
+      "--shadow: 0 0 0 1px rgb(0 0 0 / 0.6), inset 1px 1px 0 0 rgb(255 255 255 / 0.14), inset -1px -1px 0 0 rgb(0 0 0 / 0.6);",
+    );
   const out: string[] = [];
   for (const s of theme.fonts.stylesheets) out.push(`@import url("${s}");`);
   for (const f of theme.fonts.files) {
@@ -305,9 +302,10 @@ export function compileTheme(theme: Theme, blobUrl: (path: string) => string): C
     );
   }
   out.push(`:root { ${v.join(" ")} }`);
-  if (theme.shape.scanlines === false) out.push("body::after { display: none; }");
-  if (theme.mode === "light")
-    out.push("body { background-image: none; } .code span[style] { filter: none; }");
+  if (theme.shape.scanlines)
+    out.push(
+      "body::after { content: ''; position: fixed; inset: 0; z-index: 9999; pointer-events: none; background: repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgb(0 0 0 / 0.1) 2px, rgb(0 0 0 / 0.1) 3px); mix-blend-mode: multiply; }",
+    );
   if (theme.css) out.push(theme.css);
   return {
     name: theme.name,
@@ -317,7 +315,7 @@ export function compileTheme(theme: Theme, blobUrl: (path: string) => string): C
       name,
       theme.code,
       theme.mode,
-      c.code ?? (theme.mode === "light" ? "#ffffff" : "#0d0b09"),
+      c.code ?? (theme.mode === "light" ? "#ffffff" : DEFAULT_CODE_BG),
     ),
   };
 }

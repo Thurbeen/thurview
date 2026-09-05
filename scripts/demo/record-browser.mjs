@@ -77,7 +77,7 @@ await new Promise((r) => setTimeout(r, 2500));
 
 // A drawn pointer, since the screencast does not render the system cursor.
 await call("Runtime.evaluate", {
-  expression: `(() => { const c = document.createElement("div"); c.id = "demo-cursor"; c.style.cssText = "position:fixed;z-index:99999;width:18px;height:18px;border-radius:50%;background:rgba(255,92,84,.85);box-shadow:0 0 0 3px rgba(255,255,255,.6),0 0 12px rgba(255,59,48,.8);pointer-events:none;transform:translate(-50%,-50%);transition:left .35s ease,top .35s ease;left:40px;top:40px"; document.body.appendChild(c); })()`,
+  expression: `(() => { const c = document.createElement("div"); c.id = "demo-cursor"; c.style.cssText = "position:fixed;z-index:99999;width:18px;height:18px;border-radius:50%;background:rgba(110,168,254,.9);box-shadow:0 0 0 3px rgba(255,255,255,.6),0 0 12px rgba(110,168,254,.8);pointer-events:none;transform:translate(-50%,-50%);transition:left .35s ease,top .35s ease;left:40px;top:40px"; document.body.appendChild(c); })()`,
 });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const evalJs = async (expr) =>
@@ -205,7 +205,7 @@ await sleep(900);
 await clickByText(".topbar button", "Threads");
 await sleep(1800);
 await shot("threads");
-await clickByText(".topbar button", "Submit review");
+await clickByText(".topbar button", "Submit");
 await sleep(1200);
 // Typing goes to the focused element, and a freshly opened dialog focuses none.
 await click(".dialog textarea");
