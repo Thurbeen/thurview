@@ -442,6 +442,27 @@ check
     expect(state.status).toBe("accepted");
   }, 20_000);
 
+  it("closes a review without approving it and reports it to the agent", async () => {
+    const ev = await cli(["scaffold"]);
+    const id = ev["review"].uuid as string;
+    expect(id).not.toBe(reviewId);
+    const closed = (await post(`/api/reviews/${id}/submit`, {
+      decision: "close",
+      body: "Branch abandoned.",
+    })) as { review: { status: string }; decisions: { decision: string }[] };
+    expect(closed.review.status).toBe("closed");
+    expect(closed.decisions.map((d) => d.decision)).toEqual(["close"]);
+    const w = await cli(["wait", "--review", id, "--timeout", "5"]);
+    expect(w["wait"].reason).toBe("closed");
+    expect(w["wait"].decision).toBe("close: Branch abandoned.");
+    const again = (await post(`/api/reviews/${id}/submit`, { decision: "approve" })) as {
+      error?: string;
+    };
+    expect(again.error).toContain("closed");
+    const blocked = await cli(["publish", "--review", id], { expectCode: 1 });
+    expect(blocked["code"]).toBe("TERMINAL");
+  }, 20_000);
+
   it("serves the UI shell and self-hosted fonts", async () => {
     const r = await fetch(`http://127.0.0.1:${server.port}/review/${reviewId}`);
     expect(r.headers.get("content-type")).toContain("text/html");

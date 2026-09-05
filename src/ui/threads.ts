@@ -307,12 +307,17 @@ export function submitDialog(): void {
         "div",
         { class: "row" },
         h("button", { class: "ghost", onclick: () => d.close() }, "Cancel"),
+        h(
+          "button",
+          { title: "End the review without approving it", onclick: () => decide("close") },
+          "Close",
+        ),
         h("button", { onclick: () => decide("request-changes") }, "Request changes"),
         h("button", { class: "ok", onclick: () => decide("approve") }, "Approve"),
       ),
     ),
   );
-  const decide = async (decision: "approve" | "request-changes") => {
+  const decide = async (decision: "approve" | "request-changes" | "close") => {
     await api.submit(state.id, decision, ta.value.trim());
     d.close();
     await reload();

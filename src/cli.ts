@@ -104,7 +104,7 @@ async function resolveReview(idOpt: string | undefined): Promise<ReviewState> {
       "Run inside the source worktree, or pass --review <id>",
     ]);
   const mine = (await reviewsFor(worktree)).filter(
-    (r) => !r.dismissed && r.status !== "accepted" && r.status !== "rejected",
+    (r) => !r.dismissed && r.status !== "accepted" && r.status !== "closed",
   );
   if (mine.length === 1) return mine[0]!;
   if (mine.length)
@@ -309,7 +309,7 @@ const SPECS: Record<
   },
   wait: {
     description:
-      "Block until the reader needs the agent: a question, a submitted review, a decision or dismissal",
+      "Block until the reader needs the agent: a question, a submitted review, a decision, a close or dismissal",
     flags: {
       review: { kind: "string", help: "review id prefix" },
       timeout: { kind: "string", help: "seconds before giving up", default: "3600" },
@@ -533,7 +533,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
               r.binding.kind === binding.kind &&
               r.binding.name === binding.name &&
               r.status !== "accepted" &&
-              r.status !== "rejected",
+              r.status !== "closed",
           );
       if (match.length) {
         review = match[0]!;
@@ -627,7 +627,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
   async publish(args) {
     const p = parseFlags("publish", args, spec("publish").flags);
     const review = await resolveReview(str(p, "review"));
-    if (review.status === "accepted" || review.status === "rejected")
+    if (review.status === "accepted" || review.status === "closed")
       throw new AxiError(`review is ${review.status} and cannot be republished`, "TERMINAL", [
         "Run `thurview scaffold --new` for another review of the same change",
       ]);
@@ -873,7 +873,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           ],
         };
       }
-      if (r.status === "accepted" || r.status === "rejected")
+      if (r.status === "accepted" || r.status === "closed")
         return {
           wait: {
             reason: r.status,
