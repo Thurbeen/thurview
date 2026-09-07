@@ -164,6 +164,14 @@ pre code {
   padding: 0;
   color: var(--fg);
 }
+/* A link label may contain inline code. The chip's own colour and background
+   would override the link colour and paint over its underline, so a single
+   link would read as several. Inside a link, code keeps only its font. */
+a code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
 pre {
   background: var(--bg-code);
   border: 1px solid var(--line);
