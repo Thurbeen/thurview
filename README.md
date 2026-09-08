@@ -193,7 +193,8 @@ The agent writes three files in `~/.thurview/reviews/<id>/`:
 pinned commit, a call stack frame that claims an added or removed call the
 diff does not show, a storage operation on an unknown field, a map edge
 to an unknown node, an interface annotation for a symbol the change did not
-move, and a declared interface whose anchor holds no added or deleted line. The full format is in
+move, and a declared interface whose anchor holds no added or deleted line.
+The full format is in
 [skills/thurview/references](skills/thurview/references).
 
 Optional guidance for the agent: `~/.thurview/THURVIEW.md` for you,
