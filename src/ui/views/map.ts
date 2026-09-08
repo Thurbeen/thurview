@@ -90,10 +90,7 @@ export function renderMap(root: HTMLElement): void {
               "button",
               {
                 class: "small",
-                onclick: () => {
-                  level = parentOf(route.id);
-                  navigate("map", { node: route.id });
-                },
+                onclick: () => navigate("map", { node: route.id }),
               },
               `Start at ${route.label} ›`,
             )

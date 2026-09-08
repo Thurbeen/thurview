@@ -127,7 +127,10 @@ export interface RankedEdge {
  * contract can have moved on only one side of it.
  */
 export function rankEdges(edges: MapEdge[], all: Map<string, MapItem>): RankedEdge[] {
-  const hot = (id: string) => (all.get(id)?.status ? 1 : 0);
+  const hot = (id: string) => {
+    const item = all.get(id);
+    return item && touched(all, item) ? 1 : 0;
+  };
   return edges
     .map((edge, i) => ({ edge, i, ends: hot(edge.from) + hot(edge.to) }))
     .sort((a, b) => b.ends - a.ends || a.i - b.i)
