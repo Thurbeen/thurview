@@ -4,6 +4,7 @@ import { codeTable, openAnchorPeek } from "../code.js";
 import { commentPopover, threadPinRow } from "../threads.js";
 import { sequenceDiagram, callstackDiff, databaseLens } from "../diagrams.js";
 import type { Block } from "../../document/compile.js";
+import type { InterfaceDelta, InterfaceEntry } from "../../interfaces.js";
 
 export function renderReview(root: HTMLElement): void {
   const doc = state.data?.document;
@@ -19,6 +20,7 @@ export function renderReview(root: HTMLElement): void {
     );
     return;
   }
+  root.appendChild(interfaceDelta(doc.interfaces));
   const layout = h("div", { class: "doc-layout" });
   const toc = h(
     "nav",
@@ -91,6 +93,117 @@ export function renderReview(root: HTMLElement): void {
     { rootMargin: "-10% 0px -80% 0px" },
   );
   docEl.querySelectorAll(".block.heading").forEach((el) => io.observe(el));
+}
+
+/** Ids the parser cannot produce, so the panel can hold threads like a document block. */
+const DELTA_BLOCK = "interface-delta";
+const DELTA_SHOWN = 12;
+
+const CHANGE_CLASS: Record<InterfaceEntry["change"], string> = {
+  removed: "del",
+  changed: "warn",
+  added: "ok",
+};
+
+/**
+ * What the change did to the surfaces other code can reach, above the document
+ * because it is the reader's first question. Derived at publish from the code
+ * graph, so a refactor that moved nothing says exactly that.
+ */
+function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
+  const wrap = h("div", { class: "block ifd", "data-block": DELTA_BLOCK });
+  const threads = threadsFor((t) => t.type === "document" && t.blockId === DELTA_BLOCK);
+  if (threads.length) wrap.classList.add("has-threads");
+  // the panel has no gutter to hang the comment button in, so it lives in the head
+  const actions = h(
+    "div",
+    { class: "block-actions" },
+    h(
+      "button",
+      {
+        class: threads.length ? "count" : "",
+        title: "Comment on the interface delta",
+        onclick: (e: MouseEvent) => {
+          if (state.viewingRevision !== null) return;
+          popover(commentPopover({ type: "document", blockId: DELTA_BLOCK }), {
+            x: e.pageX + 10,
+            y: e.pageY,
+          });
+        },
+      },
+      threads.length ? String(threads.length) : "+",
+    ),
+  );
+  const body = h("div", { class: "ifd-body" });
+  const toggle = h("span", { class: "heading-toggle" }, "hide");
+  toggle.addEventListener("click", () => {
+    const hidden = body.hidden;
+    body.hidden = !hidden;
+    toggle.textContent = hidden ? "hide" : "show";
+  });
+  const counts = delta
+    ? (["removed", "changed", "added"] as const)
+        .map((c) => [c, delta.entries.filter((e) => e.change === c).length] as const)
+        .filter(([, n]) => n > 0)
+    : [];
+  wrap.appendChild(
+    h(
+      "div",
+      { class: "ifd-head" },
+      h("span", { class: "t" }, "Interface delta"),
+      counts.map(([c, n]) => h("span", { class: `badge ${CHANGE_CLASS[c]}` }, `${n} ${c}`)),
+      h("span", { class: "spacer" }),
+      toggle,
+      actions,
+    ),
+  );
+  body.appendChild(
+    h(
+      "p",
+      { class: "ifd-verdict" },
+      delta ? delta.verdict : "Unavailable: the code graph could not be built for these commits.",
+    ),
+  );
+  const entries = delta?.entries ?? [];
+  const rest = entries.slice(DELTA_SHOWN);
+  for (const e of entries.slice(0, DELTA_SHOWN)) body.appendChild(interfaceRow(e));
+  if (rest.length) {
+    const more = h(
+      "button",
+      {
+        class: "small ghost",
+        onclick: () => {
+          more.replaceWith(...rest.map(interfaceRow));
+        },
+      },
+      `show ${rest.length} more`,
+    );
+    body.appendChild(more);
+  }
+  wrap.appendChild(body);
+  if (threads.length)
+    wrap.appendChild(h("div", { class: "thread-pins" }, threads.map(threadPinRow)));
+  return wrap;
+}
+
+function interfaceRow(e: InterfaceEntry): HTMLElement {
+  return h(
+    "div",
+    {
+      class: `ifd-entry ifd-${e.change}`,
+      title: "Open in Files",
+      onclick: () => navigate("files", { path: e.file, line: e.line, side: e.graph }),
+    },
+    h("span", { class: `badge ${CHANGE_CLASS[e.change]}` }, e.change),
+    h(
+      "div",
+      { class: "ifd-what" },
+      e.was ? h("div", { class: "ifd-was" }, h("code", null, e.was)) : null,
+      h("code", { class: "ifd-name" }, e.name),
+      e.capability ? h("div", { class: "ifd-cap" }, e.capability) : null,
+    ),
+    h("span", { class: "ifd-where mono" }, `${e.file}:${e.line}`),
+  );
 }
 
 function scrollToBlock(id: string): void {

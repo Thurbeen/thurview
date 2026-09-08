@@ -113,6 +113,7 @@ definitions-and-references query each grammar ships, so ask it rather than
 re-deriving structure from hunks:
 
 ```sh
+thurview graph interfaces --review <id>         # what the change added to, changed in or removed from the visible surface
 thurview graph impact --review <id>             # symbols touched, edges added and removed, what reaches them, what tests cover them
 thurview graph callers <symbol> --review <id>   # used, or speculative? (--graph base for the old side)
 thurview graph tests-for <symbol> --review <id>
@@ -128,11 +129,19 @@ plain `truncated` for callers and tests-for, which look at one), the repo has
 more supported files than the graph could parse, and that answer is a partial
 view: say so rather than treating an empty result as "nothing there".
 
-Spend the review on what those answer: what the change reaches that the diff
-does not show, which boundaries it crosses, what now depends on what, what it
-left untested. Then compare the stated intent (commit messages, PR
-description, the user's own words) with what the code does. The gap is the
-most valuable finding.
+Read `graph interfaces` first: it is the reader's own first question, and its
+`verdict` is what the browser shows above your document. A `removed` entry is
+the most review-worthy thing the change can contain; `No interface moved`
+means the change is internal, and the document should say why the refactor was
+worth making rather than dress it up as a feature. Do not repeat the entries
+in prose - the panel already lists them. Explain the ones that need it,
+in `data.yaml` (see below).
+
+Spend the rest of the review on what the other queries answer: what the change
+reaches that the diff does not show, which boundaries it crosses, what now
+depends on what, what it left untested. Then compare the stated intent (commit
+messages, PR description, the user's own words) with what the code does. The
+gap is the most valuable finding.
 
 Do not spend the review on naming, formatting, import order, or missing
 defensive checks. Linters, type checkers and `/code-review` catch those, and a
@@ -176,6 +185,13 @@ Edit `review.md` and `data.yaml` in the review directory following
 Default to anchor links for evidence; use an inline peek only when the reader
 must see the code to follow the main claim.
 
+In `data.yaml`, add an `interfaces` entry for each interface change a
+consumer would not understand from its declaration alone, and for the ones
+the graph cannot see - a CLI flag, an HTTP route, a config key, a file
+format. See [Components](references/components.md) for the shape and
+[Document authoring](references/document-authoring.md) for what earns an
+entry. Never write one for a capability the change did not deliver.
+
 ### 6. Theme the review after the project
 
 Read [Theme](references/theme.md). Decide the look in its order: what the
@@ -207,6 +223,7 @@ Tell the user, in a few lines and nothing more:
 - the `url`
 - what the review covers, in one sentence, and where to start: the Review tab
   as a rule; the Files tab when the change is small and the diff is the story
+- the interface delta `verdict`, in its own words
 - which theme source you used: the user's request, the project's design
   system (name the files), or the default skin
 - that you are now waiting for their questions and their decision

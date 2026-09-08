@@ -32,9 +32,43 @@ stores:
         schema:
           id: { type: text, pk: true }
           body: { type: text }
+
+interfaces:
+  spawnPty:                               # annotate a derived entry
+    symbol: src/pty.ts:spawnPty           # an id from `thurview graph interfaces`
+    capability: Callers get a sized PTY without knowing the fallback.
+  dryRun:                                 # declare one the graph cannot see
+    name: thurview publish --dry-run      # what a consumer types or calls
+    change: added                         # added | changed | removed
+    capability: Validate a review without sealing a revision.
+    anchor: dryRunFlag                    # must hold a line the diff moved
 ```
 
 An anchor without `peek` can label a map node but cannot open code.
+
+## interfaces
+
+The browser shows the interface delta above the document. thurview derives it
+at `publish` from the code graph at both pinned commits - every symbol the
+diff touched that is visible outside its own file, split into added, changed
+and removed - so the list itself is never authored and never goes stale.
+
+Each entry in `interfaces` does one of two things, and never both:
+
+- **`symbol`** annotates a derived entry with `capability`, one sentence in a
+  consumer's terms. `publish` fails when the change did not move that symbol,
+  so an annotation cannot outlive the entry it explains. Take the id verbatim
+  from `thurview graph interfaces`.
+- **`name`** declares an interface the graph cannot see: a CLI subcommand or
+  flag, an HTTP route, an event kind, a config key, a file format. It needs
+  `change` and an `anchor`. `publish` checks the anchor against the pinned
+  diff - a `removed` entry needs a `graph: base` anchor covering a deleted
+  line, `added` and `changed` need a head anchor covering an added line - so a
+  declared interface is evidence, not a claim.
+
+`capability` is what a consumer can now do, or can no longer do. Write
+"`thurview publish` gains `--dry-run`", not "added a boolean to
+PublishOptions".
 
 ## Anchor link
 

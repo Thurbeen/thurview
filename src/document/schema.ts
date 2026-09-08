@@ -46,11 +46,37 @@ export const StoreSchema = z
     message: "relational stores need tables, document stores need documents",
   });
 
+/**
+ * One line of the interface delta the graph cannot derive: a CLI flag, an HTTP
+ * route, a config key, a file format. `symbol` instead annotates a derived
+ * entry with what it lets a consumer do; publish rejects a symbol the change
+ * did not move, so an annotation cannot outlive the entry it explains.
+ */
+export const InterfaceSchema = z
+  .object({
+    symbol: z.string().min(1).optional(),
+    name: z.string().min(1).optional(),
+    change: z.enum(["added", "changed", "removed"]).optional(),
+    capability: z.string().min(1),
+    anchor: id.optional(),
+  })
+  .strict()
+  .refine((e) => !e.symbol !== !e.name, {
+    message: "an entry annotates a symbol or names its own interface, not both",
+  })
+  .refine((e) => !e.name || (e.change && e.anchor), {
+    message: "an entry that names its own interface needs change and anchor",
+  })
+  .refine((e) => !e.symbol || !(e.change || e.anchor), {
+    message: "change and anchor come from the graph for a symbol entry",
+  });
+
 export const DataSchema = z
   .object({
     actors: z.record(id, ActorSchema).default({}),
     anchors: z.record(id, AnchorSchema).default({}),
     stores: z.record(id, StoreSchema).default({}),
+    interfaces: z.record(id, InterfaceSchema).default({}),
   })
   .strict();
 

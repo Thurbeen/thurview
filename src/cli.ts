@@ -39,6 +39,8 @@ import {
   type ThreadTarget,
 } from "./store.js";
 import { compileDocument, compileMap, type Diagnostic } from "./document/compile.js";
+import type { CodeGraph } from "./graph.js";
+import type { InterfaceDelta } from "./interfaces.js";
 import { parseTheme, compileTheme, type CompiledTheme } from "./theme.js";
 import { registerTheme } from "./highlight.js";
 import { replyThread, setThreadStatus, needsAgent } from "./threads.js";
@@ -188,6 +190,34 @@ async function ensureServer(): Promise<{ port: number; hosts: string[] }> {
 function reviewUrl(base: string, id: string, view?: string): string {
   return `${base}/review/${id}${view ? `#/${view}` : ""}`;
 }
+/**
+ * The interface delta at a review's pins. The graphs are cached per commit under
+ * the review directory, so publish and `graph interfaces` build them once between
+ * them; both modules load lazily to keep tree-sitter off every other command's path.
+ */
+async function deltaFor(
+  review: ReviewState,
+  base?: CodeGraph,
+  head?: CodeGraph,
+): Promise<InterfaceDelta> {
+  const graph = await import("./graph.js");
+  const { interfaceDelta } = await import("./interfaces.js");
+  const dir = reviewDir(review.id);
+  const b = base ?? (await graph.graphAt(review.worktree, review.pins.base, dir));
+  const h = head ?? (await graph.graphAt(review.worktree, review.pins.head, dir));
+  const changes = await g.lineChanges(review.worktree, review.pins.base, review.pins.head);
+  const changed = await g.changedFiles(review.worktree, review.pins.base, review.pins.head);
+  return interfaceDelta({
+    cwd: review.worktree,
+    pins: review.pins,
+    base: b,
+    head: h,
+    impact: graph.impact(b, h, changes, 1),
+    changes,
+    changed,
+  });
+}
+
 async function guidanceFiles(repoRoot: string): Promise<string[]> {
   return [join(home(), "THURVIEW.md"), join(repoRoot, "THURVIEW.md")].filter((p) => existsSync(p));
 }
@@ -211,9 +241,13 @@ const TEMPLATE_DATA = `# Typed inputs for review.md: actors, anchors and stores.
 #   spawn:
 #     title: PTY spawn site
 #     peek: { file: src/pty.ts, from: 214, to: 223 }   # add graph: base for the old side
+#
+# interfaces holds one capability line per interface the change moved. thurview
+# derives the list itself; run \`thurview graph interfaces\` for the ids.
 actors: {}
 anchors: {}
 stores: {}
+interfaces: {}
 `;
 const TEMPLATE_MAP = `# Software map: people, systems, containers, components, code. Empty nodes = no map.
 nodes: []
@@ -335,14 +369,15 @@ const SPECS: Record<
   },
   graph: {
     description:
-      "Ask the code graph at the pinned commits: what the change reaches, callers, tests, architecture",
-    args: "impact|callers <name>|tests-for <name>|architecture",
+      "Ask the code graph at the pinned commits: the interface delta, what the change reaches, callers, tests, architecture",
+    args: "interfaces|impact|callers <name>|tests-for <name>|architecture",
     flags: {
       review: { kind: "string", help: "review id prefix" },
       graph: { kind: "string", help: "callers, tests-for: head or base", default: "head" },
       depth: { kind: "string", help: "how many caller hops to follow", default: "2" },
     },
     examples: [
+      "thurview graph interfaces",
       "thurview graph impact",
       "thurview graph callers login",
       "thurview graph tests-for login --graph base",
@@ -679,12 +714,23 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       }
     }
     const themeName = theme ? await registerTheme(theme.shiki) : undefined;
+    let interfaces: InterfaceDelta | null = null;
+    try {
+      interfaces = await deltaFor(review);
+    } catch (e) {
+      diags.push({
+        level: "warning",
+        file: "review.md",
+        message: `the interface delta is unavailable: ${(e as Error).message}`,
+      });
+    }
     const doc = await compileDocument({
       cwd: review.worktree,
       pins: review.pins,
       reviewMd,
       dataYaml: dataYaml ?? "",
       ...(themeName ? { themeName } : {}),
+      interfaces,
     });
     diags.push(...doc.diagnostics);
     let map = null;
@@ -766,6 +812,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         title: review.title,
         status: review.status,
         map: !!map,
+        interfaces: doc.document.interfaces?.verdict ?? "(unavailable)",
         theme: theme?.name ?? "default",
         url: url ?? "(server not running)",
       },
@@ -917,12 +964,13 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const rest = args.slice(1);
     const s = spec("graph").flags;
     const help = [
+      "thurview graph interfaces",
       "thurview graph impact",
       "thurview graph callers <name> [--graph base]",
       "thurview graph tests-for <name> [--graph base]",
       "thurview graph architecture",
     ];
-    if (!sub || !["impact", "callers", "tests-for", "architecture"].includes(sub))
+    if (!sub || !["interfaces", "impact", "callers", "tests-for", "architecture"].includes(sub))
       throw new AxiError(`unknown graph command${sub ? ` ${sub}` : ""}`, "VALIDATION_ERROR", help);
     const named = sub === "callers" || sub === "tests-for";
     const p = parseFlags(`graph ${sub}`, rest, s, named ? 1 : 0);
@@ -969,6 +1017,30 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       head: short(head.commit),
       languages: graph.LANGUAGES.join(","),
     };
+    if (sub === "interfaces") {
+      const delta = await deltaFor(review, base, head);
+      return {
+        ...pins,
+        verdict: delta.verdict,
+        interfaces: delta.entries.map((e) => ({
+          id: e.id,
+          change: e.change,
+          name: e.name,
+          was: e.was,
+          kind: e.kind,
+          file: e.file,
+          line: e.line,
+          graph: e.graph,
+        })),
+        internal: delta.internal,
+        unreadable: delta.unreadable,
+        truncated: delta.truncated,
+        help: [
+          "Write one capability line per entry in data.yaml under `interfaces`, keyed by id",
+          "Run `thurview graph callers <name>` to see who a removed or changed interface reached",
+        ],
+      };
+    }
     if (sub === "impact") {
       const changes = await g.lineChanges(review.worktree, review.pins.base, review.pins.head);
       return {
