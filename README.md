@@ -32,10 +32,11 @@ The diff at the pinned commits, commenting on a selected line range:
 ![The Files tab, split diff, with a comment on lines 9 to 12 of
 src/auth.ts](./media/review-files.png)
 
-The software map, showing what the change added and what it touched:
+The software map: where the change landed in the system, and what sits next to
+it — the question the diff cannot answer:
 
-![The Map tab: Auth and Session store changed, Audit trail added, with its
-files and code](./media/review-map.png)
+![The Map tab: the parts the change touched, drawn first, the links between
+them, and the selected node's files, code and neighbours](./media/review-map.png)
 
 Threads: a question the agent already answered, and a comment held for the
 decision:
