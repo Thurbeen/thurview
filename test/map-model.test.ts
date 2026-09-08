@@ -102,4 +102,26 @@ describe("map guidance", () => {
       ["svc.store", "user", false],
     ]);
   });
+
+  it("marks an edge folded up to a container that only hides the change", () => {
+    // The shape the view actually hands rankEdges: links are folded up to the
+    // parts on screen, and a container that owns no files of its own carries
+    // no status while its leaf does. The seam is still a seam.
+    const hidden: CompiledMap = {
+      head: {
+        nodes: [
+          { id: "user", kind: "person", label: "User" },
+          { id: "svc", kind: "system", label: "Session service" },
+          { id: "svc.auth", kind: "container", label: "Auth", files: ["src/auth.ts"] },
+        ],
+        edges: [{ from: "user", to: "svc.auth" }],
+      },
+      base: null,
+      diff: { added: [], removed: [], changed: ["svc.auth"] },
+      filesByNode: { "svc.auth": ["src/auth.ts"] },
+    };
+    const all = collect(hidden);
+    expect(all.get("svc")?.status).toBe("");
+    expect(rankEdges([{ from: "user", to: "svc" }], all)[0]?.touchesChange).toBe(true);
+  });
 });
