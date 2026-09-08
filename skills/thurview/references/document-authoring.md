@@ -40,11 +40,13 @@ Then fewer than five further sections when practical. Pick those that fit:
 
 - requirements
 - design
-- interface change
 - lifecycle or data flow
 - state or storage
 - testing evidence
 - decision log
+
+There is no interface-change section: the browser derives the interface delta
+and shows it above your document. See [Interface delta](#interface-delta).
 
 Add implementation detail only where it lets the reader check an important
 claim. In the decision log, keep the user's requirements in the user's words
@@ -60,6 +62,37 @@ Collapse optional detail with `{collapsed}` at the end of an H2:
 ```
 
 Progressive disclosure: every `##` heading is a section the reader can fold.
+
+## Interface delta
+
+The reader's first question is what the change lets them do that they could
+not before, and what it cost. thurview answers it from the code graph rather
+than from your prose: every symbol the diff touched that is visible outside
+its own file, as added, changed or removed, above your document. Read it with
+`thurview graph interfaces` before you write, and let it shape the document:
+
+- **A removed entry is the change's most review-worthy fact.** Say what
+  depended on it (`thurview graph callers <name> --graph base`) and what
+  replaces it. Never let a removal read as a rearrangement.
+- **`No interface moved` is a finding, not an empty result.** The change is
+  internal. Write about why it was worth making - the bug it fixes, the
+  duplication it folds - and do not dress it up as a capability.
+- **Do not restate the entries in prose.** The panel lists them, with the
+  declaration and a link into the file. Your sentences are for what it cannot
+  derive: why the surface has this shape, what a consumer does with it, what
+  a removal breaks.
+
+Add an `interfaces` entry in `data.yaml` (see [Components](components.md))
+only when one of these holds:
+
+1. A derived entry's declaration does not tell a consumer what it is for. The
+   `capability` line says what they can now do, in their words.
+2. The change moves an interface the graph cannot see - a CLI subcommand or
+   flag, an HTTP route, an event kind, a config key, a file format. Declare
+   it, with an anchor on the line the diff moved.
+
+Anything else is noise: the entry is already there, or there is nothing to
+add. An interface the change did not deliver is never an entry.
 
 ## Evidence
 

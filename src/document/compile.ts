@@ -10,6 +10,7 @@ import {
 } from "../git.js";
 import { highlightLines, languageFor } from "../highlight.js";
 import { parseDocument, type RawBlock } from "./parse.js";
+import { withVerdict, type InterfaceDelta } from "../interfaces.js";
 import {
   DataSchema,
   SequenceSchema,
@@ -101,6 +102,8 @@ export type Block =
 export interface CompiledDocument {
   title: string;
   blocks: Block[];
+  /** derived from the pinned commits, with the agent's capability lines merged in */
+  interfaces: InterfaceDelta | null;
   anchors: Record<string, CompiledAnchor>;
   actors: Data["actors"];
   stores: Data["stores"];
@@ -114,6 +117,8 @@ export interface CompileInput {
   dataYaml: string;
   /** registered highlighter theme name (default skin when omitted) */
   themeName?: string;
+  /** the derived interface delta; null when the code graph could not be built */
+  interfaces?: InterfaceDelta | null;
 }
 
 function zodMessages(err: unknown): string[] {
@@ -148,7 +153,9 @@ export async function compileDocument(input: CompileInput): Promise<{
     err("data.yaml", `YAML: ${(e as Error).message}`);
   }
   const dataParsed = parseWith(DataSchema, dataRaw);
-  const data: Data = dataParsed.ok ? dataParsed.value : { actors: {}, anchors: {}, stores: {} };
+  const data: Data = dataParsed.ok
+    ? dataParsed.value
+    : { actors: {}, anchors: {}, stores: {}, interfaces: {} };
   if (!dataParsed.ok) for (const m of dataParsed.errors) err("data.yaml", m);
 
   const parsed = parseDocument(input.reviewMd);
@@ -234,6 +241,16 @@ export async function compileDocument(input: CompileInput): Promise<{
     if (block) blocks.push(block);
   }
 
+  const interfaces = compileInterfaces({
+    delta: input.interfaces ?? null,
+    declared: data.interfaces,
+    anchors,
+    changes,
+    used,
+    err,
+    warn,
+  });
+
   for (const id of Object.keys(anchors))
     if (!used.has(id)) warn("data.yaml", `anchor "${id}" is defined but never used`);
 
@@ -243,6 +260,7 @@ export async function compileDocument(input: CompileInput): Promise<{
     document: {
       title: parsed.title,
       blocks,
+      interfaces,
       anchors,
       actors: data.actors,
       stores: data.stores,
@@ -251,6 +269,88 @@ export async function compileDocument(input: CompileInput): Promise<{
     diagnostics: diags,
     anchors,
   };
+}
+
+/**
+ * Merge what the agent wrote into what the graph derived. A capability line
+ * must attach to an entry the change really moved, and an interface the graph
+ * cannot see must be proved by an anchor on the diff's own added or deleted
+ * lines, so neither can be manufactured or outlive the code.
+ */
+function compileInterfaces(ctx: {
+  delta: InterfaceDelta | null;
+  declared: Data["interfaces"];
+  anchors: Record<string, CompiledAnchor>;
+  changes: Map<string, LineChange>;
+  used: Set<string>;
+  err: (file: string, message: string) => void;
+  warn: (file: string, message: string) => void;
+}): InterfaceDelta | null {
+  const declared = Object.entries(ctx.declared);
+  if (!ctx.delta) {
+    if (declared.length)
+      ctx.warn("data.yaml", "the code graph is unavailable, so interfaces was not applied");
+    return null;
+  }
+  const delta: InterfaceDelta = { ...ctx.delta, entries: [...ctx.delta.entries] };
+  for (const [key, e] of declared) {
+    if (e.symbol) {
+      const row = delta.entries.find((x) => x.id === e.symbol);
+      if (!row)
+        ctx.err(
+          "data.yaml",
+          `interface ${key}: no interface change for symbol "${e.symbol}"; run \`thurview graph interfaces\` for the ids this change moved`,
+        );
+      else row.capability = e.capability;
+      continue;
+    }
+    const anchor = ctx.anchors[e.anchor!];
+    ctx.used.add(e.anchor!);
+    if (!anchor) {
+      ctx.err("data.yaml", `interface ${key}: unknown anchor "${e.anchor}"`);
+      continue;
+    }
+    if (!anchor.peek) {
+      ctx.err("data.yaml", `interface ${key}: anchor "${e.anchor}" has no peek`);
+      continue;
+    }
+    const removed = e.change === "removed";
+    const side = removed ? "base" : "head";
+    if (anchor.peek.graph !== side) {
+      ctx.err(
+        "data.yaml",
+        `interface ${key}: a ${e.change} interface must use a ${side}-graph anchor`,
+      );
+      continue;
+    }
+    const path = anchor.peek.file;
+    const entry = removed
+      ? ([...ctx.changes.values()].find((c) => c.oldPath === path) ?? ctx.changes.get(path))
+      : ctx.changes.get(path);
+    const lines = removed ? entry?.deleted : entry?.added;
+    let proven = false;
+    for (let l = anchor.peek.from; l <= anchor.peek.to; l++) if (lines?.has(l)) proven = true;
+    if (!proven) {
+      ctx.err(
+        "data.yaml",
+        `interface ${key}: anchor "${e.anchor}" (${path}:${anchor.peek.from}-${anchor.peek.to}) has no ${removed ? "deleted" : "added"} lines in the pinned diff, so it does not show a ${e.change} interface`,
+      );
+      continue;
+    }
+    delta.entries.push({
+      id: `authored:${key}`,
+      change: e.change!,
+      name: e.name!,
+      was: "",
+      kind: "declared",
+      file: path,
+      line: anchor.peek.from,
+      graph: side,
+      capability: e.capability,
+      anchor: e.anchor!,
+    });
+  }
+  return withVerdict(delta);
 }
 
 interface Ctx {

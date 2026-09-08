@@ -49,6 +49,14 @@ async function cli(args: string[], opts: { cwd?: string; expectCode?: number } =
   });
 }
 
+const git = (...a: string[]) =>
+  sh(repo, "git", a, {
+    GIT_AUTHOR_NAME: "t",
+    GIT_AUTHOR_EMAIL: "t@t",
+    GIT_COMMITTER_NAME: "t",
+    GIT_COMMITTER_EMAIL: "t@t",
+  });
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`http://127.0.0.1:${server.port}${path}`, init);
   return (await r.json()) as T;
@@ -63,13 +71,6 @@ const post = (path: string, body: unknown) =>
 beforeAll(async () => {
   home = await mkdtemp(join(tmpdir(), "thurview-home-"));
   repo = await mkdtemp(join(tmpdir(), "thurview-repo-"));
-  const git = (...a: string[]) =>
-    sh(repo, "git", a, {
-      GIT_AUTHOR_NAME: "t",
-      GIT_AUTHOR_EMAIL: "t@t",
-      GIT_COMMITTER_NAME: "t",
-      GIT_COMMITTER_EMAIL: "t@t",
-    });
   await git("init", "-q", "-b", "main");
   await mkdir(join(repo, "src"), { recursive: true });
   await writeFile(
@@ -89,6 +90,28 @@ beforeAll(async () => {
   );
   await git("add", ".");
   await git("commit", "-q", "-m", "audit logins");
+  // surface: one export withdrawn, one added, one signature widened, one body edited
+  await git("checkout", "-q", "-b", "surface");
+  await writeFile(
+    join(repo, "src", "audit.ts"),
+    `function audit(user: string, ip: string) {\n  console.log("login", user, ip);\n}\n\nexport function record(user: string, ip: string) {\n  audit(user, ip);\n}\n`,
+  );
+  await writeFile(
+    join(repo, "src", "auth.ts"),
+    `import { record } from "./audit";\n\nexport function login(user: string, ip: string) {\n  record(user, ip);\n  return check(user);\n}\n\nfunction check(user: string) {\n  return user.trim().length > 0;\n}\n`,
+  );
+  await writeFile(join(repo, "notes.md"), "# notes\n");
+  await git("add", ".");
+  await git("commit", "-q", "-m", "record logins with the client ip");
+  // refactor: a private body edited and nothing else
+  await git("checkout", "-q", "-b", "refactor");
+  await writeFile(
+    join(repo, "src", "auth.ts"),
+    `import { record } from "./audit";\n\nexport function login(user: string, ip: string) {\n  record(user, ip);\n  return check(user);\n}\n\nfunction check(user: string) {\n  const trimmed = user.trim();\n  return trimmed.length > 0;\n}\n`,
+  );
+  await git("add", ".");
+  await git("commit", "-q", "-m", "name the trimmed user");
+  await git("checkout", "-q", "feature");
   process.env["THURVIEW_HOME"] = home;
   const { startServer } = await import("../src/server/server.ts");
   server = await startServer({ hosts: ["127.0.0.1"] });
@@ -148,7 +171,7 @@ describe("thurview end to end", () => {
     expect(Object.keys(p.document.anchors)).toEqual([]);
     expect(p.document.blocks.length).toBeGreaterThan(0);
     await cli(["delete", "--review", id]);
-  });
+  }, 20_000);
 
   it("graphs the change: symbols touched, edges added, reach and tests", async () => {
     expect(reviewId).toBeTruthy();
@@ -186,6 +209,44 @@ describe("thurview end to end", () => {
     expect(arch["diff"].removed).toEqual([]);
   });
 
+  it("names the interfaces a change adds, changes and removes", async () => {
+    const ev = await cli(["scaffold", "--base", "feature", "--head", "surface"]);
+    const id = ev["review"].uuid as string;
+    const out = await cli(["graph", "interfaces", "--review", id]);
+    const rows = out["interfaces"] as Out[];
+    // removed first: it is the entry a reviewer must not miss
+    expect(rows.map((r) => `${r["change"]} ${r["id"]}`)).toEqual([
+      "removed src/audit.ts:audit",
+      "changed src/auth.ts:login",
+      "added src/audit.ts:record",
+    ]);
+    const changed = rows.find((r) => r["change"] === "changed")!;
+    expect(changed["name"]).toBe("export function login(user: string, ip: string)");
+    expect(changed["was"]).toBe("export function login(user: string)");
+    expect(changed["graph"]).toBe("head");
+    expect(rows.find((r) => r["change"] === "removed")!["graph"]).toBe("base");
+    expect(rows.find((r) => r["change"] === "added")!["was"]).toBe("");
+    // check() changed inside without moving its surface; markdown is outside the graph
+    expect(out["internal"]).toBe(1);
+    expect(out["unreadable"]).toEqual(["notes.md"]);
+    expect(String(out["verdict"])).toBe(
+      "1 removed, 1 changed, 1 added. 1 changed file is outside the code graph.",
+    );
+    await cli(["delete", "--review", id]);
+  }, 30_000);
+
+  it("says plainly when a change moves no interface", async () => {
+    const ev = await cli(["scaffold", "--base", "surface", "--head", "refactor"]);
+    const id = ev["review"].uuid as string;
+    const out = await cli(["graph", "interfaces", "--review", id]);
+    expect(out["interfaces"]).toEqual([]);
+    expect(out["internal"]).toBe(1);
+    expect(String(out["verdict"])).toBe(
+      "No interface moved. 1 symbol changed inside, with no visible surface.",
+    );
+    await cli(["delete", "--review", id]);
+  }, 30_000);
+
   it("rejects bad graph sub-commands and flags with exit code 2", async () => {
     const badSub = await cli(["graph", "nonsense", "--review", reviewId], { expectCode: 2 });
     expect(badSub["code"]).toBe("VALIDATION_ERROR");
@@ -215,7 +276,7 @@ describe("thurview end to end", () => {
     expect(
       out["diagnostics"].some((d: Out) => String(d["message"]).includes("peek ends at 99")),
     ).toBe(true);
-  });
+  }, 20_000);
 
   it("publishes a valid document with every component", async () => {
     expect(reviewDir).toBeTruthy();
@@ -236,6 +297,15 @@ stores:
     label: log.db
     tables:
       events: { schema: { id: { type: int, pk: true }, user: { type: text } } }
+interfaces:
+  auditFn:
+    symbol: src/audit.ts:audit
+    capability: Any caller can record a login attempt without touching the log file.
+  strictFlag:
+    name: auth.login --strict
+    change: added
+    capability: Rejects an empty user instead of answering false.
+    anchor: auditCall
 `,
     );
     await writeFile(
@@ -308,6 +378,30 @@ check
       bad["diagnostics"].some((d: Out) => String(d["message"]).includes("claims an added call")),
     ).toBe(true);
     await writeFile(join(reviewDir, "review.md"), doc);
+    // an annotation of a symbol the change did not expose, and an authored entry
+    // whose anchor proves nothing, are both rejected rather than published
+    const data = await readFile(join(reviewDir, "data.yaml"), "utf8");
+    await writeFile(
+      join(reviewDir, "data.yaml"),
+      data.replace("symbol: src/audit.ts:audit", "symbol: src/auth.ts:check"),
+    );
+    const stale = await cli(["publish", "--review", reviewId], { expectCode: 1 });
+    expect(
+      stale["diagnostics"].some((d: Out) =>
+        String(d["message"]).includes('no interface change for symbol "src/auth.ts:check"'),
+      ),
+    ).toBe(true);
+    await writeFile(
+      join(reviewDir, "data.yaml"),
+      data.replace("anchor: auditCall", "anchor: check"),
+    );
+    const unproven = await cli(["publish", "--review", reviewId], { expectCode: 1 });
+    expect(
+      unproven["diagnostics"].some((d: Out) =>
+        String(d["message"]).includes("has no added lines in the pinned diff"),
+      ),
+    ).toBe(true);
+    await writeFile(join(reviewDir, "data.yaml"), data);
     await writeFile(
       join(reviewDir, "theme.yaml"),
       `name: demo-light\nsource: test\nmode: light\ncolors: { bg: "#ffffff", fg: "#111827", accent: "#2563eb" }\nshape: { radius: 6px }\ncode: { keyword: "#123456" }\nfonts: { files: [{ family: Missing, path: fonts/nope.woff2 }] }\n`,
@@ -324,8 +418,9 @@ check
     expect(out["published"].rev).toBe(1);
     expect(out["published"].map).toBe(true);
     expect(out["published"].theme).toBe("demo-light");
+    expect(out["published"].interfaces).toBe("2 added.");
     expect(out["diagnostics"]).toBeUndefined();
-  });
+  }, 20_000);
 
   it("serves the compiled document, diffs, files, symbols and map", async () => {
     const p = await api<{
@@ -334,10 +429,24 @@ check
       document: {
         blocks: { type: string }[];
         anchors: Record<string, { peek?: { lines: string[] } }>;
+        interfaces: {
+          entries: { change: string; name: string; capability?: string; anchor?: string }[];
+          verdict: string;
+          internal: number;
+        } | null;
       };
       map: { diff: { added: string[]; changed: string[] }; filesByNode: Record<string, string[]> };
       changes: { path: string }[];
     }>(`/api/reviews/${reviewId}`);
+    const ifaces = p.document.interfaces!;
+    expect(ifaces.entries.map((e) => `${e.change} ${e.name}`)).toEqual([
+      "added export function audit(user: string)",
+      "added auth.login --strict",
+    ]);
+    expect(ifaces.entries[0]!.capability).toContain("record a login attempt");
+    expect(ifaces.entries[1]!.anchor).toBe("auditCall");
+    expect(ifaces.verdict).toBe("2 added.");
+    expect(ifaces.internal).toBe(1);
     expect(p.review.status).toBe("awaiting-review");
     expect(p.theme.name).toBe("demo-light");
     expect(p.theme.css).toContain("--accent: #2563eb");

@@ -92,8 +92,9 @@ npx -y thurview             # no install; the skill falls back to this
 
 The review reasons over a code graph thurview builds itself from the pinned
 commits with tree-sitter, so nothing else needs installing. `thurview graph`
-answers what a change reaches, who calls a symbol, what tests cover it and
-how files cluster, for TypeScript, JavaScript, Python, Go, Rust and Java.
+answers which interfaces the change moved, what it reaches, who calls a
+symbol, what tests cover it and how files cluster, for TypeScript,
+JavaScript, Python, Go, Rust and Java.
 
 To run from a checkout instead:
 
@@ -118,6 +119,11 @@ and open it.
 
 ## What the reader gets
 
+- **Interface delta**: above the document, what the change added to, changed
+  in or removed from the surfaces other code can reach - exported functions
+  and types, plus the CLI flags, routes, config keys and formats the agent
+  declares. Derived from the code graph at both pinned commits, so a change
+  that moved no surface says exactly that instead of inventing a feature.
 - **Review**: the document with a table of contents. Anchor links open the
   exact code beside the text; peeks show it inline. Sequence diagrams, call
   stack diffs and storage views are clickable down to the line.
@@ -146,18 +152,18 @@ bar.
 
 ## CLI
 
-| Command                                                   | Purpose                                                      |
-| --------------------------------------------------------- | ------------------------------------------------------------ |
-| `thurview scaffold [--pr N \| --base R --head R]`         | Create a review pinned to exact commits (`--update` re-pins) |
-| `thurview info [--all]`                                   | Reviews bound to this worktree                               |
-| `thurview publish --review ID [--view T] [--open]`        | Validate the document and map, seal a revision               |
-| `thurview open --review ID [--view T]`                    | Start the server if needed and open the browser              |
-| `thurview wait --review ID [--timeout S]`                 | Block until the reader needs the agent                       |
-| `thurview threads list\|get\|reply\|resolve`              | Read and answer threads                                      |
-| `thurview graph impact\|callers\|tests-for\|architecture` | Ask the code graph at the pinned commits                     |
-| `thurview serve` / `thurview stop`                        | Run the server in the foreground / stop the background one   |
-| `thurview setup hooks\|skill\|status`                     | Session hooks, agent skill, install state                    |
-| `thurview update`                                         | Self-update from npm                                         |
+| Command                                                               | Purpose                                                      |
+| --------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `thurview scaffold [--pr N \| --base R --head R]`                     | Create a review pinned to exact commits (`--update` re-pins) |
+| `thurview info [--all]`                                               | Reviews bound to this worktree                               |
+| `thurview publish --review ID [--view T] [--open]`                    | Validate the document and map, seal a revision               |
+| `thurview open --review ID [--view T]`                                | Start the server if needed and open the browser              |
+| `thurview wait --review ID [--timeout S]`                             | Block until the reader needs the agent                       |
+| `thurview threads list\|get\|reply\|resolve`                          | Read and answer threads                                      |
+| `thurview graph interfaces\|impact\|callers\|tests-for\|architecture` | Ask the code graph at the pinned commits                     |
+| `thurview serve` / `thurview stop`                                    | Run the server in the foreground / stop the background one   |
+| `thurview setup hooks\|skill\|status`                                 | Session hooks, agent skill, install state                    |
+| `thurview update`                                                     | Self-update from npm                                         |
 
 thurview is an [AXI](https://axi.md): built for agents that drive it through a
 shell. Output is [TOON](https://toonformat.dev) on stdout, errors are
@@ -177,15 +183,17 @@ The agent writes three files in `~/.thurview/reviews/<id>/`:
   blocks `peek`, `sequence`, `callstack` and `database` add components.
   `## Heading {collapsed}` folds a section by default.
 - `data.yaml`: typed inputs: `actors`, `anchors` (file, from, to, graph),
-  `stores`.
+  `stores`, `interfaces` (a capability line per derived entry, plus the
+  interfaces the graph cannot see).
 - `map.yaml`: the software map at head, optionally at base.
 - `theme.yaml`: the look, derived from the reviewed project's own design
   system (tokens, fonts, shape, code palette). Empty means the default skin.
 
 `thurview publish` rejects an anchor whose file or lines do not exist at the
 pinned commit, a call stack frame that claims an added or removed call the
-diff does not show, a storage operation on an unknown field, and a map edge
-to an unknown node. The full format is in
+diff does not show, a storage operation on an unknown field, a map edge
+to an unknown node, an interface annotation for a symbol the change did not
+move, and a declared interface whose anchor holds no added or deleted line. The full format is in
 [skills/thurview/references](skills/thurview/references).
 
 Optional guidance for the agent: `~/.thurview/THURVIEW.md` for you,
