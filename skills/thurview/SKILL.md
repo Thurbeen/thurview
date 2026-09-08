@@ -150,11 +150,18 @@ reader who wanted them would have run those instead.
 Read every range you anchor from the pinned commit, not the working tree:
 `git show <head>:<path>` or `git show <base>:<path>`.
 
-### 4. Start the map
+### 4. Decide on the map, then start it
 
-Dispatch one sub-agent to write `map.yaml` per
-[Software map](references/software-map.md) now, so it works while you write
-the document, with this prompt filled in:
+The Map tab answers where the change landed in the system and what sits next
+to it. A change that lands in one place does not raise that question: leave
+`nodes: []`, say why in the handover, and go to step 5. A change that crosses a
+boundary, adds or removes a part, or reaches code the diff does not show, does:
+map it. [Software map](references/software-map.md) makes that call in full, and
+a map that earns nothing is worse for the reader than none.
+
+When it earns its place, dispatch one sub-agent to write `map.yaml` per that
+reference now, so it works while you write the document, with this prompt
+filled in:
 
 ```text
 Use the thurview skill's software-map reference (`thurview skill` prints the
@@ -226,6 +233,7 @@ Tell the user, in a few lines and nothing more:
 - the interface delta `verdict`, in its own words
 - which theme source you used: the user's request, the project's design
   system (name the files), or the default skin
+- when the review has no map, why not, in one clause
 - that you are now waiting for their questions and their decision
 
 The page explains its own controls; do not describe them.

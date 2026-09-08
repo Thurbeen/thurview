@@ -854,7 +854,48 @@ kbd {
   font-size: 12.5px;
 }
 
-/* Map */
+/* Map. The tab opens with what it is for, because a reader who has to guess
+   reads it once and never returns. */
+.map-intro {
+  max-width: 72ch;
+  margin-bottom: 18px;
+}
+.map-intro h2 {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  margin: 0 0 5px;
+}
+.map-intro p {
+  margin: 0;
+  color: var(--fg2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.map-route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.map-group {
+  margin-bottom: 22px;
+}
+.map-group h3,
+.map-edges h3 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.map-note {
+  font-size: 12px;
+  margin-bottom: 10px;
+}
 .map-layout {
   display: flex;
   height: 100%;
@@ -929,21 +970,40 @@ kbd {
   font-size: 12.5px;
   color: var(--fg2);
 }
-.map-node .children {
+.map-node .meta {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
-  margin-top: 8px;
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.map-node .meta .warn-text {
+  color: var(--warn);
+}
+.map-node .meta button.drill {
+  padding: 3px 8px;
+  font-size: 11px;
 }
 .map-node.added {
   border-color: var(--ok);
 }
 .map-node.removed {
   border-color: var(--del);
-  opacity: 0.7;
 }
 .map-node.changed {
   border-color: var(--warn);
+}
+/* Untouched parts stay on the board - they are the context that makes the
+   change readable - but they must not compete with it for attention. */
+.map-node.quiet {
+  opacity: 0.6;
+  background: transparent;
+}
+.map-node.quiet:hover {
+  opacity: 1;
 }
 .map-node .status {
   position: absolute;
@@ -955,16 +1015,42 @@ kbd {
   font-size: 13px;
 }
 .map-edges .edge {
-  padding: 5px 0;
+  padding: 5px 0 5px 10px;
   border-top: 1px solid var(--line);
+  border-left: 2px solid transparent;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   font-family: var(--font-mono);
   font-size: 12px;
 }
+/* A link into a changed part is the seam a reviewer has to check; one between
+   two untouched parts is only there to place it. */
+.map-edges .edge.hot {
+  border-left-color: var(--warn);
+}
+.map-edges .edge:not(.hot) {
+  opacity: 0.6;
+}
 .map-edges .edge b {
   cursor: pointer;
   color: var(--link);
+}
+.map-side .neighbours {
+  font-size: 12px;
+}
+.map-side .neighbour {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+}
+.map-side .neighbour .nb {
+  font-family: var(--font-mono);
+  color: var(--link);
+  cursor: pointer;
 }
 .map-side .file {
   font-family: var(--font-mono);
@@ -1340,6 +1426,13 @@ kbd {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 13px;
+}
+/* An empty state that explains itself runs to a paragraph, and a paragraph the
+   width of the viewport is unreadable. */
+.empty-state p {
+  max-width: 62ch;
+  margin: 0 auto 8px;
+  line-height: 1.6;
 }
 
 /* ---- Interface delta ----

@@ -249,7 +249,9 @@ anchors: {}
 stores: {}
 interfaces: {}
 `;
-const TEMPLATE_MAP = `# Software map: people, systems, containers, components, code. Empty nodes = no map.
+const TEMPLATE_MAP = `# Software map: where this change landed in the system, and what sits next to it.
+# People, systems, containers, components, code. Leave nodes empty when the change
+# lands in one place and the Files tab already answers that.
 nodes: []
 edges: []
 `;
