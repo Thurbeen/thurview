@@ -1,11 +1,23 @@
 ---
 name: thurview
-description: Author and publish a thurview review - a guided, evidence-anchored explanation of a branch, pull request or commit range that the reader opens in the browser, annotates, asks questions about, and approves or sends back. Use when the user asks to review a branch or PR, to explain or walk through a change, "review my branch against main", to explain how a codebase or subsystem works, or invokes /thurview. Not for a pass/fail bug hunt.
+description: Author and publish a thurview document - a guided, evidence-anchored explanation the reader opens in the browser, annotates, asks questions about, and approves or sends back. Two kinds: a review of a branch, pull request or commit range, and a code explainer of a whole codebase or one subsystem at a pinned commit. Use when the user asks to review a branch or PR, to explain or walk through a change, "review my branch against main", to explain how a codebase or subsystem works or where its design problems might be, or invokes /thurview. Not for a pass/fail bug hunt.
 user-invocable: true
-argument-hint: "[<pr-number|pr-url> | --base <ref> --head <ref> | <architecture topic>]"
+argument-hint: "[<pr-number|pr-url> | --base <ref> --head <ref> | explain [<path>]]"
 ---
 
 # thurview
+
+There are two kinds of document, and the first decision is which one the
+request asks for.
+
+- A **review** explains a CHANGE: a branch, a pull request, a commit range. It
+  has a diff, commits and an interface delta, and the reader approves it or
+  sends it back. Everything below describes it.
+- A **code explainer** explains a CODEBASE, or one subsystem, at a single
+  pinned commit, so the reader can see the architecture well enough to spot
+  design problems themselves. It has no diff and nothing to approve, and it
+  states what it did not examine. Read
+  [Code explainer](references/code-explainer.md) and follow that instead.
 
 The agent studies the change and writes a short document in which every claim
 about code is anchored to an exact file and line range at a pinned commit.
@@ -41,9 +53,11 @@ directory; `thurview <command> --help` shows flags and examples.
 
 $ARGUMENTS
 
-Empty: the current branch against its up-to-date trunk. A PR number or URL:
-that pull request. `--base`/`--head`: that range. Anything else: an
-architecture review of that topic in the current repository.
+Empty: a review of the current branch against its up-to-date trunk. A PR
+number or URL: that pull request. `--base`/`--head`: that range. `explain`, or
+a request to explain the codebase, a subsystem or its architecture rather than
+a change: a code explainer, per
+[Code explainer](references/code-explainer.md).
 
 ## Before authoring
 
@@ -60,7 +74,8 @@ Read [Components](references/components.md) before you edit `data.yaml` or add
 a fenced component. Read [Lifecycle](references/lifecycle.md) for statuses,
 storage and thread rules. Read [Software map](references/software-map.md)
 before you author `map.yaml`. Read [Theme](references/theme.md) before you
-write `theme.yaml`.
+write `theme.yaml`. Read [Code explainer](references/code-explainer.md) when
+the request is a codebase rather than a change.
 
 ## Workflow
 
@@ -281,12 +296,17 @@ Then publish again (step 7), tell the user what changed since the previous
 revision in a line or two, and wait again (step 9). A republish requires zero
 open submitted comment threads; questions do not block.
 
-## Architecture reviews
+## Explaining a codebase rather than a change
 
-Pin the same commit as base and head: `thurview scaffold --base HEAD --head
-HEAD`. Choose sections that describe the system (data flows, state, storage,
-module boundaries) and skip diff-specific ones. Scope to one subsystem. All
-other steps are the same; the Files tab shows any file at head on request.
+Do not pin the same commit as base and head to fake it. That leaves a review
+whose Files, Commits and interface-delta surfaces all describe a change that
+does not exist, which is a claim, not a gap.
+
+Run `thurview explain [<path>]` instead and follow
+[Code explainer](references/code-explainer.md). It is the same loop - pin,
+author, publish, wait, answer - over a document kind whose unit is a codebase:
+no diff, no commits, no interface delta, and a Coverage tab stating what the
+document reached and what it did not.
 
 ## Completion criteria
 

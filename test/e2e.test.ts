@@ -599,6 +599,117 @@ check
     expect((await f.arrayBuffer()).byteLength).toBeGreaterThan(1000);
   });
 
+  // ---- the explainer document kind ----
+  // Its own block, and it never touches reviewId: the review path above must
+  // keep passing exactly as it did before explainers existed.
+
+  let explainerId = "";
+  let explainerDir = "";
+
+  it("pins an explainer to one commit and the scope the reader asked for", async () => {
+    const out = await cli(["explain", "src"]);
+    const e = out["explainer"];
+    explainerId = e["id"];
+    explainerDir = e["dir"];
+    expect(e["kind"]).toBe("explainer");
+    expect(e["scope"]).toBe("src/**");
+    expect(e["title"]).toBe("src");
+    expect(e["commit"]).toMatch(/^[0-9a-f]{40}$/);
+    expect(out["scale"]["filesInScope"]).toBe(2);
+    const info = await cli(["info", "--fields", "pins"]);
+    const row = info["reviews"].find((r: Out) => r["id"] === explainerId);
+    expect(row["kind"]).toBe("explainer");
+    // one commit, not a range
+    expect(row["pins"]).not.toContain("..");
+  }, 20_000);
+
+  it("refuses a scope that matches no file at the pinned commit", async () => {
+    const out = await cli(["explain", "does/not/exist"], { expectCode: 2 });
+    expect(out["code"]).toBe("VALIDATION_ERROR");
+    expect(String(out["error"])).toContain("no file matches");
+  });
+
+  it("refuses the graph queries that compare two commits", async () => {
+    for (const sub of ["impact", "interfaces"]) {
+      const out = await cli(["graph", sub, "--review", explainerId], { expectCode: 2 });
+      expect(String(out["error"])).toContain("compares two commits");
+    }
+    const arch = await cli(["graph", "architecture", "--review", explainerId]);
+    expect(arch["scope"]).toBe("src/**");
+    expect(arch["base"]).toBeUndefined();
+    for (const c of arch["communities"])
+      for (const f of c["files"]) expect(f.startsWith("src/")).toBe(true);
+  }, 60_000);
+
+  it("rejects an explainer that claims a change it cannot have", async () => {
+    await writeFile(
+      join(explainerDir, "data.yaml"),
+      `anchors:\n  old: { title: old, peek: { file: src/auth.ts, from: 1, to: 2, graph: base } }\ninterfaces:\n  x: { name: --flag, change: added, capability: does a thing, anchor: old }\n`,
+    );
+    await writeFile(join(explainerDir, "review.md"), `# Explainer\n\nSee [old](anchor:old).\n`);
+    const out = await cli(["publish", "--review", explainerId], { expectCode: 1 });
+    const messages = out["diagnostics"].map((d: Out) => String(d["message"]));
+    expect(messages.some((m: string) => m.includes("no interface delta"))).toBe(true);
+    expect(messages.some((m: string) => m.includes("`graph: base` has no meaning"))).toBe(true);
+  }, 60_000);
+
+  it("rejects an explainer with no anchored claim", async () => {
+    await writeFile(join(explainerDir, "data.yaml"), `anchors: {}\n`);
+    await writeFile(join(explainerDir, "review.md"), `# Explainer\n\nTrust me.\n`);
+    const out = await cli(["publish", "--review", explainerId], { expectCode: 1 });
+    expect(
+      out["diagnostics"].some((d: Out) =>
+        String(d["message"]).includes("needs at least one anchored claim"),
+      ),
+    ).toBe(true);
+  }, 60_000);
+
+  it("publishes an explainer and states what it did not examine", async () => {
+    await writeFile(
+      join(explainerDir, "data.yaml"),
+      `anchors:\n  login: { title: login(), peek: { file: src/auth.ts, from: 3, to: 6 } }\n`,
+    );
+    await writeFile(
+      join(explainerDir, "review.md"),
+      `# How auth works\n\nA caller reaches [login()](anchor:login).\n`,
+    );
+    const out = await cli(["publish", "--review", explainerId]);
+    expect(out["published"]["kind"]).toBe("explainer");
+    // the interface delta is a claim about a change, so an explainer has none
+    expect(out["published"]["interfaces"]).toBeUndefined();
+    expect(String(out["published"]["coverage"])).toContain("2 files at");
+    // src/audit.ts is neither anchored nor owned by a map node, and the document says so
+    expect(out["notExamined"]["files"]).toBe(1);
+    expect(out["notExamined"]["first"]).toContain("src/audit.ts");
+    // no map, so nothing carries the breadth the prose left out, and it says so
+    expect(String(out["warnings"])).toContain("no map");
+  }, 60_000);
+
+  it("counts a file a map node owns as placed, not as examined", async () => {
+    await writeFile(
+      join(explainerDir, "map.yaml"),
+      `nodes:\n  - id: audit\n    kind: component\n    label: Audit log\n    files: ["src/audit.ts"]\nedges: []\n`,
+    );
+    const out = await cli(["publish", "--review", explainerId]);
+    expect(out["notExamined"]["files"]).toBe(0);
+    expect(String(out["published"]["coverage"])).toContain("1 placed on the map only");
+  }, 60_000);
+
+  it("serves an explainer with coverage and without a change", async () => {
+    const d = await api<Out>(`/api/reviews/${explainerId}`);
+    expect(d["review"]["kind"]).toBe("explainer");
+    expect(d["review"]["binding"]["kind"]).toBe("codebase");
+    expect(d["document"]["interfaces"]).toBe(null);
+    expect(d["changes"]).toEqual([]);
+    const cov = d["coverage"];
+    expect(cov["scope"]).toBe("src/**");
+    expect(cov["states"]).toEqual({ explained: 1, placed: 1, uncovered: 0 });
+    expect(cov["uncovered"]).toEqual([]);
+    expect(cov["verdict"]).toContain("not examined");
+    // every count is re-derivable from the graph at the same commit
+    expect(cov["clusters"].flatMap((c: Out) => c["explained"])).toContain("src/auth.ts");
+  }, 20_000);
+
   it("answers --help per command without loading live state", async () => {
     const h = await cli(["threads", "--help"]);
     expect(h["command"]).toContain("thurview threads");

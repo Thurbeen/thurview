@@ -1,10 +1,11 @@
 import { h, popover } from "../dom.js";
-import { state, threadsFor, navigate } from "../state.js";
+import { state, threadsFor, navigate, kind } from "../state.js";
 import { codeTable, openAnchorPeek } from "../code.js";
 import { commentPopover, threadPinRow } from "../threads.js";
 import { sequenceDiagram, callstackDiff, databaseLens } from "../diagrams.js";
 import type { Block } from "../../document/compile.js";
 import type { InterfaceDelta, InterfaceEntry } from "../../interfaces.js";
+import type { Coverage } from "../../coverage.js";
 
 export function renderReview(root: HTMLElement): void {
   const doc = state.data?.document;
@@ -20,7 +21,11 @@ export function renderReview(root: HTMLElement): void {
     );
     return;
   }
-  root.appendChild(interfaceDelta(doc.interfaces));
+  root.appendChild(
+    kind() === "explainer"
+      ? coveragePanel(state.data?.coverage ?? null)
+      : interfaceDelta(doc.interfaces),
+  );
   const layout = h("div", { class: "doc-layout" });
   const toc = h(
     "nav",
@@ -97,6 +102,7 @@ export function renderReview(root: HTMLElement): void {
 
 /** Ids the parser cannot produce, so the panel can hold threads like a document block. */
 const DELTA_BLOCK = "interface-delta";
+const COVERAGE_BLOCK = "coverage";
 const DELTA_SHOWN = 12;
 
 const CHANGE_CLASS: Record<InterfaceEntry["change"], string> = {
@@ -180,6 +186,78 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
     );
     body.appendChild(more);
   }
+  wrap.appendChild(body);
+  if (threads.length)
+    wrap.appendChild(h("div", { class: "thread-pins" }, threads.map(threadPinRow)));
+  return wrap;
+}
+
+/**
+ * What an explainer examined and what it did not, in the slot a review gives the
+ * interface delta - because it is the same kind of thing: a fact derived at
+ * publish from the pinned commit, above prose the agent wrote, so the reader
+ * knows the bound of the document before reading a word of it.
+ */
+function coveragePanel(cov: Coverage | null): HTMLElement {
+  const wrap = h("div", { class: "block ifd", "data-block": COVERAGE_BLOCK });
+  const threads = threadsFor((t) => t.type === "document" && t.blockId === COVERAGE_BLOCK);
+  if (threads.length) wrap.classList.add("has-threads");
+  const actions = h(
+    "div",
+    { class: "block-actions" },
+    h(
+      "button",
+      {
+        class: threads.length ? "count" : "",
+        title: "Comment on coverage",
+        onclick: (e: MouseEvent) => {
+          if (state.viewingRevision !== null) return;
+          popover(commentPopover({ type: "document", blockId: COVERAGE_BLOCK }), {
+            x: e.pageX + 10,
+            y: e.pageY,
+          });
+        },
+      },
+      threads.length ? String(threads.length) : "+",
+    ),
+  );
+  const body = h("div", { class: "ifd-body" });
+  const toggle = h("span", { class: "heading-toggle" }, "hide");
+  toggle.addEventListener("click", () => {
+    const hidden = body.hidden;
+    body.hidden = !hidden;
+    toggle.textContent = hidden ? "hide" : "show";
+  });
+  wrap.appendChild(
+    h(
+      "div",
+      { class: "ifd-head" },
+      h("span", { class: "t" }, "Coverage"),
+      cov ? h("span", { class: "badge" }, `${cov.states.uncovered} not examined`) : null,
+      h("span", { class: "spacer" }),
+      toggle,
+      actions,
+    ),
+  );
+  body.appendChild(
+    h(
+      "p",
+      { class: "ifd-verdict" },
+      cov ? cov.verdict : "Unavailable: coverage could not be derived for this revision.",
+    ),
+  );
+  body.appendChild(
+    h(
+      "p",
+      { class: "ifd-verdict" },
+      "A codebase does not fit in one document, so this one selects. ",
+      h(
+        "button",
+        { class: "small", onclick: () => navigate("coverage") },
+        "See what it left out ▸",
+      ),
+    ),
+  );
   wrap.appendChild(body);
   if (threads.length)
     wrap.appendChild(h("div", { class: "thread-pins" }, threads.map(threadPinRow)));

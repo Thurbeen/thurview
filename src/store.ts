@@ -9,9 +9,18 @@ export const SCHEMA = 1;
 export type ReviewStatus =
   "draft" | "awaiting-review" | "awaiting-agent-updates" | "accepted" | "closed";
 
+/**
+ * What a document explains. A review explains a CHANGE, so its pins are a range
+ * and the diff, the commits and the interface delta all mean something. An
+ * explainer explains a CODEBASE at one commit: same anchors, same peeks, same
+ * threads, no range — so the surfaces that describe a range are absent rather
+ * than rendered empty. Records written before this field read as reviews.
+ */
+export type DocumentKind = "review" | "explainer";
+
 export interface Binding {
-  kind: "branch" | "pr" | "range";
-  /** branch name, pr number, or "base..head" */
+  kind: "branch" | "pr" | "range" | "codebase";
+  /** branch name, pr number, "base..head", or the path scope of an explainer */
   name: string;
   url?: string;
 }
@@ -19,6 +28,8 @@ export interface Binding {
 export interface ReviewState {
   schema: number;
   id: string;
+  /** absent on records written before explainers existed, which are reviews */
+  kind?: DocumentKind;
   title: string;
   worktree: string;
   repoRoot: string;
@@ -123,6 +134,11 @@ export async function readJson<T>(path: string): Promise<T | null> {
 
 export async function writeJson(path: string, value: unknown): Promise<void> {
   await writeAtomic(path, JSON.stringify(value, null, 2) + "\n");
+}
+
+/** The kind of a stored document, defaulting old records to a review. */
+export function kindOf(r: Pick<ReviewState, "kind">): DocumentKind {
+  return r.kind === "explainer" ? "explainer" : "review";
 }
 
 export async function readReview(id: string): Promise<ReviewState | null> {

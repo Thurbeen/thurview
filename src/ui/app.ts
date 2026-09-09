@@ -1,19 +1,32 @@
 import { api } from "./api.js";
 import { h, append, clear, dialog, timeAgo } from "./dom.js";
-import { state, on, emit, readHash, navigate, isTerminal, NARROW, type View } from "./state.js";
+import {
+  state,
+  on,
+  emit,
+  readHash,
+  navigate,
+  isTerminal,
+  kind,
+  view,
+  VIEWS,
+  NARROW,
+  type View,
+} from "./state.js";
 import { renderPeek } from "./code.js";
 import { renderThreadsPanel, submitDialog, reload } from "./threads.js";
 import { renderReview } from "./views/review.js";
 import { renderFiles } from "./views/files.js";
 import { renderCommits } from "./views/commits.js";
 import { renderMap } from "./views/map.js";
+import { renderCoverage } from "./views/coverage.js";
 
 const app = document.getElementById("app")!;
 
 async function home(): Promise<void> {
   clear(app);
   const reviews = await api.reviews();
-  const el = h("div", { class: "home" }, h("h2", null, "Reviews"));
+  const el = h("div", { class: "home" }, h("h2", null, "Reviews and explainers"));
   const active = reviews.filter((r) => !r.dismissed);
   const dismissed = reviews.filter((r) => r.dismissed);
   const item = (r: (typeof reviews)[number]) =>
@@ -23,16 +36,16 @@ async function home(): Promise<void> {
       h("span", { class: "t" }, r.title),
       h("span", { class: `badge ${statusClass(r.status)}` }, r.status),
       r.openThreads ? h("span", { class: "badge accent" }, `${r.openThreads} open`) : null,
-      h(
-        "span",
-        { class: "muted mono", style: { fontSize: "12px" } },
-        r.binding.kind === "pr" ? `PR #${r.binding.name}` : r.binding.name,
-      ),
+      h("span", { class: "muted mono", style: { fontSize: "12px" } }, bindingLabel(r)),
       h("span", { class: "muted", style: { fontSize: "12px" } }, timeAgo(r.updatedAt)),
     );
   if (!active.length)
     el.appendChild(
-      h("div", { class: "empty-state" }, "No reviews. Ask your agent to scaffold and publish one."),
+      h(
+        "div",
+        { class: "empty-state" },
+        "Nothing published yet. Ask your agent for a review of a change, or an explainer of the codebase.",
+      ),
     );
   active.forEach((r) => el.appendChild(item(r)));
   if (dismissed.length) {
@@ -40,6 +53,12 @@ async function home(): Promise<void> {
     dismissed.forEach((r) => el.appendChild(item(r)));
   }
   app.appendChild(el);
+}
+
+function bindingLabel(r: { binding: { kind: string; name: string } }): string {
+  if (r.binding.kind === "pr") return `PR #${r.binding.name}`;
+  if (r.binding.kind === "codebase") return r.binding.name === "**" ? "codebase" : r.binding.name;
+  return r.binding.name;
 }
 
 function statusClass(s: string): string {
@@ -93,12 +112,16 @@ function renderTopbar(): void {
   const r = d.review;
   const pending = d.threads.filter((t) => !t.submitted).length;
   const open = d.threads.filter((t) => t.status === "open").length;
-  const tabs: [View, string][] = [
-    ["review", "Review"],
-    ["commits", "Commits"],
-    ["files", `Files${d.changes.length ? ` (${d.changes.length})` : ""}`],
-    ["map", "Map"],
-  ];
+  const explainer = kind() === "explainer";
+  const labels: Record<View, string> = {
+    review: explainer ? "Explainer" : "Review",
+    commits: "Commits",
+    files: `Files${d.changes.length ? ` (${d.changes.length})` : ""}`,
+    map: "Map",
+    coverage: "Coverage",
+  };
+  const current = view();
+  const tabs: [View, string][] = VIEWS[kind()].map((v) => [v, labels[v]]);
   const revSel = h("select", {
     class: "small",
     style: { font: "inherit", fontSize: "12px" },
@@ -131,7 +154,7 @@ function renderTopbar(): void {
         style: { fontSize: "12px" },
         title: `${r.pins.base} → ${r.pins.head}`,
       },
-      r.binding.kind === "pr" ? `PR #${r.binding.name}` : r.binding.name,
+      bindingLabel(r),
     ),
   ]);
   const actions = h("div", { class: "bar-row bar-actions" }, [
@@ -139,7 +162,7 @@ function renderTopbar(): void {
       "div",
       { class: "tabs" },
       tabs.map(([v, label]) =>
-        h("button", { class: v === state.view ? "active" : "", onclick: () => navigate(v) }, label),
+        h("button", { class: v === current ? "active" : "", onclick: () => navigate(v) }, label),
       ),
     ),
     h("span", { class: "spacer" }),
@@ -227,7 +250,9 @@ function moreMenu(e: MouseEvent): void {
     h(
       "div",
       { class: "item muted" },
-      `base ${r.pins.base.slice(0, 12)} · head ${r.pins.head.slice(0, 12)}`,
+      kind() === "explainer"
+        ? `commit ${r.pins.head.slice(0, 12)}`
+        : `base ${r.pins.base.slice(0, 12)} · head ${r.pins.head.slice(0, 12)}`,
     ),
     h(
       "div",
@@ -241,7 +266,7 @@ function moreMenu(e: MouseEvent): void {
 function renderCenter(): void {
   const scroll = center.scrollTop;
   clear(center);
-  switch (state.view) {
+  switch (view()) {
     case "review":
       renderReview(center);
       break;
@@ -253,6 +278,9 @@ function renderCenter(): void {
       break;
     case "map":
       renderMap(center);
+      break;
+    case "coverage":
+      renderCoverage(center);
       break;
   }
   center.scrollTop = scroll;

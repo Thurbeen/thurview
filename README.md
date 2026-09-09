@@ -9,6 +9,12 @@ and serves it in your browser: the walkthrough, live code peeks, the diff,
 commits, and a software map. You ask questions, leave anchored comments, and
 approve or request changes. The agent answers and republishes.
 
+It also explains a codebase. A **code explainer** is the same document over a
+different unit: one pinned commit instead of a range, so a reader can see the
+architecture well enough to spot design problems themselves. It has no diff and
+nothing to approve, it surfaces structure rather than grading it, and it states
+what it did not examine.
+
 It does not review the code for you. It helps you understand it fast enough
 to review it yourself.
 
@@ -133,6 +139,12 @@ and open it.
   Click an identifier to see where it is defined at that commit; Ctrl-click
   jumps there.
 - **Commits**: the commits between base and head.
+- **Coverage** (explainers): every file in scope at the pinned commit, in one
+  of three states - anchored in the document, placed on the map only, or not
+  examined - with the parts of the system they belong to, the references that
+  cross between those parts, and the names defined in more than one of them.
+  Derived at publish, so what the explainer skipped is a stated fact rather
+  than something the reader has to infer.
 - **Map**: systems, containers, components and code, with what the change
   added, removed or touched, linked to files and code.
 - **Threads**: _Ask now_ sends a question to the agent immediately and the
@@ -153,18 +165,19 @@ bar.
 
 ## CLI
 
-| Command                                                               | Purpose                                                      |
-| --------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `thurview scaffold [--pr N \| --base R --head R]`                     | Create a review pinned to exact commits (`--update` re-pins) |
-| `thurview info [--all]`                                               | Reviews bound to this worktree                               |
-| `thurview publish --review ID [--view T] [--open]`                    | Validate the document and map, seal a revision               |
-| `thurview open --review ID [--view T]`                                | Start the server if needed and open the browser              |
-| `thurview wait --review ID [--timeout S]`                             | Block until the reader needs the agent                       |
-| `thurview threads list\|get\|reply\|resolve`                          | Read and answer threads                                      |
-| `thurview graph interfaces\|impact\|callers\|tests-for\|architecture` | Ask the code graph at the pinned commits                     |
-| `thurview serve` / `thurview stop`                                    | Run the server in the foreground / stop the background one   |
-| `thurview setup hooks\|skill\|status`                                 | Session hooks, agent skill, install state                    |
-| `thurview update`                                                     | Self-update from npm                                         |
+| Command                                                               | Purpose                                                          |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `thurview scaffold [--pr N \| --base R --head R]`                     | Create a review pinned to exact commits (`--update` re-pins)     |
+| `thurview explain [<path>] [--commit R]`                              | Create a code explainer of a codebase or subsystem at one commit |
+| `thurview info [--all]`                                               | Reviews bound to this worktree                                   |
+| `thurview publish --review ID [--view T] [--open]`                    | Validate the document and map, seal a revision                   |
+| `thurview open --review ID [--view T]`                                | Start the server if needed and open the browser                  |
+| `thurview wait --review ID [--timeout S]`                             | Block until the reader needs the agent                           |
+| `thurview threads list\|get\|reply\|resolve`                          | Read and answer threads                                          |
+| `thurview graph interfaces\|impact\|callers\|tests-for\|architecture` | Ask the code graph at the pinned commits                         |
+| `thurview serve` / `thurview stop`                                    | Run the server in the foreground / stop the background one       |
+| `thurview setup hooks\|skill\|status`                                 | Session hooks, agent skill, install state                        |
+| `thurview update`                                                     | Self-update from npm                                             |
 
 thurview is an [AXI](https://axi.md): built for agents that drive it through a
 shell. Output is [TOON](https://toonformat.dev) on stdout, errors are
@@ -186,16 +199,22 @@ The agent writes three files in `~/.thurview/reviews/<id>/`:
 - `data.yaml`: typed inputs: `actors`, `anchors` (file, from, to, graph),
   `stores`, `interfaces` (a capability line per derived entry, plus the
   interfaces the graph cannot see).
-- `map.yaml`: the software map at head, optionally at base.
+- `map.yaml`: the software map at head, optionally at base. In an explainer it
+  carries the breadth the prose has no room for, and a node's `files` globs are
+  what let a file count as placed rather than not examined.
 - `theme.yaml`: the look, derived from the reviewed project's own design
   system (tokens, fonts, shape, code palette). Empty means the default skin.
+
+An explainer writes the same files, minus `interfaces`: there is no change to
+derive a delta from, and `graph: base` on an anchor is an error because there
+is one commit.
 
 `thurview publish` rejects an anchor whose file or lines do not exist at the
 pinned commit, a call stack frame that claims an added or removed call the
 diff does not show, a storage operation on an unknown field, a map edge
 to an unknown node, an interface annotation for a symbol the change did not
-move, and a declared interface whose anchor holds no added or deleted line.
-The full format is in
+move, a declared interface whose anchor holds no added or deleted line, and an
+explainer that anchors nothing at all. The full format is in
 [skills/thurview/references](skills/thurview/references).
 
 Optional guidance for the agent: `~/.thurview/THURVIEW.md` for you,

@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { h, closePopover, dialog, timeAgo } from "./dom.js";
-import { state, emit, describeTarget, navigate, readOnly } from "./state.js";
+import { state, emit, describeTarget, navigate, readOnly, kind } from "./state.js";
 import type { Thread, ThreadTarget } from "../store.js";
 
 export async function reload(): Promise<void> {
@@ -289,12 +289,19 @@ function threadCard(t: Thread): HTMLElement {
 
 export function submitDialog(): void {
   const pending = (state.data?.threads ?? []).filter((t) => !t.submitted).length;
+  // Same state machine, different words. A reader decides whether a CHANGE should
+  // land; a reader of an explainer decides whether the DOCUMENT is finished, and
+  // "Approve" would read as a verdict on code the explainer never judged.
+  const explainer = kind() === "explainer";
+  const words = explainer
+    ? { title: "Send this back or finish", accept: "Done reading", back: "Send it back" }
+    : { title: "Submit review", accept: "Approve", back: "Request changes" };
   const ta = h("textarea", { rows: 4, placeholder: "Summary for the agent (optional)" });
   const d = dialog(
     h(
       "div",
       null,
-      h("h3", null, "Submit review"),
+      h("h3", null, words.title),
       h(
         "p",
         { class: "muted" },
@@ -309,11 +316,16 @@ export function submitDialog(): void {
         h("button", { class: "ghost", onclick: () => d.close() }, "Cancel"),
         h(
           "button",
-          { title: "End the review without approving it", onclick: () => decide("close") },
+          {
+            title: explainer
+              ? "End it without reading it through"
+              : "End the review without approving it",
+            onclick: () => decide("close"),
+          },
           "Close",
         ),
-        h("button", { onclick: () => decide("request-changes") }, "Request changes"),
-        h("button", { class: "ok", onclick: () => decide("approve") }, "Approve"),
+        h("button", { onclick: () => decide("request-changes") }, words.back),
+        h("button", { class: "ok", onclick: () => decide("approve") }, words.accept),
       ),
     ),
   );

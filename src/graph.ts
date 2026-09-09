@@ -157,7 +157,7 @@ const SKIP = /(^|\/)(node_modules|dist|build|vendor|target|\.git)\//;
 /** A definition nested inside another (its qualified name has a dot) that isn't a class
  *  method has no meaning outside the file that scopes it, so it can't be a cross-file
  *  resolution target picked by the repo-wide-unique fallback. */
-function isNestedNonMethod(s: Sym): boolean {
+export function isNestedNonMethod(s: Sym): boolean {
   const qualified = s.id.slice(s.file.length + 1).replace(/#\d+$/, "");
   return qualified.includes(".") && s.kind !== "method";
 }
@@ -489,6 +489,17 @@ export interface Architecture {
   truncated: { base: boolean; head: boolean };
 }
 
+/** A fixed-seed PRNG, so a pinned commit always clusters the same way. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function fileEdges(g: CodeGraph): Map<string, number> {
   const byId = new Map(g.symbols.map((s) => [s.id, s.file]));
   const out = new Map<string, number>();
@@ -523,7 +534,12 @@ export function architecture(base: CodeGraph, head: CodeGraph): Architecture {
     if (g.hasEdge(a, b)) g.updateEdgeAttribute(a, b, "weight", (x: number) => x + w);
     else g.addEdge(a, b, { weight: w });
   }
-  const membership: Record<string, number> = g.order ? louvain(g, { getEdgeWeight: "weight" }) : {};
+  // Louvain is randomised, and a partition that moves between runs would move
+  // every count derived from it at the same pinned commit. Seed it so the same
+  // commit always yields the same structure.
+  const membership: Record<string, number> = g.order
+    ? louvain(g, { getEdgeWeight: "weight", rng: seeded(0x7c1f9e3d) })
+    : {};
   const groups = new Map<number, string[]>();
   for (const [file, c] of Object.entries(membership)) {
     const list = groups.get(c) ?? [];

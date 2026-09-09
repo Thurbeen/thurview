@@ -11,6 +11,7 @@ import {
 import { highlightLines, languageFor } from "../highlight.js";
 import { parseDocument, type RawBlock } from "./parse.js";
 import { withVerdict, type InterfaceDelta } from "../interfaces.js";
+import type { DocumentKind } from "../store.js";
 import {
   DataSchema,
   SequenceSchema,
@@ -115,6 +116,8 @@ export interface CompileInput {
   pins: { base: string; head: string };
   reviewMd: string;
   dataYaml: string;
+  /** review (a change) or explainer (a codebase at one commit); default review */
+  kind?: DocumentKind;
   /** registered highlighter theme name (default skin when omitted) */
   themeName?: string;
   /** the derived interface delta; null when the code graph could not be built */
@@ -158,6 +161,13 @@ export async function compileDocument(input: CompileInput): Promise<{
     : { actors: {}, anchors: {}, stores: {}, interfaces: {} };
   if (!dataParsed.ok) for (const m of dataParsed.errors) err("data.yaml", m);
 
+  const kind: DocumentKind = input.kind ?? "review";
+  if (kind === "explainer" && Object.keys(data.interfaces).length)
+    err(
+      "data.yaml",
+      "an explainer has no interface delta: it explains a codebase at one commit, not a change",
+    );
+
   const parsed = parseDocument(input.reviewMd);
   if (!parsed.title) err("review.md", "the document needs an H1 title");
 
@@ -177,7 +187,12 @@ export async function compileDocument(input: CompileInput): Promise<{
       ...(a.detail ? { detail: a.detail } : {}),
       ...(a.map ? { map: a.map } : {}),
     };
-    if (a.peek) {
+    if (a.peek && kind === "explainer" && a.peek.graph === "base") {
+      err(
+        "data.yaml",
+        `anchor ${id}: an explainer has one pinned commit, so \`graph: base\` has no meaning`,
+      );
+    } else if (a.peek) {
       const text = await fileAt(a.peek.graph, a.peek.file);
       if (text === null) {
         err(
@@ -241,18 +256,30 @@ export async function compileDocument(input: CompileInput): Promise<{
     if (block) blocks.push(block);
   }
 
-  const interfaces = compileInterfaces({
-    delta: input.interfaces ?? null,
-    declared: data.interfaces,
-    anchors,
-    changes,
-    used,
-    err,
-    warn,
-  });
+  const interfaces =
+    kind === "explainer"
+      ? null
+      : compileInterfaces({
+          delta: input.interfaces ?? null,
+          declared: data.interfaces,
+          anchors,
+          changes,
+          used,
+          err,
+          warn,
+        });
 
   for (const id of Object.keys(anchors))
     if (!used.has(id)) warn("data.yaml", `anchor "${id}" is defined but never used`);
+
+  // A review may publish a stub so the reader can read the diff while the
+  // walkthrough is written. An explainer has no diff to read in the meantime,
+  // so an unanchored one is only prose about code the reader cannot check.
+  if (kind === "explainer" && !used.size)
+    err(
+      "review.md",
+      "an explainer needs at least one anchored claim: link prose to code with [text](anchor:<id>)",
+    );
 
   const errors = diags.filter((d) => d.level === "error");
   if (errors.length) return { document: null, diagnostics: diags, anchors };
@@ -607,6 +634,7 @@ export async function compileMap(input: {
   pins: { base: string; head: string };
   mapYaml: string;
   anchors: Record<string, unknown>;
+  kind?: DocumentKind;
 }): Promise<{ map: CompiledMap | null; diagnostics: Diagnostic[] }> {
   const diags: Diagnostic[] = [];
   const err = (message: string) => diags.push({ level: "error", file: "map.yaml", message });
@@ -624,6 +652,8 @@ export async function compileMap(input: {
     return { map: null, diagnostics: diags };
   }
   const m: MapFile = r.value;
+  if (input.kind === "explainer" && m.base)
+    err("an explainer has one pinned commit, so there is no base structure to compare against");
   const validateGraph = async (
     g: { nodes: MapNode[]; edges: MapEdge[] },
     graph: "head" | "base",
