@@ -32,7 +32,17 @@ export interface Edge {
   at: number;
 }
 
+/**
+ * Bumped whenever a field is added to CodeGraph. `graphAt` caches a built graph
+ * on disk keyed only by commit, so without this a graph written by an older
+ * binary loads with a field missing and every count derived from it silently
+ * reads as zero - a wrong number rather than an error, which is exactly what a
+ * document that states derived facts must never do.
+ */
+export const GRAPH_SCHEMA = 2;
+
 export interface CodeGraph {
+  schema: number;
   commit: string;
   files: string[];
   symbols: Sym[];
@@ -272,14 +282,23 @@ export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph
       edges.push({ from: from.id, to: target.id, kind: r.kind, at: r.line });
     }
   }
-  return { commit, files, symbols, edges, unresolved, unresolvedByFile, truncated };
+  return {
+    schema: GRAPH_SCHEMA,
+    commit,
+    files,
+    symbols,
+    edges,
+    unresolved,
+    unresolvedByFile,
+    truncated,
+  };
 }
 
 /** Build the graph, or reuse the one cached under `dir` for that commit. */
 export async function graphAt(cwd: string, commit: string, dir: string): Promise<CodeGraph> {
   const path = join(dir, "graph", `${commit}.json`);
   const cached = await readJson<CodeGraph>(path);
-  if (cached && cached.commit === commit) return cached;
+  if (cached && cached.commit === commit && cached.schema === GRAPH_SCHEMA) return cached;
   const g = await buildGraph(cwd, commit);
   await writeJson(path, g);
   return g;
