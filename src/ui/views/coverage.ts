@@ -215,7 +215,7 @@ function sharedNames(cov: Coverage): HTMLElement | null {
     h(
       "p",
       { class: "muted" },
-      `${cov.sharedNamesTotal} name${cov.sharedNamesTotal === 1 ? "" : "s"} at this commit are`,
+      `${cov.sharedNamesTotal} name${cov.sharedNamesTotal === 1 ? " at this commit is" : "s at this commit are"}`,
       " defined in two or more parts. What that means here - the same idea in two places,",
       " two different ideas sharing a word, or a name too common to mean anything - is",
       " what the code says and this page does not.",

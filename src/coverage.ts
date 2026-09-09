@@ -15,7 +15,13 @@
  * conclusion, drawing it is the reader's job.
  */
 import { globToRegExp } from "./document/compile.js";
-import { architecture, isGraphLanguage, isNestedNonMethod, type CodeGraph, type Sym } from "./graph.js";
+import {
+  architecture,
+  isGraphLanguage,
+  isNestedNonMethod,
+  type CodeGraph,
+  type Sym,
+} from "./graph.js";
 
 /** How a file at the pinned commit is accounted for. */
 export type FileState =

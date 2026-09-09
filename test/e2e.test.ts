@@ -710,6 +710,28 @@ check
     expect(cov["clusters"].flatMap((c: Out) => c["explained"])).toContain("src/auth.ts");
   }, 20_000);
 
+  it("tells a file it cannot read apart from one the file cap dropped", async () => {
+    // notes.md is in no graph language, so it is absent from the structure. Saying
+    // that about a file the repo-wide cap merely skipped would be a false claim,
+    // and the two are counted separately.
+    // the surface branch is where notes.md exists
+    await cli(["explain", "**", "--update", "--commit", "surface", "--review", explainerId]);
+    const out = await cli(["publish", "--review", explainerId]);
+    expect(String(out["published"]["coverage"])).toContain(
+      "outside the languages the code graph reads",
+    );
+    const d = await api<Out>(`/api/reviews/${explainerId}`);
+    const cov = d["coverage"];
+    expect(cov["scope"]).toBe("**");
+    expect(cov["files"]["outsideGraph"]).toBe(1);
+    expect(cov["files"]["capped"]).toBe(0);
+    expect(cov["truncated"]).toBe(false);
+    expect(cov["unclustered"]).toEqual([
+      { file: "notes.md", state: "uncovered", reason: "outsideGraph" },
+    ]);
+    expect(cov["outsideGraph"]).toEqual([{ extension: "md", files: 1 }]);
+  }, 60_000);
+
   it("answers --help per command without loading live state", async () => {
     const h = await cli(["threads", "--help"]);
     expect(h["command"]).toContain("thurview threads");

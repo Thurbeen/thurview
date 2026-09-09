@@ -186,9 +186,7 @@ export function capFiles(files: string[]): { files: string[]; truncated: boolean
 
 /** Parse every supported file at `commit` and resolve references to definitions by name. */
 export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph> {
-  const { files, truncated } = capFiles(
-    (await listFiles(cwd, commit)).filter(isGraphLanguage),
-  );
+  const { files, truncated } = capFiles((await listFiles(cwd, commit)).filter(isGraphLanguage));
   const symbols: Sym[] = [];
   const byName = new Map<string, Sym[]>();
   const pending: { file: string; defs: Sym[]; refs: Tag[] }[] = [];
