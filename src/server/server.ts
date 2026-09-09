@@ -81,10 +81,11 @@ async function findReview(idOrPrefix: string) {
 
 async function revisionData(id: string, n: number) {
   const dir = revisionDir(id, n);
-  const [document, map, changes, meta, theme] = await Promise.all([
+  const [document, map, changes, coverage, meta, theme] = await Promise.all([
     readJson<unknown>(join(dir, "document.json")),
     readJson<unknown>(join(dir, "map.json")),
     readJson<ChangedFile[]>(join(dir, "changes.json")),
+    readJson<unknown>(join(dir, "coverage.json")),
     readJson<unknown>(join(dir, "meta.json")),
     readJson<CompiledTheme>(join(dir, "theme.json")),
   ]);
@@ -92,6 +93,7 @@ async function revisionData(id: string, n: number) {
     document,
     map,
     changes: changes ?? [],
+    coverage,
     meta,
     theme: theme ? { name: theme.name, source: theme.source, css: theme.css } : null,
   };
@@ -197,7 +199,7 @@ export async function startServer(
       const n = Number(url.searchParams.get("revision") ?? review.revision);
       const data = review.revision
         ? await revisionData(id, n)
-        : { document: null, map: null, changes: [], meta: null };
+        : { document: null, map: null, changes: [], coverage: null, meta: null };
       const threads = await readThreads(id);
       return {
         review,

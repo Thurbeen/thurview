@@ -1756,3 +1756,187 @@ kbd {
     overflow: visible;
   }
 }
+
+/* ---- Coverage (explainers) ----
+   Deliberately neutral: covered/uncovered is a fact about the DOCUMENT, not a
+   grade on the code, so nothing here borrows the ok/warn/del palette that the
+   review views use to mark a change. */
+.cov-intro,
+.cov-section {
+  max-width: 1000px;
+  margin: 0 auto 26px;
+  padding: 0 24px;
+}
+.cov-intro {
+  padding-top: 24px;
+}
+.cov-intro h2,
+.cov-section h3 {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+.cov-section h3 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.cov-section h4 {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin: 18px 0 6px;
+}
+.cov-intro p,
+.cov-section p {
+  margin: 0 0 12px;
+  color: var(--fg2);
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 72ch;
+}
+.cov-bar {
+  display: flex;
+  height: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg2);
+}
+.cov-seg.explained {
+  background: var(--accent);
+}
+.cov-seg.placed {
+  background: var(--accent-bg);
+}
+.cov-seg.uncovered {
+  background: var(--bg3);
+}
+.cov-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 8px 0 16px;
+  font-size: 12px;
+  color: var(--fg2);
+}
+.cov-key-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cov-dot {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+}
+.cov-dot.explained {
+  background: var(--accent);
+}
+.cov-dot.placed {
+  background: var(--accent-bg);
+}
+.cov-dot.uncovered {
+  background: var(--bg3);
+}
+.cov-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cov-fact {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  min-width: 0;
+  font-size: 12px;
+}
+.cov-fact b {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.cov-cluster {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--bg2);
+}
+.cov-cluster-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.cov-cluster-head .spacer {
+  flex: 1;
+}
+.cov-label {
+  font-weight: 600;
+}
+.cov-hubs {
+  font-size: 12px;
+  margin-top: 6px;
+}
+.cov-hubs code {
+  margin-right: 6px;
+}
+.cov-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.cov-file {
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 1px 5px;
+}
+.cov-b-explained {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.cov-b-placed {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.cov-b-uncovered {
+  color: var(--muted);
+  border-color: var(--line);
+  background: var(--bg3);
+}
+.cov-links,
+.cov-shared {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.cov-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-top: 1px solid var(--line2);
+  min-width: 0;
+}
+.cov-link:first-child {
+  border-top: 0;
+}
+.cov-link:hover {
+  background: var(--bg3);
+}
+.cov-link > .muted {
+  overflow-wrap: anywhere;
+}

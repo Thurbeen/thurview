@@ -1,7 +1,29 @@
 import type { Payload } from "./api.js";
-import type { Thread, ThreadTarget } from "../store.js";
+import type { DocumentKind, Thread, ThreadTarget } from "../store.js";
 
-export type View = "review" | "commits" | "files" | "map";
+export type View = "review" | "commits" | "files" | "map" | "coverage";
+
+/**
+ * The tabs a document kind has. A review is a CHANGE, so the diff, the commits
+ * and the interface delta all mean something. An explainer is a CODEBASE at one
+ * commit: those three would render an empty claim about a change that does not
+ * exist, so they are absent, and Coverage - what the document reached and what
+ * it did not - takes their place.
+ */
+export const VIEWS: Record<DocumentKind, View[]> = {
+  review: ["review", "commits", "files", "map"],
+  explainer: ["review", "map", "coverage"],
+};
+
+export function kind(): DocumentKind {
+  return state.data?.review.kind === "explainer" ? "explainer" : "review";
+}
+
+/** The current view, or the document's first tab when this kind has no such tab. */
+export function view(): View {
+  const allowed = VIEWS[kind()];
+  return allowed.includes(state.view) ? state.view : allowed[0]!;
+}
 
 export interface SideState {
   kind: "none" | "peek" | "threads";
@@ -74,8 +96,10 @@ export function navigate(
 
 export function readHash(): void {
   const m = /^#\/(\w+)(?:\?(.*))?$/.exec(location.hash);
-  const view = (m?.[1] ?? "review") as View;
-  state.view = ["review", "commits", "files", "map"].includes(view) ? view : "review";
+  const v = (m?.[1] ?? "review") as View;
+  state.view = (["review", "commits", "files", "map", "coverage"] as View[]).includes(v)
+    ? v
+    : "review";
   state.params = new URLSearchParams(m?.[2] ?? "");
 }
 

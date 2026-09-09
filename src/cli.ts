@@ -33,12 +33,21 @@ import {
   readJson,
   serverStateFile,
   deleteReview,
+  kindOf,
   type ReviewState,
   type Binding,
+  type DocumentKind,
   type Thread,
   type ThreadTarget,
 } from "./store.js";
-import { compileDocument, compileMap, type Diagnostic } from "./document/compile.js";
+import { compileDocument, compileMap, globToRegExp, type Diagnostic } from "./document/compile.js";
+import {
+  computeCoverage,
+  scopeGlob,
+  scopeGraph,
+  scopeTruncated,
+  type Coverage,
+} from "./coverage.js";
 import type { CodeGraph } from "./graph.js";
 import type { InterfaceDelta } from "./interfaces.js";
 import { parseTheme, compileTheme, type CompiledTheme } from "./theme.js";
@@ -51,7 +60,7 @@ import { VERSION } from "./version.js";
 const execFileP = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DESCRIPTION =
-  "Guided, evidence-anchored reviews of agent-written code, read and answered in the browser";
+  "Guided, evidence-anchored reviews of a change and explainers of a codebase, read and answered in the browser";
 type Out = Record<string, unknown>;
 
 function note(msg: string): void {
@@ -122,6 +131,7 @@ async function reviewRow(r: ReviewState, fields: Set<string>): Promise<Out> {
   const t = await readThreads(r.id);
   const row: Out = {
     id: short(r.id),
+    kind: kindOf(r),
     title: r.title,
     status: r.status,
     rev: r.revision,
@@ -131,7 +141,10 @@ async function reviewRow(r: ReviewState, fields: Set<string>): Promise<Out> {
   if (fields.has("all") || fields.has("binding"))
     row["binding"] = r.binding.kind === "pr" ? `PR #${r.binding.name}` : r.binding.name;
   if (fields.has("all") || fields.has("pins"))
-    row["pins"] = `${r.pins.base.slice(0, 12)}..${r.pins.head.slice(0, 12)}`;
+    row["pins"] =
+      kindOf(r) === "explainer"
+        ? r.pins.head.slice(0, 12)
+        : `${r.pins.base.slice(0, 12)}..${r.pins.head.slice(0, 12)}`;
   if (fields.has("all") || fields.has("worktree")) row["worktree"] = r.worktree;
   if (fields.has("all") || fields.has("inSync"))
     row["inSync"] = await g
@@ -268,6 +281,34 @@ const TEMPLATE_THEME = `# Look of this review, derived from the reviewed project
 # code: { keyword: "#7c3aed", string: "#15803d", function: "#b45309", variable: "#0369a1", comment: "#9ca3af" }
 `;
 
+const TEMPLATE_EXPLAIN_MD = (title: string) => `# ${title}
+
+**Summary**
+
+- The agent is still writing this explainer. The Coverage tab already states
+  what it has and has not examined at the pinned commit; this page offers the
+  new revision when the walkthrough lands.
+`;
+const TEMPLATE_EXPLAIN_DATA = `# Typed inputs for the explainer: actors, anchors and stores. An explainer has
+# one pinned commit, so every anchor reads that commit and \`graph: base\` is an
+# error. It has no interface delta: there is no change to take one from.
+#
+# anchors:
+#   dispatch:
+#     title: where a request picks its handler
+#     peek: { file: src/server/router.ts, from: 41, to: 58 }
+actors: {}
+anchors: {}
+stores: {}
+`;
+const TEMPLATE_EXPLAIN_MAP = `# The structure of the code at the pinned commit: systems, containers,
+# components, code. The map carries breadth so the prose can carry depth, and a
+# node's \`files\` globs are what tell the Coverage tab a file was at least placed.
+# Seed it from \`thurview graph architecture\`.
+nodes: []
+edges: []
+`;
+
 // ---- commands ----
 
 const SPECS: Record<
@@ -292,8 +333,26 @@ const SPECS: Record<
       "thurview scaffold --update --review <id>",
     ],
   },
+  explain: {
+    description:
+      "Create a code explainer pinned to one commit: a whole codebase, or one subsystem of it",
+    args: "[<path scope>]",
+    flags: {
+      commit: { kind: "string", help: "commit to pin (default: HEAD)" },
+      title: { kind: "string", help: "initial title" },
+      new: { kind: "boolean", help: "create another explainer even if one matches the scope" },
+      update: { kind: "boolean", help: "re-pin an existing explainer to a new commit" },
+      review: { kind: "string", help: "explainer to update (id prefix)" },
+    },
+    examples: [
+      "thurview explain",
+      "thurview explain src/server",
+      "thurview explain --commit v1.2.0",
+      "thurview explain --update --review <id>",
+    ],
+  },
   info: {
-    description: "Reviews bound to this worktree (or every review with --all)",
+    description: "Reviews and explainers bound to this worktree (or all of them with --all)",
     flags: {
       all: { kind: "boolean", help: "every review, not only this worktree" },
       fields: {
@@ -438,6 +497,7 @@ async function homeView(): Promise<Out> {
       help: [
         "Run `thurview scaffold` to create a review of the current branch",
         "Run `thurview scaffold --pr <number>` for a pull request",
+        "Run `thurview explain [<path>]` to explain the codebase at HEAD instead",
       ],
     };
   const reviews = [];
@@ -636,6 +696,129 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     };
   },
 
+  async explain(args) {
+    const p = parseFlags("explain", args, spec("explain").flags, 1);
+    const cwd = process.cwd();
+    const worktree = await worktreeOf(cwd);
+    if (!worktree)
+      throw new AxiError("not inside a git repository", "VALIDATION_ERROR", [
+        "Run `thurview explain` inside the source worktree",
+      ]);
+    const existing =
+      bool(p, "update") || str(p, "review") ? await resolveReview(str(p, "review")) : null;
+    if (existing && kindOf(existing) !== "explainer")
+      throw new AxiError(
+        `${short(existing.id)} is a review, not an explainer`,
+        "VALIDATION_ERROR",
+        [
+          "Run `thurview scaffold --update --review <id>` to re-pin a review",
+          "Run `thurview explain` with no --review to start an explainer",
+        ],
+      );
+    const scope = scopeGlob(p.positional[0] ?? existing?.binding.name);
+    let commit: string;
+    try {
+      commit = await g.revParse(worktree, str(p, "commit") ?? "HEAD");
+    } catch (e) {
+      throw new AxiError((e as Error).message, "VALIDATION_ERROR", [
+        "Pass a resolvable ref: `thurview explain --commit <ref>`",
+      ]);
+    }
+    // A scope that matches nothing is a typo, and an explainer of nothing would
+    // still publish and still state honest-looking coverage of zero files.
+    const files = await g.listFiles(worktree, commit);
+    const inScope = scope === "**" ? files : files.filter((f) => globToRegExp(scope).test(f));
+    if (!inScope.length)
+      throw new AxiError(
+        `no file matches "${scope}" at ${commit.slice(0, 12)}`,
+        "VALIDATION_ERROR",
+        [
+          "Pass a path that exists at that commit: `thurview explain src/server`",
+          "Run `thurview explain` with no scope for the whole repository",
+        ],
+      );
+    const binding: Binding = { kind: "codebase", name: scope };
+    const defaultTitle =
+      scope === "**" ? worktree.split("/").pop() || "Codebase" : scope.replace(/\/\*\*$/, "");
+    let review: ReviewState;
+    let reused = false;
+    if (existing) {
+      review = existing;
+      review.pins = { base: commit, head: commit };
+      review.binding = binding;
+      if (str(p, "title")) review.title = str(p, "title")!;
+      await writeReview(review);
+    } else {
+      const match = bool(p, "new")
+        ? []
+        : (await reviewsFor(worktree)).filter(
+            (r) =>
+              kindOf(r) === "explainer" &&
+              r.binding.name === scope &&
+              r.status !== "accepted" &&
+              r.status !== "closed",
+          );
+      if (match.length) {
+        review = match[0]!;
+        reused = true;
+        review.pins = { base: commit, head: commit };
+        await writeReview(review);
+      } else {
+        const id = newId();
+        review = {
+          schema: SCHEMA,
+          id,
+          kind: "explainer",
+          title: str(p, "title") || defaultTitle,
+          worktree,
+          repoRoot: worktree,
+          binding,
+          pins: { base: commit, head: commit },
+          status: "draft",
+          revision: 0,
+          dismissed: false,
+          createdAt: now(),
+          updatedAt: now(),
+        };
+        await mkdir(reviewDir(id), { recursive: true });
+        await writeText(join(reviewDir(id), "review.md"), TEMPLATE_EXPLAIN_MD(review.title));
+        await writeText(join(reviewDir(id), "data.yaml"), TEMPLATE_EXPLAIN_DATA);
+        await writeText(join(reviewDir(id), "map.yaml"), TEMPLATE_EXPLAIN_MAP);
+        await writeText(join(reviewDir(id), "theme.yaml"), TEMPLATE_THEME);
+        await writeReview(review);
+      }
+    }
+    const dir = reviewDir(review.id);
+    return {
+      explainer: {
+        id: short(review.id),
+        uuid: review.id,
+        kind: "explainer",
+        title: review.title,
+        status: review.status,
+        rev: review.revision,
+        scope,
+        commit,
+        worktree,
+        reused,
+        dir,
+      },
+      files: {
+        document: join(dir, "review.md"),
+        data: join(dir, "data.yaml"),
+        map: join(dir, "map.yaml"),
+        theme: join(dir, "theme.yaml"),
+      },
+      scale: { filesInScope: inScope.length },
+      guidance: await guidanceFiles(worktree),
+      help: [
+        `Run \`thurview graph architecture --review ${short(review.id)}\` for the clusters, their hubs and the links between them`,
+        `Author ${join(dir, "map.yaml")} first: it carries the breadth the prose cannot`,
+        `Edit ${join(dir, "review.md")} and data.yaml, then run \`thurview publish --review ${short(review.id)}\``,
+      ],
+    };
+  },
+
   async info(args) {
     const p = parseFlags("info", args, spec("info").flags);
     const fields = new Set((str(p, "fields") ?? "").split(",").filter(Boolean));
@@ -716,21 +899,27 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       }
     }
     const themeName = theme ? await registerTheme(theme.shiki) : undefined;
+    const kind = kindOf(review);
+    // An explainer has one pinned commit, so there is no delta to derive: the
+    // panel above its document states coverage instead.
     let interfaces: InterfaceDelta | null = null;
-    try {
-      interfaces = await deltaFor(review);
-    } catch (e) {
-      diags.push({
-        level: "warning",
-        file: "review.md",
-        message: `the interface delta is unavailable: ${(e as Error).message}`,
-      });
+    if (kind === "review") {
+      try {
+        interfaces = await deltaFor(review);
+      } catch (e) {
+        diags.push({
+          level: "warning",
+          file: "review.md",
+          message: `the interface delta is unavailable: ${(e as Error).message}`,
+        });
+      }
     }
     const doc = await compileDocument({
       cwd: review.worktree,
       pins: review.pins,
       reviewMd,
       dataYaml: dataYaml ?? "",
+      kind,
       ...(themeName ? { themeName } : {}),
       interfaces,
     });
@@ -742,6 +931,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         pins: review.pins,
         mapYaml,
         anchors: doc.anchors,
+        kind,
       });
       diags.push(...m.diagnostics);
       map = m.map;
@@ -764,7 +954,57 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         ],
       };
     }
+    // Coverage is derived, not claimed: every file in scope at the pinned commit
+    // is accounted for, so the reader is told what the prose never reached.
+    let coverage: Coverage | null = null;
+    if (kind === "explainer") {
+      try {
+        const graph = await import("./graph.js");
+        const g0 = await graph.graphAt(review.worktree, review.pins.head, dir);
+        coverage = computeCoverage({
+          commit: review.pins.head,
+          scope: review.binding.name,
+          allFiles: await g.listFiles(review.worktree, review.pins.head),
+          graph: g0,
+          anchored: Object.values(doc.document.anchors)
+            .map((a) => a.peek?.file)
+            .filter((f): f is string => !!f),
+          owners: (map?.head.nodes ?? [])
+            .filter((n) => n.files?.length)
+            .map((n) => ({ node: n.id, globs: n.files! })),
+        });
+      } catch (e) {
+        diags.push({
+          level: "error",
+          file: "review.md",
+          message: `coverage is unavailable, so the explainer cannot state what it skipped: ${(e as Error).message}`,
+        });
+        process.exitCode = 1;
+        return {
+          error: "publish failed: coverage could not be derived",
+          code: "PUBLISH_FAILED",
+          diagnostics: diags.map((d) => ({
+            level: d.level,
+            file: d.file,
+            line: d.line ?? "",
+            message: d.message,
+          })),
+          help: [`Run \`thurview publish --review ${short(review.id)}\` again`],
+        };
+      }
+    }
     const warnings: string[] = [];
+    if (kind === "explainer" && !map)
+      warnings.push(
+        "this explainer has no map, so every file it does not anchor counts as not examined; author map.yaml to place the rest",
+      );
+    if (review.binding.kind === "codebase") {
+      const tip = await g.revParse(review.worktree, "HEAD").catch(() => null);
+      if (tip && tip !== review.pins.head)
+        warnings.push(
+          `HEAD has moved past the pinned commit; run \`thurview explain --update --review ${short(review.id)}\` to re-pin`,
+        );
+    }
     if (review.binding.kind === "branch") {
       const tip = await g.revParse(review.worktree, review.binding.name).catch(() => null);
       if (tip && tip !== review.pins.head)
@@ -782,6 +1022,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     await writeJson(join(rdir, "document.json"), doc.document);
     await writeJson(join(rdir, "map.json"), map);
     await writeJson(join(rdir, "changes.json"), changes);
+    await writeJson(join(rdir, "coverage.json"), coverage);
     if (themeYaml !== null) await cp(join(dir, "theme.yaml"), join(rdir, "theme.yaml"));
     await writeJson(join(rdir, "theme.json"), theme);
     await writeJson(join(rdir, "meta.json"), {
@@ -789,6 +1030,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       at: now(),
       title: doc.document.title,
       pins: review.pins,
+      kind,
       hasMap: !!map,
       theme: theme?.name ?? "default",
     });
@@ -810,15 +1052,26 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const out: Out = {
       published: {
         id: short(review.id),
+        kind,
         rev: n,
         title: review.title,
         status: review.status,
         map: !!map,
-        interfaces: doc.document.interfaces?.verdict ?? "(unavailable)",
+        ...(kind === "explainer"
+          ? { coverage: coverage ? coverage.verdict : "(unavailable)" }
+          : { interfaces: doc.document.interfaces?.verdict ?? "(unavailable)" }),
         theme: theme?.name ?? "default",
         url: url ?? "(server not running)",
       },
     };
+    if (coverage)
+      out["notExamined"] = {
+        files: coverage.states.uncovered,
+        first: coverage.uncovered.slice(0, 8),
+        byPart: coverage.clusters
+          .filter((c) => c.uncovered.length)
+          .map((c) => ({ part: c.label, files: c.uncovered.length })),
+      };
     if (rows.length) out["diagnostics"] = rows;
     if (warnings.length) out["warnings"] = warnings;
     out["help"] = [
@@ -987,6 +1240,15 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       throw new AxiError("--graph must be head or base", "VALIDATION_ERROR", help);
     const graph = await import("./graph.js");
     const review = await resolveReview(str(p, "review"));
+    if (kindOf(review) === "explainer" && (sub === "interfaces" || sub === "impact"))
+      throw new AxiError(
+        `graph ${sub} compares two commits; an explainer is pinned to one`,
+        "VALIDATION_ERROR",
+        [
+          `Run \`thurview graph architecture --review ${short(review.id)}\` for the structure at that commit`,
+          `Run \`thurview graph callers <name> --review ${short(review.id)}\` to follow one symbol`,
+        ],
+      );
     const dir = reviewDir(review.id);
     const at = (commit: string) => graph.graphAt(review.worktree, commit, dir);
     if (sub === "callers" || sub === "tests-for") {
@@ -1052,6 +1314,25 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         help: [
           "Run `thurview graph callers <name>` to follow one symbol",
           "Run `thurview graph architecture` for the module structure and its diff",
+        ],
+      };
+    }
+    // An explainer is scoped to a path, so its structure is that path's, not the
+    // repository's: the same bound the Coverage tab accounts for.
+    if (kindOf(review) === "explainer") {
+      const scope = review.binding.name;
+      const g0 = scopeGraph(head, scope);
+      const allFiles = await g.listFiles(review.worktree, review.pins.head);
+      const { diff: _diff, truncated: _truncated, ...rest } = graph.architecture(g0, g0);
+      return {
+        commit: short(head.commit),
+        scope,
+        languages: pins.languages,
+        truncated: scopeTruncated(allFiles, head, scope),
+        ...rest,
+        help: [
+          "Seed map.yaml nodes from communities, their `files` from a community's files, and edges from edges",
+          "A file in no community is outside the languages the graph reads; `thurview publish` counts those",
         ],
       };
     }
@@ -1331,6 +1612,7 @@ function topLevelHelp(): string {
       examples: [
         "thurview",
         "thurview scaffold",
+        "thurview explain src/server",
         "thurview publish --view files --open",
         "thurview wait",
         'thurview threads reply <threadId> --body "<answer>"',

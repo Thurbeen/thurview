@@ -37,6 +37,7 @@ describe("buildGraph", () => {
     const g = await buildGraph(dir, head);
     expect(g.unresolved).toBe(1);
     expect(g.edges).toEqual([]);
+    expect(g.unresolvedByFile).toEqual({ "src/a.ts": 1 });
   });
 
   it("does not resolve a call to a nested non-method definition in another file", async () => {
