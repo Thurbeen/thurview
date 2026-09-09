@@ -172,6 +172,11 @@ export function isTestFile(path: string): boolean {
 
 const MAX_FILES = 4000;
 
+/** Whether the graph can parse `path` at all - independent of the repo-wide MAX_FILES cap. */
+export function isGraphLanguage(path: string): boolean {
+  return Boolean(GRAMMARS[languageFor(path)]) && !SKIP.test(path);
+}
+
 /** Cap a file list at MAX_FILES, reporting whether it had to be truncated. */
 export function capFiles(files: string[]): { files: string[]; truncated: boolean } {
   return files.length > MAX_FILES
@@ -182,7 +187,7 @@ export function capFiles(files: string[]): { files: string[]; truncated: boolean
 /** Parse every supported file at `commit` and resolve references to definitions by name. */
 export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph> {
   const { files, truncated } = capFiles(
-    (await listFiles(cwd, commit)).filter((p) => GRAMMARS[languageFor(p)] && !SKIP.test(p)),
+    (await listFiles(cwd, commit)).filter(isGraphLanguage),
   );
   const symbols: Sym[] = [];
   const byName = new Map<string, Sym[]>();

@@ -1903,6 +1903,16 @@ kbd {
   color: var(--accent);
   border-color: var(--accent);
 }
+.cov-b-placed {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.cov-b-uncovered {
+  color: var(--muted);
+  border-color: var(--line);
+  background: var(--bg3);
+}
 .cov-links,
 .cov-shared {
   display: flex;

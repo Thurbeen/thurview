@@ -15,7 +15,7 @@
  * conclusion, drawing it is the reader's job.
  */
 import { globToRegExp } from "./document/compile.js";
-import { architecture, isNestedNonMethod, type CodeGraph, type Sym } from "./graph.js";
+import { architecture, isGraphLanguage, isNestedNonMethod, type CodeGraph, type Sym } from "./graph.js";
 
 /** How a file at the pinned commit is accounted for. */
 export type FileState =
@@ -50,13 +50,15 @@ export interface Coverage {
     inGraph: number;
     /** everything else: config, docs, other languages */
     outsideGraph: number;
+    /** in-scope files in a graph language, skipped only because the repo-wide file cap was hit before scoping */
+    capped: number;
   };
   states: { explained: number; placed: number; uncovered: number };
   clusters: ClusterCoverage[];
   /** every file in scope the document never examined, clustered or not */
   uncovered: string[];
-  /** in-scope files the code graph cannot read, so they are in no cluster above */
-  unclustered: { file: string; state: FileState }[];
+  /** in-scope files with no cluster above: either the graph cannot read them, or the file cap skipped them */
+  unclustered: { file: string; state: FileState; reason: "outsideGraph" | "capped" }[];
   /** references between clusters at the pinned commit */
   links: { from: string; to: string; references: number; bothWays: boolean }[];
   /** names defined in more than one cluster, most-spread first */
@@ -66,8 +68,9 @@ export interface Coverage {
   outsideGraph: { extension: string; files: number }[];
   /** map nodes that own files, so an over-broad glob is visible rather than silent */
   owners: { node: string; globs: string[]; files: number }[];
-  /** references the graph could not place, and whether its file list was capped */
+  /** references the graph could not place */
   unresolved: number;
+  /** the repo-wide file cap excluded at least one in-scope, graph-language file */
   truncated: boolean;
 }
 
@@ -191,15 +194,23 @@ export function computeCoverage(input: CoverageInput): Coverage {
   }
   spread.sort((a, b) => b.clusters.length - a.clusters.length || a.name.localeCompare(b.name));
 
+  // A file missing from the scoped graph is either genuinely outside a graph
+  // language, or a graph-language file the repo-wide MAX_FILES cap dropped
+  // before scoping ever saw it (graph.ts:capFiles runs over the whole repo).
+  // Only the first is "outside the languages the graph reads"; the second is
+  // just unexamined, and saying otherwise would misstate what the cap did.
   const byExt = new Map<string, number>();
+  let capped = 0;
   for (const f of files)
     if (!inGraph.has(f)) {
-      const e = extensionOf(f);
-      byExt.set(e, (byExt.get(e) ?? 0) + 1);
+      if (isGraphLanguage(f)) capped++;
+      else byExt.set(extensionOf(f), (byExt.get(extensionOf(f)) ?? 0) + 1);
     }
 
   const states = { explained: 0, placed: 0, uncovered: 0 };
   for (const f of files) states[stateOf(f)]++;
+
+  const outsideGraphCount = files.length - graph.files.length - capped;
 
   const record: Coverage = {
     verdict: "",
@@ -208,7 +219,8 @@ export function computeCoverage(input: CoverageInput): Coverage {
     files: {
       total: files.length,
       inGraph: graph.files.length,
-      outsideGraph: files.length - graph.files.length,
+      outsideGraph: outsideGraphCount,
+      capped,
     },
     states,
     clusters,
@@ -216,7 +228,11 @@ export function computeCoverage(input: CoverageInput): Coverage {
     unclustered: files
       .filter((f) => !inGraph.has(f))
       .slice(0, FILES_LISTED)
-      .map((f) => ({ file: f, state: stateOf(f) })),
+      .map((f) => ({
+        file: f,
+        state: stateOf(f),
+        reason: isGraphLanguage(f) ? ("capped" as const) : ("outsideGraph" as const),
+      })),
     links,
     sharedNames: spread.slice(0, SHARED_NAMES_SHOWN),
     sharedNamesTotal: spread.length,
@@ -225,7 +241,7 @@ export function computeCoverage(input: CoverageInput): Coverage {
       .sort((a, b) => b.files - a.files || a.extension.localeCompare(b.extension)),
     owners: owners.sort((a, b) => b.files - a.files || a.node.localeCompare(b.node)),
     unresolved: input.graph.unresolved,
-    truncated: input.graph.truncated,
+    truncated: capped > 0,
   };
   record.verdict = coverageVerdict(record);
   return record;
@@ -241,9 +257,13 @@ function coverageVerdict(c: Coverage): string {
     `${placed} placed on the map only`,
     `${uncovered} not examined`,
   ];
-  const tail =
+  const outside =
     c.files.outsideGraph > 0
       ? ` ${c.files.outsideGraph} of them are outside the languages the code graph reads.`
       : "";
-  return `${parts.join(", ")}.${tail}`;
+  const capped =
+    c.files.capped > 0
+      ? ` ${c.files.capped} of them were skipped by the repo-wide file cap; treat every count as a floor.`
+      : "";
+  return `${parts.join(", ")}.${outside}${capped}`;
 }

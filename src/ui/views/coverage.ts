@@ -237,7 +237,7 @@ function sharedNames(cov: Coverage): HTMLElement | null {
 }
 
 function unread(cov: Coverage): HTMLElement | null {
-  if (!cov.outsideGraph.length && !cov.owners.length) return null;
+  if (!cov.outsideGraph.length && !cov.files.capped && !cov.owners.length) return null;
   return h(
     "div",
     { class: "cov-section" },
@@ -267,7 +267,27 @@ function unread(cov: Coverage): HTMLElement | null {
               ),
           ),
           fileList(
-            cov.unclustered.filter((u) => u.state === "uncovered").map((u) => u.file),
+            cov.unclustered
+              .filter((u) => u.state === "uncovered" && u.reason === "outsideGraph")
+              .map((u) => u.file),
+            "uncovered",
+          ),
+        )
+      : null,
+    cov.files.capped
+      ? h(
+          "div",
+          null,
+          h(
+            "p",
+            { class: "muted" },
+            `${cov.files.capped} files in scope are in a language the graph reads, but the`,
+            " repo-wide file cap was hit before this scope was read, so they were never parsed.",
+          ),
+          fileList(
+            cov.unclustered
+              .filter((u) => u.state === "uncovered" && u.reason === "capped")
+              .map((u) => u.file),
             "uncovered",
           ),
         )
