@@ -114,6 +114,21 @@ export function scopeGraph(g: CodeGraph, glob: string): CodeGraph {
   };
 }
 
+/**
+ * Whether the repo-wide MAX_FILES cap (graph.ts:capFiles, run over the whole
+ * repository before scoping) dropped at least one in-scope, graph-language
+ * file. `graph.truncated` alone can't answer this for a scope: it is a
+ * whole-repo flag from before `scopeGraph` ever filtered anything, so a
+ * fully-parsed small scope inside a truncated repo would read as truncated
+ * too. `allFiles` is the unscoped, uncapped file list at the same commit.
+ */
+export function scopeTruncated(allFiles: string[], graph: CodeGraph, scope: string): boolean {
+  const glob = scopeGlob(scope);
+  const inScope = glob === "**" ? () => true : (f: string) => globToRegExp(glob).test(f);
+  const inGraph = new Set(scopeGraph(graph, glob).files);
+  return allFiles.some((f) => inScope(f) && !inGraph.has(f) && isGraphLanguage(f));
+}
+
 function extensionOf(path: string): string {
   const name = path.split("/").pop() ?? path;
   const dot = name.lastIndexOf(".");
@@ -246,7 +261,7 @@ export function computeCoverage(input: CoverageInput): Coverage {
       .map(([extension, n]) => ({ extension, files: n }))
       .sort((a, b) => b.files - a.files || a.extension.localeCompare(b.extension)),
     owners: owners.sort((a, b) => b.files - a.files || a.node.localeCompare(b.node)),
-    unresolved: input.graph.unresolved,
+    unresolved: files.reduce((n, f) => n + (input.graph.unresolvedByFile?.[f] ?? 0), 0),
     truncated: capped > 0,
   };
   record.verdict = coverageVerdict(record);

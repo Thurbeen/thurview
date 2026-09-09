@@ -39,6 +39,8 @@ export interface CodeGraph {
   edges: Edge[];
   /** references that matched no definition, or several in other files */
   unresolved: number;
+  /** unresolved reference count, by the file the reference appears in - lets a scoped view sum only its own files */
+  unresolvedByFile: Record<string, number>;
   /** the file list was capped at MAX_FILES; the graph is incomplete */
   truncated: boolean;
 }
@@ -237,6 +239,7 @@ export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph
   const edges: Edge[] = [];
   const seenEdges = new Set<string>();
   let unresolved = 0;
+  const unresolvedByFile: Record<string, number> = {};
   for (const { file, defs, refs } of pending) {
     // innermost enclosing definition: the last one that starts at or before the line
     const enclosing = (line: number): Sym => {
@@ -259,6 +262,7 @@ export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph
         (sole && !isNestedNonMethod(sole) ? sole : undefined);
       if (!target) {
         unresolved++;
+        unresolvedByFile[file] = (unresolvedByFile[file] ?? 0) + 1;
         continue;
       }
       const from = enclosing(r.line);
@@ -268,7 +272,7 @@ export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph
       edges.push({ from: from.id, to: target.id, kind: r.kind, at: r.line });
     }
   }
-  return { commit, files, symbols, edges, unresolved, truncated };
+  return { commit, files, symbols, edges, unresolved, unresolvedByFile, truncated };
 }
 
 /** Build the graph, or reuse the one cached under `dir` for that commit. */

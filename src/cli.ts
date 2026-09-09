@@ -41,7 +41,13 @@ import {
   type ThreadTarget,
 } from "./store.js";
 import { compileDocument, compileMap, globToRegExp, type Diagnostic } from "./document/compile.js";
-import { computeCoverage, scopeGlob, scopeGraph, type Coverage } from "./coverage.js";
+import {
+  computeCoverage,
+  scopeGlob,
+  scopeGraph,
+  scopeTruncated,
+  type Coverage,
+} from "./coverage.js";
 import type { CodeGraph } from "./graph.js";
 import type { InterfaceDelta } from "./interfaces.js";
 import { parseTheme, compileTheme, type CompiledTheme } from "./theme.js";
@@ -1316,12 +1322,13 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     if (kindOf(review) === "explainer") {
       const scope = review.binding.name;
       const g0 = scopeGraph(head, scope);
-      const { diff: _diff, truncated, ...rest } = graph.architecture(g0, g0);
+      const allFiles = await g.listFiles(review.worktree, review.pins.head);
+      const { diff: _diff, truncated: _truncated, ...rest } = graph.architecture(g0, g0);
       return {
         commit: short(head.commit),
         scope,
         languages: pins.languages,
-        truncated: truncated.head,
+        truncated: scopeTruncated(allFiles, head, scope),
         ...rest,
         help: [
           "Seed map.yaml nodes from communities, their `files` from a community's files, and edges from edges",
