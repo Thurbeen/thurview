@@ -4,6 +4,7 @@ import type { Coverage } from "../coverage.js";
 import type { FileDiff } from "../diff.js";
 import type { ChangedFile, Commit } from "../git.js";
 import type { SymbolDef } from "../symbols.js";
+import type { Presence } from "../presence.js";
 
 export interface Payload {
   review: ReviewState;
@@ -17,6 +18,8 @@ export interface Payload {
   theme: { name: string; source?: string; css: string } | null;
   threads: Thread[];
   decisions: Decision[];
+  /** whether an agent is listening to this document right now */
+  agent: Presence;
 }
 
 export interface FileLines {

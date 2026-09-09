@@ -53,6 +53,7 @@ import type { InterfaceDelta } from "./interfaces.js";
 import { parseTheme, compileTheme, type CompiledTheme } from "./theme.js";
 import { registerTheme } from "./highlight.js";
 import { replyThread, setThreadStatus, needsAgent } from "./threads.js";
+import { attach } from "./presence.js";
 import { startServer } from "./server/server.js";
 import { parseFlags, helpFor, str, bool, type FlagSpec } from "./flags.js";
 import { VERSION } from "./version.js";
@@ -1140,6 +1141,9 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       ]);
     const deadline = Date.now() + seconds * 1000;
     const id = short(review.id);
+    // While this loop runs the reader is told an agent is listening, and told
+    // the opposite the moment it stops.
+    const listening = attach(review.id);
     const rows = (ts: Thread[]) =>
       ts.map((t) => ({
         id: t.id,
@@ -1147,71 +1151,75 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         target: targetLabel(t.target),
         last: lastMessage(t),
       }));
-    while (Date.now() < deadline) {
-      const r = await readReview(review.id);
-      if (!r)
-        return {
-          wait: { reason: "review-deleted", id },
-          help: ["Stop the loop; the review no longer exists"],
-        };
-      const t = await readThreads(review.id);
-      const last = t.decisions[t.decisions.length - 1];
-      if (r.status === "awaiting-agent-updates") {
-        const need = t.threads.filter(needsAgent);
-        return {
-          wait: {
-            reason: "awaiting-agent-updates",
-            id,
-            status: r.status,
-            decision: last
-              ? `${last.decision}${last.body ? `: ${truncate(last.body, 300)}` : ""}`
-              : "",
-          },
-          count: need.length,
-          threads: rows(need),
-          help: [
-            `Run \`thurview threads get <threadId> --review ${id}\` for the full thread`,
-            `Run \`thurview threads resolve <threadId> --review ${id}\` after addressing each`,
-            `Run \`thurview publish --review ${id}\` when every open comment is resolved`,
-          ],
-        };
+    try {
+      while (Date.now() < deadline) {
+        const r = await readReview(review.id);
+        if (!r)
+          return {
+            wait: { reason: "review-deleted", id },
+            help: ["Stop the loop; the review no longer exists"],
+          };
+        const t = await readThreads(review.id);
+        const last = t.decisions[t.decisions.length - 1];
+        if (r.status === "awaiting-agent-updates") {
+          const need = t.threads.filter(needsAgent);
+          return {
+            wait: {
+              reason: "awaiting-agent-updates",
+              id,
+              status: r.status,
+              decision: last
+                ? `${last.decision}${last.body ? `: ${truncate(last.body, 300)}` : ""}`
+                : "",
+            },
+            count: need.length,
+            threads: rows(need),
+            help: [
+              `Run \`thurview threads get <threadId> --review ${id}\` for the full thread`,
+              `Run \`thurview threads resolve <threadId> --review ${id}\` after addressing each`,
+              `Run \`thurview publish --review ${id}\` when every open comment is resolved`,
+            ],
+          };
+        }
+        if (r.status === "accepted" || r.status === "closed")
+          return {
+            wait: {
+              reason: r.status,
+              id,
+              status: r.status,
+              decision: last
+                ? `${last.decision}${last.body ? `: ${truncate(last.body, 300)}` : ""}`
+                : "",
+            },
+            help: ["The review is complete; report it and stop the loop"],
+          };
+        if (r.dismissed)
+          return {
+            wait: { reason: "review-dismissed", id, status: r.status },
+            help: ["Stop the loop; the reader dismissed the review"],
+          };
+        const asks = t.threads.filter((x) => needsAgent(x) && x.mode === "ask");
+        if (asks.length)
+          return {
+            wait: { reason: "question", id, status: r.status },
+            count: asks.length,
+            threads: rows(asks),
+            help: [
+              `Run \`thurview threads reply <threadId> --review ${id} --body "<answer>"\``,
+              `Run \`thurview wait --review ${id}\` again afterwards`,
+            ],
+          };
+        await new Promise((res) => setTimeout(res, 700));
       }
-      if (r.status === "accepted" || r.status === "closed")
-        return {
-          wait: {
-            reason: r.status,
-            id,
-            status: r.status,
-            decision: last
-              ? `${last.decision}${last.body ? `: ${truncate(last.body, 300)}` : ""}`
-              : "",
-          },
-          help: ["The review is complete; report it and stop the loop"],
-        };
-      if (r.dismissed)
-        return {
-          wait: { reason: "review-dismissed", id, status: r.status },
-          help: ["Stop the loop; the reader dismissed the review"],
-        };
-      const asks = t.threads.filter((x) => needsAgent(x) && x.mode === "ask");
-      if (asks.length)
-        return {
-          wait: { reason: "question", id, status: r.status },
-          count: asks.length,
-          threads: rows(asks),
-          help: [
-            `Run \`thurview threads reply <threadId> --review ${id} --body "<answer>"\``,
-            `Run \`thurview wait --review ${id}\` again afterwards`,
-          ],
-        };
-      await new Promise((res) => setTimeout(res, 700));
+      return {
+        wait: { reason: "timeout", id, status: review.status, seconds },
+        help: [
+          `Run \`thurview wait --review ${id}\` again, or report that the reader has not responded`,
+        ],
+      };
+    } finally {
+      await listening.stop();
     }
-    return {
-      wait: { reason: "timeout", id, status: review.status, seconds },
-      help: [
-        `Run \`thurview wait --review ${id}\` again, or report that the reader has not responded`,
-      ],
-    };
   },
 
   async graph(args) {

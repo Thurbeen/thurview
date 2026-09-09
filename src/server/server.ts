@@ -30,6 +30,7 @@ import {
   submitReview,
   deleteThread,
 } from "../threads.js";
+import { presenceOf } from "../presence.js";
 
 const UI_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "ui");
 
@@ -207,6 +208,7 @@ export async function startServer(
         ...data,
         threads: threads.threads,
         decisions: threads.decisions,
+        agent: await presenceOf(id),
       };
     }
 

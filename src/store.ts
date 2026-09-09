@@ -68,6 +68,12 @@ export interface Thread {
   kind: "question" | "comment";
   /** ask: delivered to the agent at once. review: held until the reviewer submits. */
   mode: "ask" | "review";
+  /**
+   * `open` means someone still owes something here. A message from the reviewer
+   * forces it back to `open`, because `needsAgent` - the queue `wait` and
+   * `threads list --open` read - is false for a resolved thread, and a reply
+   * nobody is assigned to reaches nobody. See references/lifecycle.md.
+   */
   status: "open" | "resolved";
   submitted: boolean;
   target: ThreadTarget;
@@ -107,6 +113,16 @@ export function revisionDir(id: string, n: number): string {
 
 export function serverStateFile(): string {
   return join(home(), "server.json");
+}
+
+/**
+ * Heartbeat of an agent draining this review's threads. It lives outside
+ * `reviewDir` on purpose: the server watches that directory to push changes to
+ * the browser, and a file rewritten every few seconds would reload the page
+ * under the reader's hands.
+ */
+export function agentFile(id: string): string {
+  return join(home(), "agents", `${id}.json`);
 }
 
 export function now(): string {
@@ -164,6 +180,7 @@ export async function listReviews(): Promise<ReviewState[]> {
 
 export async function deleteReview(id: string): Promise<void> {
   await rm(reviewDir(id), { recursive: true, force: true });
+  await rm(agentFile(id), { force: true });
 }
 
 export async function readThreads(id: string): Promise<ThreadsFile> {

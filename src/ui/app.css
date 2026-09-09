@@ -539,6 +539,24 @@ kbd {
 .thread-pin.resolved {
   opacity: 0.55;
 }
+/* Where the reader's last message stands. `queued` is the one that matters:
+   nobody is listening, and the page says so instead of implying delivery. */
+.receipt {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  margin: 4px 0 2px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+.receipt.listening {
+  color: var(--ok);
+  border-left-color: var(--ok);
+}
+.receipt.queued {
+  color: var(--warn);
+  border-left-color: var(--warn);
+}
 .comment-popover {
   border-radius: var(--radius);
   position: absolute;

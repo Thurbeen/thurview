@@ -9,6 +9,7 @@ import {
   type ThreadTarget,
   type ThreadsFile,
 } from "./store.js";
+export { needsAgent } from "./thread-state.js";
 
 export async function createThread(
   reviewId: string,
@@ -51,7 +52,14 @@ export async function replyThread(
   if (!thread) throw new Error(`thread ${threadId} not found`);
   thread.messages.push({ role, body, at: now() });
   thread.updatedAt = now();
-  if (role === "reviewer" && thread.mode === "ask") thread.submitted = true;
+  // A message from the reader is a message that wants an answer. Leaving the
+  // thread resolved would drop it: `needsAgent` is false there, so `wait` never
+  // reports it and `threads list --open` never shows it. The reader would be
+  // writing to nobody, with a Reply button that says otherwise.
+  if (role === "reviewer") {
+    thread.status = "open";
+    if (thread.mode === "ask") thread.submitted = true;
+  }
   await writeThreads(reviewId, t);
   return thread;
 }
@@ -101,13 +109,6 @@ export async function submitReview(
         : "awaiting-agent-updates";
   await writeReview(review);
   return t;
-}
-
-/** Threads the agent must act on: open, submitted, and the last message is from the reviewer. */
-export function needsAgent(th: Thread): boolean {
-  if (th.status !== "open" || !th.submitted) return false;
-  const last = th.messages[th.messages.length - 1];
-  return !!last && last.role === "reviewer";
 }
 
 export function threadSummary(th: Thread) {

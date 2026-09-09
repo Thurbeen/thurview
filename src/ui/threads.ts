@@ -2,38 +2,54 @@ import { api } from "./api.js";
 import { h, closePopover, dialog, timeAgo } from "./dom.js";
 import { state, emit, describeTarget, navigate, readOnly, kind } from "./state.js";
 import type { Thread, ThreadTarget } from "../store.js";
+import type { Presence } from "../presence.js";
+import { deliveryOf, type Delivery } from "../thread-state.js";
 
 export async function reload(): Promise<void> {
   state.data = await api.review(state.id, state.viewingRevision ?? undefined);
   emit("threads");
 }
 
+// Spelled out rather than imported from presence.js, which reads the store and
+// belongs to the server side of the bundle.
+const NOBODY: Presence = { attached: false, lastSeen: null };
+
+function agent(): Presence {
+  return state.data?.agent ?? NOBODY;
+}
+
+/**
+ * What each thread state means to the reader, in the reader's terms. Silence is
+ * the failure this wording exists to prevent: a question nobody is listening to
+ * says so, before it is asked and after it is sent.
+ */
+const RECEIPT: Record<Delivery, string> = {
+  held: "Held. It reaches the agent when you submit.",
+  queued:
+    "Queued. Nobody is listening right now — it is delivered the next time an agent checks this document.",
+  listening: "Delivered. An agent is listening and answers here.",
+  answered: "The agent answered. Reply, or resolve it.",
+  closed: "Resolved. Writing here reopens it.",
+};
+
+/** The one line that says whether asking now would reach anybody. */
+function listeningLine(): string {
+  return agent().attached
+    ? "An agent is listening to this document now."
+    : "No agent is listening right now. Anything you send is queued until one checks in.";
+}
+
 /** Popover to start a thread on a target. */
 export function commentPopover(target: ThreadTarget, quote?: string): HTMLElement {
   const ta = h("textarea", { placeholder: "Comment, or a question for the agent…" });
-  let mode: "review" | "ask" = "review";
-  const modeBtns = h("div", { class: "row" });
-  const b1 = h("button", { class: "small primary", onclick: () => set("review") }, "Add to review");
-  const b2 = h("button", { class: "small", onclick: () => set("ask") }, "Ask now");
-  const set = (m: "review" | "ask") => {
-    mode = m;
-    b1.className = `small ${m === "review" ? "primary" : ""}`;
-    b2.className = `small ${m === "ask" ? "primary" : ""}`;
-    hint.textContent =
-      m === "review"
-        ? "Held until you submit the review."
-        : "Sent to the agent at once; it answers in this thread.";
-  };
-  const hint = h(
-    "span",
-    { class: "muted", style: { fontSize: "12px" } },
-    "Held until you submit the review.",
-  );
-  modeBtns.append(b1, b2, hint);
-  const submit = async () => {
+  const held = kind() === "explainer" ? "Add to my notes" : "Add to the review";
+  // One click, one consequence. The old control asked the reader to set a mode
+  // and then press "Save", and a question saved in the wrong mode reached
+  // nobody; each button here both chooses and commits, and says which it is.
+  const submit = async (mode: "ask" | "review") => {
     const body = ta.value.trim();
     if (!body) return;
-    await api.createThread(state.id, {
+    const th = await api.createThread(state.id, {
       kind: mode === "ask" ? "question" : "comment",
       mode,
       target: quote ? ({ ...target, quote } as ThreadTarget) : target,
@@ -41,9 +57,12 @@ export function commentPopover(target: ThreadTarget, quote?: string): HTMLElemen
     });
     closePopover();
     await reload();
+    // The receipt: the thread panel opens on what was just written, and its
+    // card carries the delivery line for the state the server actually recorded.
+    focusThread(th.id);
   };
   ta.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void submit();
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void submit("ask");
   });
   const el = h(
     "div",
@@ -55,12 +74,28 @@ export function commentPopover(target: ThreadTarget, quote?: string): HTMLElemen
       describeTarget(target),
     ),
     ta,
-    modeBtns,
     h(
       "div",
-      { class: "row", style: { justifyContent: "flex-end" } },
+      { class: "row" },
+      h(
+        "button",
+        { class: "small ok", onclick: () => void submit("ask") },
+        "Send to the agent ",
+        h("kbd", null, "⌘↵"),
+      ),
+      h("button", { class: "small", onclick: () => void submit("review") }, held),
+      h("span", { style: { flex: "1" } }),
       h("button", { class: "small ghost", onclick: () => closePopover() }, "Cancel"),
-      h("button", { class: "small ok", onclick: submit }, "Save ", h("kbd", null, "⌘↵")),
+    ),
+    h(
+      "div",
+      { class: "muted", style: { fontSize: "12px", marginTop: "6px" } },
+      h("div", null, `Send to the agent — ${listeningLine()}`),
+      h(
+        "div",
+        null,
+        `${held} — held until you ${kind() === "explainer" ? "send the document back or finish" : "submit the review"}.`,
+      ),
     ),
   );
   setTimeout(() => ta.focus());
@@ -164,6 +199,17 @@ export function renderThreadsPanel(container: HTMLElement): void {
   const body = h("div", { class: "side-body" });
   const draw = () => {
     body.innerHTML = "";
+    // Who, if anyone, is on the other end. Stated once here so the reader knows
+    // before they write, not only after they have waited. A finished review or
+    // an older revision takes no new writing, so it says nothing.
+    if (!readOnly())
+      body.appendChild(
+        h(
+          "div",
+          { class: `receipt ${agent().attached ? "listening" : "queued"}` },
+          listeningLine(),
+        ),
+      );
     if (pending.length && !readOnly()) {
       body.appendChild(
         h(
@@ -198,6 +244,7 @@ export function renderThreadsPanel(container: HTMLElement): void {
 }
 
 function threadCard(t: Thread): HTMLElement {
+  const delivery = deliveryOf(t, agent());
   const ta = h("textarea", { placeholder: "Reply…", rows: 2 });
   const send = async () => {
     const v = ta.value.trim();
@@ -224,6 +271,7 @@ function threadCard(t: Thread): HTMLElement {
       h("span", { class: "target", onclick: () => goToTarget(t) }, describeTarget(t.target)),
       h("span", { class: `badge ${t.status === "resolved" ? "ok" : ""}` }, t.status),
     ),
+    h("div", { class: `receipt ${delivery}` }, RECEIPT[delivery]),
     quote
       ? h("div", { class: "quote" }, `“${quote.length > 160 ? quote.slice(0, 160) + "…" : quote}”`)
       : null,
@@ -263,12 +311,19 @@ function threadCard(t: Thread): HTMLElement {
                   "button",
                   {
                     class: "small",
+                    // An unanswered question is not resolved, it is abandoned.
+                    // Saying so is what stops a reader closing their own
+                    // question and then waiting for an answer to it.
+                    title:
+                      delivery === "answered"
+                        ? "Nothing more is owed here"
+                        : "Stop waiting for an answer; no agent will pick this up",
                     onclick: async () => {
                       await api.resolve(state.id, t.id);
                       await reload();
                     },
                   },
-                  "Resolve",
+                  delivery === "answered" || delivery === "held" ? "Resolve" : "Withdraw",
                 )
               : h(
                   "button",
