@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { mkdtemp, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildGraph, impact, architecture, capFiles } from "../src/graph.ts";
+import { buildGraph, graphAt, impact, architecture, capFiles, GRAPH_SCHEMA } from "../src/graph.ts";
 import { lineChanges } from "../src/git.ts";
 
 const execFileP = promisify(execFile);
@@ -23,6 +23,40 @@ async function repo() {
   await mkdir(join(dir, "src"));
   return { dir, git };
 }
+
+describe("graphAt", () => {
+  it("rebuilds a graph cached by an older binary instead of trusting its shape", async () => {
+    const { dir, git } = await repo();
+    await writeFile(
+      join(dir, "src", "a.ts"),
+      `export function run() {\n  return fetch("/x");\n}\n`,
+    );
+    await git("add", ".");
+    await git("commit", "-q", "-m", "base");
+    const commit = (await git("rev-parse", "HEAD")).stdout.trim();
+    // what a pre-upgrade thurview left on disk: right commit, missing fields
+    const cache = join(dir, ".cache", "graph", `${commit}.json`);
+    await mkdir(join(dir, ".cache", "graph"), { recursive: true });
+    await writeFile(
+      cache,
+      JSON.stringify({
+        commit,
+        files: [],
+        symbols: [],
+        edges: [],
+        unresolved: 0,
+        truncated: false,
+      }),
+    );
+    const g = await graphAt(dir, commit, join(dir, ".cache"));
+    // trusting the stale record would report zero unresolved references, which is
+    // a wrong number rather than an error
+    expect(g.schema).toBe(GRAPH_SCHEMA);
+    expect(g.unresolvedByFile).toEqual({ "src/a.ts": 1 });
+    const again = await graphAt(dir, commit, join(dir, ".cache"));
+    expect(again.unresolvedByFile).toEqual({ "src/a.ts": 1 });
+  });
+});
 
 describe("buildGraph", () => {
   it("counts a call to an undefined name as unresolved instead of dropping it", async () => {

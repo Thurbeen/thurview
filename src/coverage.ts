@@ -261,7 +261,7 @@ export function computeCoverage(input: CoverageInput): Coverage {
       .map(([extension, n]) => ({ extension, files: n }))
       .sort((a, b) => b.files - a.files || a.extension.localeCompare(b.extension)),
     owners: owners.sort((a, b) => b.files - a.files || a.node.localeCompare(b.node)),
-    unresolved: files.reduce((n, f) => n + (input.graph.unresolvedByFile?.[f] ?? 0), 0),
+    unresolved: files.reduce((n, f) => n + (input.graph.unresolvedByFile[f] ?? 0), 0),
     truncated: capped > 0,
   };
   record.verdict = coverageVerdict(record);

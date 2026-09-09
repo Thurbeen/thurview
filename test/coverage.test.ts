@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { computeCoverage, scopeTruncated } from "../src/coverage.ts";
-import type { CodeGraph } from "../src/graph.ts";
+import { GRAPH_SCHEMA, type CodeGraph } from "../src/graph.ts";
 
 function graph(overrides: Partial<CodeGraph> = {}): CodeGraph {
   return {
+    schema: GRAPH_SCHEMA,
     commit: "deadbeef",
     files: [],
     symbols: [],
