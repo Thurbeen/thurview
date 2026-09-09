@@ -347,6 +347,18 @@ function renderBanner(): void {
   }
 }
 
+function pollPresence(): void {
+  setInterval(async () => {
+    const cur = state.data;
+    if (!cur) return;
+    const agent = await api.presence(state.id).catch(() => cur.agent);
+    if (agent.attached !== cur.agent.attached) {
+      state.data = { ...cur, agent };
+      emit("threads");
+    }
+  }, 5000);
+}
+
 function connectEvents(): void {
   const es = new EventSource(`/api/reviews/${state.id}/events`);
   es.onmessage = async (ev) => {
@@ -419,6 +431,7 @@ async function reviewPage(id: string): Promise<void> {
   window.matchMedia(NARROW).addEventListener("change", () => emit("view"));
   emit("data");
   connectEvents();
+  pollPresence();
 }
 
 const m = /^\/review\/([^/]+)/.exec(location.pathname);

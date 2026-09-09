@@ -215,6 +215,7 @@ export async function startServer(
     if (sub === "events") {
       throw new HttpError(500, "handled elsewhere");
     }
+    if (sub === "presence") return (await presenceOf(id)) as unknown as Json;
     if (sub === "revisions") {
       const out = [];
       for (let n = 1; n <= review.revision; n++)

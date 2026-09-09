@@ -54,6 +54,7 @@ export const api = {
   revisions: (id: string) =>
     j<{ revision: number; at: string; title: string }[]>(`/api/reviews/${id}/revisions`),
   commits: (id: string) => j<Commit[]>(`/api/reviews/${id}/commits`),
+  presence: (id: string) => j<Presence>(`/api/reviews/${id}/presence`),
   diff: (id: string, path: string) =>
     j<FileDiff>(`/api/reviews/${id}/diff?path=${encodeURIComponent(path)}`),
   file: (id: string, path: string, graph: "head" | "base", from?: number, to?: number) =>

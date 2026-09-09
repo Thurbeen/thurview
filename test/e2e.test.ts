@@ -805,5 +805,25 @@ check
       const after = await api<{ agent: { attached: boolean } }>(`/api/reviews/${qid}`);
       expect(after.agent.attached).toBe(false);
     }, 20_000);
+
+    // An open tab polls this endpoint instead of relying on the reviewDir SSE
+    // watch, which the heartbeat deliberately never fires. It must answer with
+    // the live fact, not a value cached from the last full payload fetch.
+    it("answers a standalone presence check without a full payload fetch", async () => {
+      const idle = await api<{ attached: boolean; lastSeen: string | null }>(
+        `/api/reviews/${qid}/presence`,
+      );
+      expect(idle).toEqual({ attached: false, lastSeen: null });
+      const waiting = cli(["wait", "--review", qid, "--timeout", "4"]);
+      let seen = { attached: false };
+      for (let i = 0; i < 40 && !seen.attached; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        seen = await api<{ attached: boolean }>(`/api/reviews/${qid}/presence`);
+      }
+      expect(seen.attached).toBe(true);
+      await waiting;
+      const after = await api<{ attached: boolean }>(`/api/reviews/${qid}/presence`);
+      expect(after.attached).toBe(false);
+    }, 20_000);
   });
 });
