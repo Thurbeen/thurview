@@ -1,6 +1,6 @@
 ---
 name: thurview
-description: Author and publish a thurview document - a guided, evidence-anchored explanation the reader opens in the browser, annotates, asks questions about, and approves or sends back. Two kinds: a review of a branch, pull request or commit range, and a code explainer of a whole codebase or one subsystem at a pinned commit. Use when the user asks to review a branch or PR, to explain or walk through a change, "review my branch against main", to explain how a codebase or subsystem works or where its design problems might be, or invokes /thurview. Not for a pass/fail bug hunt.
+description: Author and publish a thurview document - a guided, evidence-anchored explanation the reader opens in the browser, annotates, asks questions about, and approves or sends back. Two kinds — a review of a branch, pull request or commit range, and a code explainer of a whole codebase or one subsystem at a pinned commit. Use when the user asks to review a branch or PR, to explain or walk through a change, "review my branch against main", to explain how a codebase or subsystem works or where its design problems might be, or invokes /thurview. Not for a pass/fail bug hunt.
 user-invocable: true
 argument-hint: "[<pr-number|pr-url> | --base <ref> --head <ref> | explain [<path>]]"
 ---
