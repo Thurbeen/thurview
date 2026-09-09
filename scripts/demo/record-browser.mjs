@@ -190,7 +190,8 @@ await type(
 await sleep(500);
 await sleep(400);
 await shot("files");
-await click(".comment-popover button.ok");
+// `.ok` is now "Send to the agent"; this comment is meant to be held for the review.
+await clickByText(".comment-popover button", "Add to the review");
 await sleep(1600);
 
 // 3. Map: what the change added.

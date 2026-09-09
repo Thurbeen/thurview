@@ -30,6 +30,7 @@ import {
   submitReview,
   deleteThread,
 } from "../threads.js";
+import { presenceOf } from "../presence.js";
 
 const UI_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "ui");
 
@@ -207,12 +208,14 @@ export async function startServer(
         ...data,
         threads: threads.threads,
         decisions: threads.decisions,
+        agent: await presenceOf(id),
       };
     }
 
     if (sub === "events") {
       throw new HttpError(500, "handled elsewhere");
     }
+    if (sub === "presence") return (await presenceOf(id)) as unknown as Json;
     if (sub === "revisions") {
       const out = [];
       for (let n = 1; n <= review.revision; n++)

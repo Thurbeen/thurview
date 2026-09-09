@@ -249,7 +249,9 @@ Tell the user, in a few lines and nothing more:
 - which theme source you used: the user's request, the project's design
   system (name the files), or the default skin
 - when the review has no map, why not, in one clause
-- that you are now waiting for their questions and their decision
+- that you are now waiting for their questions and their decision, and that
+  a question asked after you stop waiting is queued rather than lost - the
+  page tells them which of the two it is
 
 The page explains its own controls; do not describe them.
 
@@ -265,9 +267,16 @@ nothing: keep `--timeout` under that limit and run `wait` again on `timeout`.
 When the tool can run a command in the background and wake you when it exits,
 run `wait` that way, so the user has the terminal back while they read.
 
+While `wait` runs the reader's page says an agent is listening, and says the
+opposite within seconds of it returning. Do not loop it to look present: a
+question asked with nobody waiting is queued, not lost, and `thurview`
+reports it as `needsAgent` the next time you run any command in the
+worktree.
+
 `wait.reason` says what happened, with the threads that need you:
 
-- `question`: an "Ask now" thread. Answer each thread in `threads` with
+- `question`: a thread the reader sent to you. Answer each thread in
+  `threads` with
   `thurview threads reply <threadId> --review <id> --body "<answer>"`. Do
   not change the document for a question. Wait again.
 - `awaiting-agent-updates`: the reader submitted with "Request changes".

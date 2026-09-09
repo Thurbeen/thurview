@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { execFile, spawn } from "node:child_process";
 import { decode } from "@toon-format/toon";
 import { promisify } from "node:util";
@@ -738,5 +738,92 @@ check
     expect(Object.keys(h["flags"])).toEqual(
       expect.arrayContaining(["--review <value>", "--body <value>"]),
     );
+  });
+
+  describe("a question the reader asks reaches an agent", () => {
+    let qid = "";
+    beforeEach(async () => {
+      qid = (await cli(["scaffold"]))["review"].uuid as string;
+    });
+    afterEach(async () => {
+      if (qid) await cli(["delete", "--review", qid]);
+    });
+
+    const ask = (body: string) =>
+      post(`/api/reviews/${qid}/threads`, {
+        kind: "question",
+        mode: "ask",
+        target: { type: "document", blockId: "b1" },
+        body,
+      }) as Promise<{ id: string }>;
+
+    it("leaves a submitted Ask-now question open and needing the agent", async () => {
+      const th = await ask("How is the memory ceiling defined?");
+      const got = await cli(["threads", "get", th.id, "--review", qid]);
+      expect(got["thread"].status).toBe("open");
+      expect(got["thread"].needsAgent).toBe(true);
+      const open = await cli(["threads", "list", "--review", qid, "--open"]);
+      expect(open["threads"].map((t: Out) => t["id"])).toContain(th.id);
+    });
+
+    // The reader's own evidence: they resolved the thread, then wrote again.
+    // A message nobody is assigned to is a message that reaches nobody.
+    it("reopens a resolved thread when the reader writes in it again", async () => {
+      const th = await ask("How is the memory ceiling defined?");
+      await post(`/api/reviews/${qid}/threads/${th.id}/resolve`, {});
+      await post(`/api/reviews/${qid}/threads/${th.id}/reply`, { body: "Hey" });
+      const got = await cli(["threads", "get", th.id, "--review", qid]);
+      expect(got["messages"].map((m: Out) => m["role"])).toEqual(["reviewer", "reviewer"]);
+      expect(got["thread"].status).toBe("open");
+      expect(got["thread"].needsAgent).toBe(true);
+      const open = await cli(["threads", "list", "--review", qid, "--open"]);
+      expect(open["threads"].map((t: Out) => t["id"])).toContain(th.id);
+    });
+
+    it("keeps an answered question resolvable by the reader", async () => {
+      const th = await ask("How is the memory ceiling defined?");
+      await cli(["threads", "reply", th.id, "--review", qid, "--body", "It is a heap cap."]);
+      await post(`/api/reviews/${qid}/threads/${th.id}/resolve`, {});
+      const got = await cli(["threads", "get", th.id, "--review", qid]);
+      expect(got["thread"].status).toBe("resolved");
+      expect(got["thread"].needsAgent).toBe(false);
+    });
+
+    it("reports whether an agent is listening, and never claims one that is not", async () => {
+      const idle = await api<{ agent: { attached: boolean; lastSeen: string | null } }>(
+        `/api/reviews/${qid}`,
+      );
+      expect(idle.agent).toEqual({ attached: false, lastSeen: null });
+      const waiting = cli(["wait", "--review", qid, "--timeout", "4"]);
+      let seen = { attached: false };
+      for (let i = 0; i < 40 && !seen.attached; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        seen = (await api<{ agent: { attached: boolean } }>(`/api/reviews/${qid}`)).agent;
+      }
+      expect(seen.attached).toBe(true);
+      expect((await waiting)["wait"].reason).toBe("timeout");
+      const after = await api<{ agent: { attached: boolean } }>(`/api/reviews/${qid}`);
+      expect(after.agent.attached).toBe(false);
+    }, 20_000);
+
+    // An open tab polls this endpoint instead of relying on the reviewDir SSE
+    // watch, which the heartbeat deliberately never fires. It must answer with
+    // the live fact, not a value cached from the last full payload fetch.
+    it("answers a standalone presence check without a full payload fetch", async () => {
+      const idle = await api<{ attached: boolean; lastSeen: string | null }>(
+        `/api/reviews/${qid}/presence`,
+      );
+      expect(idle).toEqual({ attached: false, lastSeen: null });
+      const waiting = cli(["wait", "--review", qid, "--timeout", "4"]);
+      let seen = { attached: false };
+      for (let i = 0; i < 40 && !seen.attached; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        seen = await api<{ attached: boolean }>(`/api/reviews/${qid}/presence`);
+      }
+      expect(seen.attached).toBe(true);
+      await waiting;
+      const after = await api<{ attached: boolean }>(`/api/reviews/${qid}/presence`);
+      expect(after.attached).toBe(false);
+    }, 20_000);
   });
 });

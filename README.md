@@ -147,10 +147,13 @@ and open it.
   than something the reader has to infer.
 - **Map**: systems, containers, components and code, with what the change
   added, removed or touched, linked to files and code.
-- **Threads**: _Ask now_ sends a question to the agent immediately and the
-  answer lands in the same thread. _Add to review_ holds a comment until you
-  submit with _Approve_ or _Request changes_. _Close_ ends the review
-  without approving it.
+- **Threads**: _Send to the agent_ delivers a question at once and the answer
+  lands in the same thread. _Add to the review_ holds a comment until you
+  submit with _Approve_ or _Request changes_. _Close_ ends the review without
+  approving it. Each thread says where it stands - held, queued, delivered or
+  answered - and the panel says whether an agent is listening at all. Nothing
+  claims a reader is there when none is: a question asked with no agent
+  attached is queued, not lost, and reaches the agent the next time it checks.
 - **Revisions**: every publish is sealed; switch back to earlier ones.
 - **Theme**: the agent reads the project's design tokens and fonts and
   publishes them with the review, so each review looks like the code it
