@@ -33,6 +33,9 @@ jobs:
             code:
               - 'src/**'
               - 'test/**'
+              # The suite parses every SKILL.md frontmatter, so a skill-only
+              # edit must still run it.
+              - 'skills/**/SKILL.md'
               - 'bin/**'
               - 'scripts/build-ui.mjs'
               - 'scripts/browser-check.mjs'
