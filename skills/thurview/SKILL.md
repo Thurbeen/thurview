@@ -19,6 +19,10 @@ request asks for.
   states what it did not examine. Read
   [Code explainer](references/code-explainer.md) and follow that instead.
 
+Posting a review back to a forge - inline comments on a pull or merge request,
+a verdict, a re-review that answers the previous one - is the `forge-review`
+skill, not this one. This skill's document is read in the browser.
+
 The agent studies the change and writes a short document in which every claim
 about code is anchored to an exact file and line range at a pinned commit.
 thurview validates those anchors, seals a revision, and serves it in the
@@ -86,7 +90,7 @@ request:
 
 ```sh
 thurview scaffold                          # current branch vs its trunk fork point
-thurview scaffold --pr 123                 # pull request (needs gh)
+thurview scaffold --pr 123                 # pull or merge request (needs gh or glab)
 thurview scaffold --base <ref> --head <ref>
 ```
 

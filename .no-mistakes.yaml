@@ -35,7 +35,11 @@ document:
   instructions: |
     Each class of fact has exactly one owner document. README.md owns the
     introduction, install, the reader-facing feature list and the CLI table.
-    skills/thurview/SKILL.md owns the agent workflow, and its references own
+    skills/thurview/SKILL.md owns the agent workflow for authoring a document,
+    skills/forge-review/SKILL.md the workflow for reviewing a change request
+    and posting it back, with references/forges.md owning the two forges'
+    differences and references/security-surfaces.md the per-surface checklist;
+    and the thurview references own
     the contracts: references/document-authoring.md the document rules,
     references/components.md every data.yaml shape and fenced component,
     references/lifecycle.md statuses, storage and threads,
@@ -50,6 +54,19 @@ document:
 
 review:
   path_instructions:
+    - path: "src/forge/**"
+      instructions: |
+        The seam between what a review needs and which forge answers it. One
+        interface in types.ts, one adapter per forge, and nothing above the
+        seam may name a forge. The vocabulary is CHANGE REQUEST, never pull
+        request or merge request, except in prose that is genuinely about one
+        forge. A check whose state could not be read is `unknown` and never
+        `passed`, and every forge state is mapped in one table per adapter so
+        an unmapped one is visible rather than silently benign. There is no
+        merge, close or push method and adding one is a design change, not a
+        feature. An adapter is proved by test/forge.test.ts driving it with a
+        fake CLI on PATH; an adapter with no test is an adapter that does not
+        work.
     - path: "src/**"
       instructions: |
         The CLI is an AXI: every command prints TOON on stdout through

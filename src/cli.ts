@@ -8,7 +8,7 @@ import {
 import { encode } from "@toon-format/toon";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { cp, mkdir, symlink, lstat, rm } from "node:fs/promises";
+import { cp, mkdir, symlink, lstat, rm, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname, resolve } from "node:path";
@@ -55,7 +55,16 @@ import { registerTheme } from "./highlight.js";
 import { replyThread, setThreadStatus, needsAgent } from "./threads.js";
 import { attach } from "./presence.js";
 import { startServer } from "./server/server.js";
-import { parseFlags, helpFor, str, bool, type FlagSpec } from "./flags.js";
+import { parseFlags, helpFor, str, bool, type FlagSpec, type Parsed } from "./flags.js";
+import {
+  forgeFor,
+  repoOf,
+  summariseCi,
+  type ChangeRequest,
+  type Forge,
+  type RepoId,
+} from "./forge/index.js";
+import { parseSubmission, longComments } from "./forge/submission.js";
 import { VERSION } from "./version.js";
 
 const execFileP = promisify(execFile);
@@ -85,9 +94,27 @@ function targetLabel(t: ThreadTarget): string {
   if (t.type === "map") return `map ${t.node}`;
   return "review";
 }
+/** `PR #12` or `MR !12`, because the forge's own word is what the reader knows. */
+function bindingLabel(b: Binding): string {
+  if (b.kind !== "pr") return b.name;
+  return b.forge === "gitlab" ? `MR !${b.name}` : `PR #${b.name}`;
+}
 function lastMessage(t: Thread): string {
   const m = t.messages[t.messages.length - 1];
   return m ? `${m.role}: ${truncate(m.body.replace(/\s+/g, " "), 120)}` : "";
+}
+
+function skillsRoot(): string {
+  return resolve(HERE, "..", "skills");
+}
+
+/** Every skill this package ships, so a new one installs without a code change. */
+async function bundledSkills(): Promise<string[]> {
+  const entries = await readdir(skillsRoot(), { withFileTypes: true });
+  return entries
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
 }
 
 async function worktreeOf(cwd: string): Promise<string | null> {
@@ -128,6 +155,45 @@ async function resolveReview(idOpt: string | undefined): Promise<ReviewState> {
   ]);
 }
 
+interface ForgeCtx {
+  forge: Forge;
+  repo: RepoId;
+  cr: ChangeRequest;
+  review: ReviewState | null;
+}
+
+/**
+ * Which change request, on which forge, read once. `--change` names it
+ * outright; otherwise the active review's binding does, which is what keeps a
+ * pass anchored to the commits the document was written against.
+ */
+async function forgeContext(p: Parsed): Promise<ForgeCtx> {
+  const explicit = str(p, "change");
+  const review = !explicit || str(p, "review") ? await resolveReview(str(p, "review")) : null;
+  let ref = explicit;
+  if (!ref) {
+    if (review!.binding.kind !== "pr")
+      throw new AxiError(
+        `review ${short(review!.id)} is bound to ${review!.binding.name}, not to a change request`,
+        "VALIDATION_ERROR",
+        [
+          "Pass --change <number|url>",
+          `Or re-pin it: \`thurview scaffold --pr <ref> --update --review ${short(review!.id)}\``,
+        ],
+      );
+    ref = review!.binding.name;
+  }
+  const repoFlag = str(p, "repo");
+  const worktree = review?.worktree ?? (await worktreeOf(process.cwd()));
+  if (!worktree && !repoFlag)
+    throw new AxiError("not inside a git repository", "VALIDATION_ERROR", [
+      "Run inside the source worktree, or pass --repo host/path",
+    ]);
+  const repo = await repoOf(worktree ?? process.cwd(), repoFlag);
+  const forge = await forgeFor(repo.host, str(p, "forge"));
+  return { forge, repo, cr: await forge.get(repo, ref), review };
+}
+
 async function reviewRow(r: ReviewState, fields: Set<string>): Promise<Out> {
   const t = await readThreads(r.id);
   const row: Out = {
@@ -139,8 +205,7 @@ async function reviewRow(r: ReviewState, fields: Set<string>): Promise<Out> {
     open: t.threads.filter((x) => x.status === "open").length,
     needsAgent: t.threads.filter(needsAgent).length,
   };
-  if (fields.has("all") || fields.has("binding"))
-    row["binding"] = r.binding.kind === "pr" ? `PR #${r.binding.name}` : r.binding.name;
+  if (fields.has("all") || fields.has("binding")) row["binding"] = bindingLabel(r.binding);
   if (fields.has("all") || fields.has("pins"))
     row["pins"] =
       kindOf(r) === "explainer"
@@ -319,13 +384,21 @@ const SPECS: Record<
   scaffold: {
     description: "Create a review pinned to exact base and head commits, or re-pin one",
     flags: {
-      pr: { kind: "string", help: "review a GitHub pull request (number or URL, needs gh)" },
+      pr: {
+        kind: "string",
+        help: "review a pull or merge request (number or URL, needs gh or glab)",
+      },
       base: { kind: "string", help: "base revision (default: trunk fork point)" },
       head: { kind: "string", help: "head revision (default: current branch)" },
       title: { kind: "string", help: "initial title" },
       new: { kind: "boolean", help: "create another review even if one matches the binding" },
       update: { kind: "boolean", help: "re-pin an existing review from its binding" },
       review: { kind: "string", help: "review to update (id prefix)" },
+      forge: {
+        kind: "string",
+        help: "github or gitlab, when the host is not one of the two known ones",
+      },
+      repo: { kind: "string", help: "host/path, when `origin` is not the repository to post to" },
     },
     examples: [
       "thurview scaffold",
@@ -446,6 +519,38 @@ const SPECS: Record<
       "thurview graph architecture",
     ],
   },
+  forge: {
+    description: "Read a pull or merge request through its forge, and post the review back to it",
+    args: 'status|prior|submit --file <path>|reply <threadId> --body "<text>"',
+    flags: {
+      review: { kind: "string", help: "review id prefix; its binding names the change request" },
+      change: { kind: "string", help: "change request number or URL, instead of a review binding" },
+      forge: {
+        kind: "string",
+        help: "github or gitlab, when the host is not one of the two known ones",
+      },
+      repo: { kind: "string", help: "host/path, when `origin` is not the repository to post to" },
+      file: { kind: "string", help: "submit: the JSON submission to post" },
+      body: { kind: "string", help: "reply: the answer text" },
+      resolve: { kind: "boolean", help: "reply: resolve the thread as well as answering it" },
+      at: { kind: "string", help: "reply --resolve: the commit the point was verified at" },
+      confirm: { kind: "boolean", help: "submit: required to post an approve" },
+      "dry-run": { kind: "boolean", help: "submit: validate and report, post nothing" },
+      "max-lines": {
+        kind: "string",
+        help: "submit: warn above this many lines per comment",
+        default: "5",
+      },
+      mine: { kind: "boolean", help: "prior: only threads this account wrote" },
+      full: { kind: "boolean", help: "prior, status: do not truncate or filter" },
+    },
+    examples: [
+      "thurview forge status --change 123",
+      "thurview forge prior --change 123 --mine",
+      "thurview forge submit --file pass.json --dry-run",
+      'thurview forge reply <threadId> --body "<answer>" --resolve --at <sha>',
+    ],
+  },
   delete: {
     description: "Delete a review and everything stored for it (the code is untouched)",
     flags: { review: { kind: "string", help: "review id prefix (required)" } },
@@ -534,48 +639,24 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const pr = str(p, "pr");
     if (pr || b?.kind === "pr") {
       const ref = pr ?? b!.name;
-      let info: {
-        number: number;
-        title: string;
-        url: string;
-        baseRefName: string;
-        headRefOid: string;
-      };
-      try {
-        const { stdout } = await execFileP(
-          "gh",
-          ["pr", "view", ref, "--json", "number,title,url,baseRefName,headRefOid"],
-          { cwd: worktree },
-        );
-        info = JSON.parse(stdout);
-      } catch (e) {
-        throw new AxiError(
-          `could not read pull request ${ref}: ${(e as Error).message.split("\n")[0]}`,
-          "PR_ERROR",
-          [
-            "Check `gh auth status` and the PR number",
-            "Or run `thurview scaffold --base <ref> --head <ref>`",
-          ],
-        );
-      }
+      const repo = await repoOf(worktree, str(p, "repo"));
+      const forge = await forgeFor(repo.host, str(p, "forge") ?? b?.forge);
+      const cr = await forge.get(repo, ref);
+      // A fork's head is not a branch in this checkout, so fetch it by the
+      // ref the forge publishes it under before anything tries to resolve it.
       await g
-        .fetch(
-          worktree,
-          "origin",
-          `refs/pull/${info.number}/head`,
-          `refs/heads/${info.baseRefName}`,
-        )
+        .fetch(worktree, "origin", forge.fetchRef(cr), `refs/heads/${cr.baseBranch}`)
         .catch(() => {});
-      head = info.headRefOid;
-      let baseRef = `origin/${info.baseRefName}`;
+      head = cr.head;
+      let baseRef = `origin/${cr.baseBranch}`;
       try {
         await g.revParse(worktree, baseRef);
       } catch {
-        baseRef = info.baseRefName;
+        baseRef = cr.baseBranch;
       }
       base = await g.mergeBase(worktree, baseRef, head);
-      binding = { kind: "pr", name: String(info.number), url: info.url };
-      title ||= info.title;
+      binding = { kind: "pr", name: cr.number, url: cr.url, forge: forge.id };
+      title ||= cr.title;
     } else if (str(p, "base") || str(p, "head") || b?.kind === "range") {
       const [bb, hh] =
         b?.kind === "range" && !str(p, "base") && !str(p, "head")
@@ -672,7 +753,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         title: review.title,
         status: review.status,
         rev: review.revision,
-        binding: binding.kind === "pr" ? `PR #${binding.name}` : binding.name,
+        binding: bindingLabel(binding),
         base,
         head,
         worktree,
@@ -1491,6 +1572,269 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     };
   },
 
+  async forge(args) {
+    const sub = args[0];
+    const s = spec("forge").flags;
+    const usage = [
+      "thurview forge status [--change <ref>] [--review <id>]",
+      "thurview forge prior [--change <ref>] [--mine] [--full]",
+      "thurview forge submit --file <path> [--dry-run] [--confirm]",
+      'thurview forge reply <threadId> --body "<text>" [--resolve --at <sha>]',
+    ];
+    if (!sub || !["status", "prior", "submit", "reply"].includes(sub))
+      throw new AxiError(`unknown forge command${sub ? ` ${sub}` : ""}`, "VALIDATION_ERROR", usage);
+    const common = {
+      review: s["review"]!,
+      change: s["change"]!,
+      forge: s["forge"]!,
+      repo: s["repo"]!,
+    };
+    const rest = args.slice(1);
+
+    if (sub === "status") {
+      const p = parseFlags("forge status", rest, { ...common, full: s["full"]! });
+      const ctx = await forgeContext(p);
+      const checks = await ctx.forge.checks(ctx.repo, ctx.cr);
+      const baseline = await ctx.forge.baseline(ctx.repo, ctx.cr.baseBranch).catch(() => null);
+      const ci = summariseCi(checks, baseline, ctx.cr.baseBranch);
+      const shown = bool(p, "full") ? checks : checks.filter((c) => c.state !== "passed");
+      const hidden = checks.length - shown.length;
+      const help = [
+        `Quote \`ci.verdict\` in the review; do not read "nothing failed" as "the tests passed"`,
+        `Run \`thurview forge prior --change ${ctx.cr.number}\` to read the previous pass before writing a new one`,
+      ];
+      if (hidden && !bool(p, "full"))
+        help.push(`${hidden} passing checks hidden; pass --full to list them`);
+      if (ctx.review && ctx.review.pins.head !== ctx.cr.head)
+        help.unshift(
+          `The head moved since this review was pinned; run \`thurview scaffold --update --review ${short(ctx.review.id)}\` and diff only what moved`,
+        );
+      return {
+        change: {
+          forge: ctx.forge.id,
+          repo: `${ctx.repo.host}/${ctx.repo.path}`,
+          number: ctx.cr.number,
+          title: ctx.cr.title,
+          url: ctx.cr.url,
+          state: ctx.cr.state,
+          author: ctx.cr.author,
+          draft: ctx.cr.draft,
+          fromFork: ctx.cr.fromFork,
+          head: ctx.cr.head,
+          headBranch: ctx.cr.headBranch,
+          baseBranch: ctx.cr.baseBranch,
+        },
+        ci,
+        checks: shown.length
+          ? shown.map((c) => ({ name: c.name, state: c.state, raw: c.raw }))
+          : `0 of ${checks.length} checks need attention`,
+        ...(ctx.review
+          ? {
+              review: {
+                id: short(ctx.review.id),
+                pinnedHead: ctx.review.pins.head,
+                movedSincePin: ctx.review.pins.head !== ctx.cr.head,
+              },
+            }
+          : {}),
+        permalink: ctx.forge.permalink(ctx.repo, ctx.cr.head, "<path>", 10, 20),
+        help,
+      };
+    }
+
+    if (sub === "prior") {
+      const p = parseFlags("forge prior", rest, {
+        ...common,
+        mine: s["mine"]!,
+        full: s["full"]!,
+      });
+      const ctx = await forgeContext(p);
+      const prior = await ctx.forge.prior(ctx.repo, ctx.cr);
+      const { threads } = prior;
+      // A forge wraps inline comments in a pass of its own with an empty
+      // body. That envelope is not something to answer; the thread under it
+      // is, and it is already in `threads`.
+      const passes = prior.passes.filter((x) => x.body.trim() !== "" || x.verdict !== "commented");
+      const me = await ctx.forge.whoami(ctx.repo).catch(() => "");
+      const full = bool(p, "full");
+      const rows = (bool(p, "mine") ? threads.filter((t) => t.author === me) : threads).map((t) => {
+        const last = t.messages[t.messages.length - 1];
+        return {
+          id: t.id,
+          author: t.author,
+          at: t.path ? `${t.path}${t.line ? `:${t.line}` : ""}` : "(change request)",
+          resolved: t.resolved,
+          outdated: t.outdated,
+          atHead: t.commit ? t.commit === ctx.cr.head : null,
+          messages: t.messages.length,
+          last: last ? (full ? last.body : truncate(last.body.replace(/\s+/g, " "), 160)) : "",
+        };
+      });
+      const open = rows.filter((r) => !r.resolved).length;
+      return {
+        summary: {
+          passes: passes.length,
+          threads: rows.length,
+          open,
+          resolved: rows.length - open,
+          mine: me ? threads.filter((t) => t.author === me).length : null,
+          notAtHead: rows.filter((r) => r.atHead === false).length,
+          head: ctx.cr.head,
+        },
+        passes: passes.length
+          ? passes.map((x) => ({
+              author: x.author,
+              verdict: x.verdict,
+              at: x.at,
+              commit: x.commit ?? "",
+              body: full ? x.body : truncate(x.body.replace(/\s+/g, " "), 200),
+            }))
+          : "0 (nobody has reviewed this change request yet)",
+        threads: rows.length ? rows : "0 (no review thread on this change request)",
+        help:
+          passes.length || rows.length
+            ? [
+                "Go through every open thread point by point: addressed, partially addressed, or untouched",
+                'Answer one with `thurview forge reply <threadId> --body "<text>"`, and add --resolve --at <sha> only once you verified the point at that head',
+                full ? "" : "Pass --full for the untruncated bodies",
+              ].filter(Boolean)
+            : ["This is the first pass; there is no prior review to answer"],
+      };
+    }
+
+    if (sub === "submit") {
+      const p = parseFlags("forge submit", rest, {
+        ...common,
+        file: s["file"]!,
+        confirm: s["confirm"]!,
+        "dry-run": s["dry-run"]!,
+        "max-lines": s["max-lines"]!,
+      });
+      const file = str(p, "file");
+      if (!file)
+        throw new AxiError("--file is required", "VALIDATION_ERROR", [
+          "thurview forge submit --file <path>",
+        ]);
+      const text = await readText(resolve(process.cwd(), file));
+      if (text === null)
+        throw new AxiError(`${file} not found`, "NOT_FOUND", [
+          'Write the pass as JSON: {"verdict": "comment", "body": "<summary>", "comments": []}',
+        ]);
+      const submission = parseSubmission(text, file);
+      const max = Number(str(p, "max-lines"));
+      const warnings = longComments(submission, Number.isFinite(max) && max > 0 ? max : 5);
+      const consequences =
+        submission.verdict === "approve"
+          ? [
+              "Approving dismisses any standing request for changes, which is what makes this mergeable",
+              "Where auto-merge is armed, approving merges the code with no further human read",
+              "Say that to the user before you pass --confirm",
+            ]
+          : [];
+      const dry = bool(p, "dry-run");
+      if (submission.verdict === "approve" && !bool(p, "confirm") && !dry)
+        throw new AxiError(
+          "approving is a state change, so it needs --confirm",
+          "VALIDATION_ERROR",
+          [...consequences, "Re-run with --confirm, or submit with verdict comment instead"],
+        );
+      const ctx = await forgeContext(p);
+      if (dry)
+        return {
+          dryRun: {
+            forge: ctx.forge.id,
+            change: `${ctx.repo.path}#${ctx.cr.number}`,
+            head: ctx.cr.head,
+            verdict: submission.verdict,
+            comments: submission.comments.length,
+            bodyLines: submission.body.trimEnd().split("\n").length,
+          },
+          comments: submission.comments.length
+            ? submission.comments.map((c) => ({
+                at: `${c.path}:${c.startLine && c.startLine < c.line ? `${c.startLine}-${c.line}` : c.line}`,
+                side: c.side ?? "head",
+                lines: c.body.trimEnd().split("\n").length,
+              }))
+            : "0 (a summary-only pass)",
+          warnings: warnings.length ? warnings : "0 (every comment is within the line budget)",
+          ...(consequences.length ? { consequences } : {}),
+          help: [
+            "Nothing was posted; re-run without --dry-run to post it",
+            "Check every anchor is a line the diff actually touches, or the forge refuses the comment",
+          ],
+        };
+      const posted = await ctx.forge.submit(ctx.repo, ctx.cr, submission);
+      return {
+        submitted: {
+          forge: ctx.forge.id,
+          change: `${ctx.repo.path}#${ctx.cr.number}`,
+          head: ctx.cr.head,
+          verdict: posted.verdict,
+          comments: posted.posted,
+          url: posted.url ?? ctx.cr.url,
+        },
+        warnings: warnings.length ? warnings : "0 (every comment is within the line budget)",
+        notes: posted.notes.length ? posted.notes : "0 (the forge did exactly what was asked)",
+        help: [
+          `Record ${ctx.cr.head.slice(0, 12)} as the head you reviewed; a later pass diffs against it`,
+          "Never merge, close or push to the change request; that decision is the maintainer's",
+        ],
+      };
+    }
+
+    const p = parseFlags(
+      "forge reply",
+      rest,
+      { ...common, body: s["body"]!, resolve: s["resolve"]!, at: s["at"]! },
+      1,
+    );
+    const threadId = p.positional[0];
+    if (!threadId)
+      throw new AxiError("forge reply needs a thread id", "VALIDATION_ERROR", [
+        'thurview forge reply <threadId> --body "<text>"',
+        "Run `thurview forge prior` for the thread ids",
+      ]);
+    const body = str(p, "body");
+    const wantResolve = bool(p, "resolve");
+    if (!body && !wantResolve)
+      throw new AxiError("forge reply needs --body, --resolve, or both", "VALIDATION_ERROR", [
+        'thurview forge reply <threadId> --body "<text>" --resolve --at <sha>',
+      ]);
+    const ctx = await forgeContext(p);
+    if (wantResolve) {
+      const at = str(p, "at");
+      if (!at)
+        throw new AxiError("--resolve needs --at <sha>", "VALIDATION_ERROR", [
+          "Resolving tells the author the point is verified; --at is the commit you verified it at",
+          `The current head is ${ctx.cr.head}`,
+        ]);
+      if (at.length < 7 || !ctx.cr.head.startsWith(at))
+        throw new AxiError(
+          `--at ${at} is not the current head of ${ctx.repo.path}#${ctx.cr.number}`,
+          "CONFLICT",
+          [
+            `The head is ${ctx.cr.head}`,
+            "Re-read the point at that head before resolving; a thread resolved against an older head tells the author a point was accepted that nobody checked",
+          ],
+        );
+    }
+    const done = await ctx.forge.reply(ctx.repo, ctx.cr, threadId, body, wantResolve);
+    return {
+      thread: {
+        id: threadId,
+        change: `${ctx.repo.path}#${ctx.cr.number}`,
+        replied: done.replied,
+        resolved: done.resolved,
+        verifiedAt: wantResolve ? ctx.cr.head : "",
+      },
+      notes: done.notes.length ? done.notes : "0 (the forge did exactly what was asked)",
+      help: [
+        "Leave a thread open when the point is only partially addressed, and say which part",
+        `Run \`thurview forge prior --change ${ctx.cr.number}\` to see what is still open`,
+      ],
+    };
+  },
+
   async delete(args) {
     const p = parseFlags("delete", args, spec("delete").flags);
     const idOpt = str(p, "review");
@@ -1544,7 +1888,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     }
     if (sub === "skill") {
       const p = parseFlags("setup skill", args.slice(1), { targets: s["targets"]! });
-      const src = resolve(HERE, "..", "skills", "thurview");
+      const names = await bundledSkills();
       const dirs: Record<string, string> = {
         claude: join(homedir(), ".claude", "skills"),
         agents: join(homedir(), ".agents", "skills"),
@@ -1561,24 +1905,26 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
             "thurview setup skill --targets claude,agents,cursor",
           ]);
         await mkdir(d, { recursive: true });
-        const dst = join(d, "thurview");
-        try {
-          const stt = await lstat(dst);
-          if (stt.isSymbolicLink()) await rm(dst);
-          else
-            throw new AxiError(`${dst} exists and is not a symlink`, "CONFLICT", [
-              `Remove ${dst} and run \`thurview setup skill\` again`,
-            ]);
-        } catch (e) {
-          if (e instanceof AxiError) throw e;
+        for (const name of names) {
+          const dst = join(d, name);
+          try {
+            const stt = await lstat(dst);
+            if (stt.isSymbolicLink()) await rm(dst);
+            else
+              throw new AxiError(`${dst} exists and is not a symlink`, "CONFLICT", [
+                `Remove ${dst} and run \`thurview setup skill\` again`,
+              ]);
+          } catch (e) {
+            if (e instanceof AxiError) throw e;
+          }
+          await symlink(join(skillsRoot(), name), dst, "dir");
         }
-        await symlink(src, dst, "dir");
-        installed[t] = dst;
+        installed[t] = `${join(d, `{${names.join(",")}}`)}`;
       }
       return {
         skill: installed,
         help: [
-          "Invoke it as /thurview in Claude Code, or by name in other agents",
+          "Invoke them as /thurview and /forge-review in Claude Code, or by name in other agents",
           "Run `thurview setup hooks` for ambient context at session start",
         ],
       };
@@ -1587,10 +1933,12 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const st = sessionStartHookStatus({ ...identity, scope: "user" });
     const skill: Record<string, string> = {};
     for (const [t, d] of Object.entries({
-      claude: join(homedir(), ".claude", "skills", "thurview"),
-      agents: join(homedir(), ".agents", "skills", "thurview"),
-    }))
-      skill[t] = existsSync(d) ? d : "not installed";
+      claude: join(homedir(), ".claude", "skills"),
+      agents: join(homedir(), ".agents", "skills"),
+    })) {
+      const there = (await bundledSkills()).filter((n) => existsSync(join(d, n)));
+      skill[t] = there.length ? there.map((n) => join(d, n)).join(", ") : "not installed";
+    }
     return {
       hooks: {
         claude: st.claude.installed ? st.claude.path : "not installed",
@@ -1604,7 +1952,13 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
 
   async skill(args) {
     parseFlags("skill", args, {});
-    return { skill: resolve(HERE, "..", "skills", "thurview", "SKILL.md") };
+    const skills: Record<string, string> = {};
+    for (const name of await bundledSkills()) skills[name] = join(skillsRoot(), name, "SKILL.md");
+    return {
+      skill: skills["thurview"]!,
+      skills,
+      help: ["Read the SKILL.md of the one that matches the request, and its references beside it"],
+    };
   },
 };
 

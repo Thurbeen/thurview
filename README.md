@@ -73,6 +73,7 @@ reads the Agent Skills format:
 
 ```sh
 npx skills add Thurbeen/thurview --skill thurview
+npx skills add Thurbeen/thurview --skill forge-review   # optional, see below
 ```
 
 That form tracks this repository's default branch: `skills update` takes
@@ -89,8 +90,8 @@ that matches the command you have installed. Use that when you want the two to
 move together.
 
 The skill drives the `thurview` command, which needs Node 22 or later and
-git (`gh` for pull requests). Install it, or let the skill reach it through
-`npx`:
+git (`gh` for pull requests, `glab` for merge requests). Install it, or let
+the skill reach it through `npx`:
 
 ```sh
 npm install -g thurview     # or: pnpm add -g thurview
@@ -168,19 +169,20 @@ bar.
 
 ## CLI
 
-| Command                                                               | Purpose                                                          |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `thurview scaffold [--pr N \| --base R --head R]`                     | Create a review pinned to exact commits (`--update` re-pins)     |
-| `thurview explain [<path>] [--commit R]`                              | Create a code explainer of a codebase or subsystem at one commit |
-| `thurview info [--all]`                                               | Reviews bound to this worktree                                   |
-| `thurview publish --review ID [--view T] [--open]`                    | Validate the document and map, seal a revision                   |
-| `thurview open --review ID [--view T]`                                | Start the server if needed and open the browser                  |
-| `thurview wait --review ID [--timeout S]`                             | Block until the reader needs the agent                           |
-| `thurview threads list\|get\|reply\|resolve`                          | Read and answer threads                                          |
-| `thurview graph interfaces\|impact\|callers\|tests-for\|architecture` | Ask the code graph at the pinned commits                         |
-| `thurview serve` / `thurview stop`                                    | Run the server in the foreground / stop the background one       |
-| `thurview setup hooks\|skill\|status`                                 | Session hooks, agent skill, install state                        |
-| `thurview update`                                                     | Self-update from npm                                             |
+| Command                                                               | Purpose                                                           |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `thurview scaffold [--pr N \| --base R --head R]`                     | Create a review pinned to exact commits (`--update` re-pins)      |
+| `thurview explain [<path>] [--commit R]`                              | Create a code explainer of a codebase or subsystem at one commit  |
+| `thurview info [--all]`                                               | Reviews bound to this worktree                                    |
+| `thurview publish --review ID [--view T] [--open]`                    | Validate the document and map, seal a revision                    |
+| `thurview open --review ID [--view T]`                                | Start the server if needed and open the browser                   |
+| `thurview wait --review ID [--timeout S]`                             | Block until the reader needs the agent                            |
+| `thurview threads list\|get\|reply\|resolve`                          | Read and answer threads                                           |
+| `thurview graph interfaces\|impact\|callers\|tests-for\|architecture` | Ask the code graph at the pinned commits                          |
+| `thurview forge status\|prior\|submit\|reply`                         | Read a change request through its forge, and post the review back |
+| `thurview serve` / `thurview stop`                                    | Run the server in the foreground / stop the background one        |
+| `thurview setup hooks\|skill\|status`                                 | Session hooks, agent skill, install state                         |
+| `thurview update`                                                     | Self-update from npm                                              |
 
 thurview is an [AXI](https://axi.md): built for agents that drive it through a
 shell. Output is [TOON](https://toonformat.dev) on stdout, errors are
@@ -191,6 +193,38 @@ hatch, every result ends with `help[]` next steps, and `thurview` with no
 arguments shows live state for the current directory instead of a manual.
 `thurview <command> --help` is the fallback. Progress and diagnostics go to
 stderr.
+
+## Posting the review to the forge
+
+A thurview review is read in the browser. When the change is a pull request on
+GitHub or a merge request on GitLab, the `forge-review` skill posts it there as
+well: inline comments anchored to lines, a summary, and a verdict.
+
+```sh
+thurview forge status --change 123    # what CI actually did, and whether it is a gate at all
+thurview forge prior  --change 123    # the previous pass, thread by thread
+thurview forge submit --change 123 --file pass.json --dry-run
+thurview forge reply <threadId> --change 123 --body "<answer>" --resolve --at <head>
+```
+
+`status` counts passed, failed, cancelled, skipped and running checks
+separately, and compares them against what the target branch's own tip runs -
+a change request from a fork typically runs a fraction of them, and a
+cancelled job shows no failure while asserting nothing. `ci.trustworthy` is
+the only field that means the tests really passed.
+
+`submit` takes one JSON file so a human can read the pass before it is posted,
+refuses an `approve` without `--confirm`, and warns about comments too long to
+be read. `reply --resolve` takes `--at <sha>` and refuses any commit but the
+current head, so a thread is never closed against code nobody looked at. There
+is no merge, close or push command, deliberately.
+
+GitHub goes through `gh`, GitLab through `glab`; hosts other than github.com
+and gitlab.com are matched against what those CLIs are authenticated for, and
+an unmatched host is refused rather than guessed. The differences that survive
+the seam - GitLab has no changes-requested state, no atomic review and no
+multi-line comment anchor - are listed in
+[skills/forge-review/references/forges.md](skills/forge-review/references/forges.md).
 
 ## Authoring format
 
