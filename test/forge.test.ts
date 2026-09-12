@@ -546,3 +546,42 @@ describe("the forge seam itself", () => {
     expect(out["error"]).toContain("verdict");
   });
 });
+
+describe("thurview scaffold --pr, through the forge seam", () => {
+  it("pins a self-hosted GitLab merge request with --forge, where auto-detection can't", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "thurview-forge-repo-"));
+    const gitEnv = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    };
+    const git = (...a: string[]) => execFileP("git", a, { cwd: dir, env: gitEnv });
+    await git("init", "-q", "-b", "main");
+    await git("remote", "add", "origin", "https://gitlab.example.com/acme/web.git");
+    await writeFile(join(dir, "clip.txt"), "base\n");
+    await git("add", ".");
+    await git("commit", "-q", "-m", "base");
+    const base = (await git("rev-parse", "HEAD")).stdout.trim();
+    await git("checkout", "-q", "-b", "clipboard");
+    await writeFile(join(dir, "clip.txt"), "head\n");
+    await git("add", ".");
+    await git("commit", "-q", "-m", "copy the selection");
+    const head = (await git("rev-parse", "HEAD")).stdout.trim();
+    await git("checkout", "-q", "main");
+
+    await fixtures([
+      {
+        cli: "glab",
+        match: ["projects/acme%2Fweb/merge_requests/7"],
+        body: { ...MR, sha: head, diff_refs: { base_sha: base, head_sha: head, start_sha: base } },
+      },
+    ]);
+    const out = await cli(["scaffold", "--pr", "7", "--forge", "gitlab"], { cwd: dir });
+    expect(out["review"].binding).toBe("MR !7");
+    expect(out["review"].head).toBe(head);
+    // gh is never asked whether it owns the host: --forge named the adapter outright.
+    expect((await calls()).every((c) => c.cli === "glab")).toBe(true);
+  });
+});

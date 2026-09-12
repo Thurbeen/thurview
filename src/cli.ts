@@ -394,6 +394,11 @@ const SPECS: Record<
       new: { kind: "boolean", help: "create another review even if one matches the binding" },
       update: { kind: "boolean", help: "re-pin an existing review from its binding" },
       review: { kind: "string", help: "review to update (id prefix)" },
+      forge: {
+        kind: "string",
+        help: "github or gitlab, when the host is not one of the two known ones",
+      },
+      repo: { kind: "string", help: "host/path, when `origin` is not the repository to post to" },
     },
     examples: [
       "thurview scaffold",
@@ -634,8 +639,8 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const pr = str(p, "pr");
     if (pr || b?.kind === "pr") {
       const ref = pr ?? b!.name;
-      const repo = await repoOf(worktree);
-      const forge = await forgeFor(repo.host, b?.forge);
+      const repo = await repoOf(worktree, str(p, "repo"));
+      const forge = await forgeFor(repo.host, str(p, "forge") ?? b?.forge);
       const cr = await forge.get(repo, ref);
       // A fork's head is not a branch in this checkout, so fetch it by the
       // ref the forge publishes it under before anything tries to resolve it.
