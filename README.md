@@ -90,8 +90,8 @@ that matches the command you have installed. Use that when you want the two to
 move together.
 
 The skill drives the `thurview` command, which needs Node 22 or later and
-git (`gh` for pull requests). Install it, or let the skill reach it through
-`npx`:
+git (`gh` for pull requests, `glab` for merge requests). Install it, or let
+the skill reach it through `npx`:
 
 ```sh
 npm install -g thurview     # or: pnpm add -g thurview

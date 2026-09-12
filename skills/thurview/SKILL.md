@@ -90,7 +90,7 @@ request:
 
 ```sh
 thurview scaffold                          # current branch vs its trunk fork point
-thurview scaffold --pr 123                 # pull request (needs gh)
+thurview scaffold --pr 123                 # pull or merge request (needs gh or glab)
 thurview scaffold --base <ref> --head <ref>
 ```
 
