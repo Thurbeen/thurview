@@ -20,9 +20,11 @@ export type DocumentKind = "review" | "explainer";
 
 export interface Binding {
   kind: "branch" | "pr" | "range" | "codebase";
-  /** branch name, pr number, "base..head", or the path scope of an explainer */
+  /** branch name, change request number, "base..head", or the path scope of an explainer */
   name: string;
   url?: string;
+  /** `github` or `gitlab` for a change request; absent on reviews pinned before forges were named. */
+  forge?: string;
 }
 
 export interface ReviewState {

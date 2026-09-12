@@ -29,11 +29,18 @@ locally.
 - `src/cli.ts`: the AXI command surface; `src/flags.ts` the flag parser.
 - `src/document/`: schema, parser and compiler for `review.md` and
   `data.yaml`; `src/theme.ts` for `theme.yaml`.
+- `src/forge/`: the forge seam - one interface, a GitHub adapter driving `gh`
+  and a GitLab adapter driving `glab`, plus the CI reading `forge status`
+  reports.
 - `src/server/`: the HTTP API, SSE and static UI.
 - `src/ui/`: the browser app, vanilla TypeScript bundled by esbuild.
 - `skills/thurview/`: the agent skill and its references, the single source
   for every authored file's shape.
+- `skills/forge-review/`: the skill that reviews a pull or merge request and
+  posts it back through `thurview forge`.
 - `test/e2e.test.ts`: the suite, driving the CLI and the server end to end.
+- `test/forge.test.ts`: the same, with a fake `gh` and `glab` on PATH, so both
+  forge adapters are driven rather than asserted.
 
 ## Demo media
 
@@ -45,9 +52,11 @@ under `scripts/demo/review/`, records the agent side with VHS
 `ffmpeg`, `chromium` and `thurview` on PATH, and touches nothing outside a
 temporary directory. Re-record it when the UI or the CLI output changes.
 
-## The skill and the command
+## The skills and the command
 
-`skills/thurview/` is installed three ways, and only one of them keeps the
+`skills/` holds two skills - `thurview` authors and publishes the document,
+`forge-review` posts a review of a change request back to its forge. Both are
+installed three ways, and only one of them keeps the
 skill and the command in step:
 
 | Route                                       | Tracks                    |
