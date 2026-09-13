@@ -286,6 +286,8 @@ describe("thurview end to end", () => {
       "changed src/auth.ts:login",
       "added src/audit.ts:record",
     ]);
+    // with no review there is no data.yaml to write, so no step may point at one
+    expect(String(surface["help"])).not.toMatch(/data\.yaml/);
     const both = await cli(["graph", "impact", "--review", reviewId, "--base", "main"], {
       expectCode: 2,
     });

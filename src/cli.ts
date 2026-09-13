@@ -1440,7 +1440,9 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         unreadable: delta.unreadable,
         truncated: delta.truncated,
         help: [
-          "Write one capability line per entry in data.yaml under `interfaces`, keyed by id",
+          ...(review
+            ? ["Write one capability line per entry in data.yaml under `interfaces`, keyed by id"]
+            : []),
           `Run \`thurview graph callers <name>${again}\` to see who a removed or changed interface reached`,
         ],
       };

@@ -102,6 +102,9 @@ Security means input crossing a trust boundary: a shell command, query or path
 built from it, a secret reaching a log, an authorization check the change
 skips.
 
+A problem that is just as present at `<base>` is not this change's finding.
+Leave it unfixed and list it after the report's table.
+
 ## 4. Fix
 
 Find the repository's own test and lint commands - `CONTRIBUTING.md`,
@@ -111,16 +114,17 @@ it, and judge each fix by not making it worse.
 
 For each finding whose fix is local and whose right behaviour is unambiguous:
 
-1. Edit. For a bug, add or extend a test that fails without the fix.
-2. Run the tests and lint.
+1. For a bug, first add or extend a test and run it: it must fail, for the
+   reason the finding gives.
+2. Edit, then run the tests and lint.
 3. Green: keep it. Red: undo only that fix (`git restore <files>`, and delete
    files it created) and mark the finding unfixed, with the failure as why.
 
 Leave a finding unfixed when it needs a decision the code cannot make, changes
 an interface used outside this repository, or no test can show it.
 
-Once every kept fix passes together, commit them as one, in the repository's
-commit convention:
+Once every kept fix passes together, commit them as one. Follow the
+repository's commit convention when it has one; otherwise:
 
 ```sh
 git add <files>
