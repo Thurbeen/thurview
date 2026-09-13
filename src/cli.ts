@@ -269,26 +269,56 @@ async function ensureServer(): Promise<{ port: number; hosts: string[] }> {
 function reviewUrl(base: string, id: string, view?: string): string {
   return `${base}/review/${id}${view ? `#/${view}` : ""}`;
 }
+/** Two commits in a worktree, and the directory their graphs are cached under. */
+interface Pinned {
+  worktree: string;
+  pins: { base: string; head: string };
+  dir: string;
+}
+
+function pinnedOf(review: ReviewState): Pinned {
+  return { worktree: review.worktree, pins: review.pins, dir: reviewDir(review.id) };
+}
+
 /**
- * The interface delta at a review's pins. The graphs are cached per commit under
- * the review directory, so publish and `graph interfaces` build them once between
+ * Base and head as `--base` and `--head` name them. Head defaults to HEAD and
+ * base to where head forked from trunk, so a branch is diffed against what it
+ * branched from rather than against wherever trunk has moved since.
+ */
+async function pinRange(
+  worktree: string,
+  base: string | undefined,
+  head: string | undefined,
+  usage: string,
+): Promise<Pinned["pins"]> {
+  try {
+    const h = await g.revParse(worktree, head ?? "HEAD");
+    const b = base
+      ? await g.revParse(worktree, base)
+      : await g.mergeBase(worktree, await g.trunkRef(worktree), h);
+    return { base: b, head: h };
+  } catch (e) {
+    throw new AxiError((e as Error).message, "VALIDATION_ERROR", [
+      `Pass resolvable refs: \`${usage}\``,
+    ]);
+  }
+}
+
+/**
+ * The interface delta at two pinned commits. The graphs are cached per commit
+ * under `at.dir`, so publish and `graph interfaces` build them once between
  * them; both modules load lazily to keep tree-sitter off every other command's path.
  */
-async function deltaFor(
-  review: ReviewState,
-  base?: CodeGraph,
-  head?: CodeGraph,
-): Promise<InterfaceDelta> {
+async function deltaFor(at: Pinned, base?: CodeGraph, head?: CodeGraph): Promise<InterfaceDelta> {
   const graph = await import("./graph.js");
   const { interfaceDelta } = await import("./interfaces.js");
-  const dir = reviewDir(review.id);
-  const b = base ?? (await graph.graphAt(review.worktree, review.pins.base, dir));
-  const h = head ?? (await graph.graphAt(review.worktree, review.pins.head, dir));
-  const changes = await g.lineChanges(review.worktree, review.pins.base, review.pins.head);
-  const changed = await g.changedFiles(review.worktree, review.pins.base, review.pins.head);
+  const b = base ?? (await graph.graphAt(at.worktree, at.pins.base, at.dir));
+  const h = head ?? (await graph.graphAt(at.worktree, at.pins.head, at.dir));
+  const changes = await g.lineChanges(at.worktree, at.pins.base, at.pins.head);
+  const changed = await g.changedFiles(at.worktree, at.pins.base, at.pins.head);
   return interfaceDelta({
-    cwd: review.worktree,
-    pins: review.pins,
+    cwd: at.worktree,
+    pins: at.pins,
     base: b,
     head: h,
     impact: graph.impact(b, h, changes, 1),
@@ -508,12 +538,18 @@ const SPECS: Record<
     args: "interfaces|impact|callers <name>|tests-for <name>|architecture",
     flags: {
       review: { kind: "string", help: "review id prefix" },
+      base: {
+        kind: "string",
+        help: "instead of --review: base revision (default: trunk fork point)",
+      },
+      head: { kind: "string", help: "instead of --review: head revision (default: HEAD)" },
       graph: { kind: "string", help: "callers, tests-for: head or base", default: "head" },
       depth: { kind: "string", help: "how many caller hops to follow", default: "2" },
     },
     examples: [
       "thurview graph interfaces",
       "thurview graph impact",
+      "thurview graph impact --base main --head HEAD",
       "thurview graph callers login",
       "thurview graph tests-for login --graph base",
       "thurview graph architecture",
@@ -662,16 +698,12 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         b?.kind === "range" && !str(p, "base") && !str(p, "head")
           ? b.name.split("..")
           : [str(p, "base"), str(p, "head")];
-      try {
-        head = await g.revParse(worktree, hh ?? "HEAD");
-        base = bb
-          ? await g.revParse(worktree, bb)
-          : await g.mergeBase(worktree, await g.trunkRef(worktree), head);
-      } catch (e) {
-        throw new AxiError((e as Error).message, "VALIDATION_ERROR", [
-          "Pass resolvable refs: `thurview scaffold --base <ref> --head <ref>`",
-        ]);
-      }
+      ({ base, head } = await pinRange(
+        worktree,
+        bb,
+        hh,
+        "thurview scaffold --base <ref> --head <ref>",
+      ));
       binding = { kind: "range", name: `${base.slice(0, 12)}..${head.slice(0, 12)}` };
     } else {
       const branch = b?.kind === "branch" ? b.name : await g.currentBranch(worktree);
@@ -987,7 +1019,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     let interfaces: InterfaceDelta | null = null;
     if (kind === "review") {
       try {
-        interfaces = await deltaFor(review);
+        interfaces = await deltaFor(pinnedOf(review));
       } catch (e) {
         diags.push({
           level: "warning",
@@ -1327,9 +1359,29 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const side = str(p, "graph") ?? "head";
     if (side !== "head" && side !== "base")
       throw new AxiError("--graph must be head or base", "VALIDATION_ERROR", help);
+    const baseRef = str(p, "base");
+    const headRef = str(p, "head");
+    const commits = baseRef !== undefined || headRef !== undefined;
+    if (commits && str(p, "review"))
+      throw new AxiError("pass --review or --base/--head, not both", "VALIDATION_ERROR", help);
     const graph = await import("./graph.js");
-    const review = await resolveReview(str(p, "review"));
-    if (kindOf(review) === "explainer" && (sub === "interfaces" || sub === "impact"))
+    const review = commits ? null : await resolveReview(str(p, "review"));
+    let t: Pinned;
+    if (review) t = pinnedOf(review);
+    else {
+      const worktree = await worktreeOf(process.cwd());
+      if (!worktree)
+        throw new AxiError("not inside a git repository", "VALIDATION_ERROR", [
+          "Run inside the source worktree, or pass --review <id>",
+        ]);
+      // No review directory owns these graphs, and a commit's graph is the same
+      // whoever asks, so they share one cache under the thurview home.
+      const pins = await pinRange(worktree, baseRef, headRef, "thurview graph impact --base <ref>");
+      t = { worktree, pins, dir: home() };
+    }
+    // A next step has to name the same commits, or it answers about another change.
+    const again = review ? "" : ` --base ${short(t.pins.base)} --head ${short(t.pins.head)}`;
+    if (review && kindOf(review) === "explainer" && (sub === "interfaces" || sub === "impact"))
       throw new AxiError(
         `graph ${sub} compares two commits; an explainer is pinned to one`,
         "VALIDATION_ERROR",
@@ -1338,10 +1390,9 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           `Run \`thurview graph callers <name> --review ${short(review.id)}\` to follow one symbol`,
         ],
       );
-    const dir = reviewDir(review.id);
-    const at = (commit: string) => graph.graphAt(review.worktree, commit, dir);
+    const at = (commit: string) => graph.graphAt(t.worktree, commit, t.dir);
     if (sub === "callers" || sub === "tests-for") {
-      const g = await at(side === "base" ? review.pins.base : review.pins.head);
+      const g = await at(side === "base" ? t.pins.base : t.pins.head);
       const pins = {
         graph: side,
         commit: short(g.commit),
@@ -1353,25 +1404,25 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           ...pins,
           symbol: name,
           callers: graph.callers(g, name!),
-          help: [`Run \`thurview graph tests-for ${name}\` to see what exercises it`],
+          help: [`Run \`thurview graph tests-for ${name}${again}\` to see what exercises it`],
         };
       return {
         ...pins,
         symbol: name,
         depth,
         tests: graph.testsFor(g, name!, depth),
-        help: [`Run \`thurview graph callers ${name}\` for every reference`],
+        help: [`Run \`thurview graph callers ${name}${again}\` for every reference`],
       };
     }
-    const base = await at(review.pins.base);
-    const head = await at(review.pins.head);
+    const base = await at(t.pins.base);
+    const head = await at(t.pins.head);
     const pins = {
       base: short(base.commit),
       head: short(head.commit),
       languages: graph.LANGUAGES.join(","),
     };
     if (sub === "interfaces") {
-      const delta = await deltaFor(review, base, head);
+      const delta = await deltaFor(t, base, head);
       return {
         ...pins,
         verdict: delta.verdict,
@@ -1389,29 +1440,31 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         unreadable: delta.unreadable,
         truncated: delta.truncated,
         help: [
-          "Write one capability line per entry in data.yaml under `interfaces`, keyed by id",
-          "Run `thurview graph callers <name>` to see who a removed or changed interface reached",
+          ...(review
+            ? ["Write one capability line per entry in data.yaml under `interfaces`, keyed by id"]
+            : []),
+          `Run \`thurview graph callers <name>${again}\` to see who a removed or changed interface reached`,
         ],
       };
     }
     if (sub === "impact") {
-      const changes = await g.lineChanges(review.worktree, review.pins.base, review.pins.head);
+      const changes = await g.lineChanges(t.worktree, t.pins.base, t.pins.head);
       return {
         ...pins,
         depth,
         ...graph.impact(base, head, changes, depth),
         help: [
-          "Run `thurview graph callers <name>` to follow one symbol",
-          "Run `thurview graph architecture` for the module structure and its diff",
+          `Run \`thurview graph callers <name>${again}\` to follow one symbol`,
+          `Run \`thurview graph architecture${again}\` for the module structure and its diff`,
         ],
       };
     }
     // An explainer is scoped to a path, so its structure is that path's, not the
     // repository's: the same bound the Coverage tab accounts for.
-    if (kindOf(review) === "explainer") {
+    if (review && kindOf(review) === "explainer") {
       const scope = review.binding.name;
       const g0 = scopeGraph(head, scope);
-      const allFiles = await g.listFiles(review.worktree, review.pins.head);
+      const allFiles = await g.listFiles(t.worktree, t.pins.head);
       const { diff: _diff, truncated: _truncated, ...rest } = graph.architecture(g0, g0);
       return {
         commit: short(head.commit),
@@ -1924,7 +1977,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       return {
         skill: installed,
         help: [
-          "Invoke them as /thurview and /forge-review in Claude Code, or by name in other agents",
+          "Invoke them as /thurview and /review-fix in Claude Code, or by name in other agents",
           "Run `thurview setup hooks` for ambient context at session start",
         ],
       };

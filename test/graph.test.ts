@@ -135,6 +135,44 @@ describe("impact", () => {
     expect(byName.get("bar")).toBe("modified");
     expect(result.truncated).toEqual({ base: false, head: false });
   });
+
+  it("gives each caller the change left alone its call site and whether a test reaches it", async () => {
+    const { dir, git } = await repo();
+    await mkdir(join(dir, "test"));
+    const caller = (fn: string, arg: string) =>
+      `import { discount } from "./price";\n\nexport function ${fn}(total: number) {\n  return discount(total, ${arg});\n}\n`;
+    await writeFile(
+      join(dir, "src", "price.ts"),
+      `export function discount(total: number, percent: number) {\n  return total - (total * percent) / 100;\n}\n`,
+    );
+    await writeFile(join(dir, "src", "cart.ts"), caller("checkout", "15"));
+    await writeFile(join(dir, "src", "invoice.ts"), caller("invoice", "5"));
+    await writeFile(
+      join(dir, "test", "invoice.test.ts"),
+      `import { invoice } from "../src/invoice";\n\nexport function invoicesFive() {\n  return invoice(100) === 95;\n}\n`,
+    );
+    await git("add", ".");
+    await git("commit", "-q", "-m", "base");
+    const base = (await git("rev-parse", "HEAD")).stdout.trim();
+    // discount takes a rate now, and neither caller outside the diff was told
+    await writeFile(
+      join(dir, "src", "price.ts"),
+      `export function discount(total: number, rate: number) {\n  return total - total * rate;\n}\n`,
+    );
+    await git("commit", "-q", "-am", "take a rate");
+    const head = (await git("rev-parse", "HEAD")).stdout.trim();
+    const result = impact(
+      await buildGraph(dir, base),
+      await buildGraph(dir, head),
+      await lineChanges(dir, base, head),
+      2,
+    );
+    const via = "src/price.ts:discount";
+    expect([...result.reach].sort((a, b) => a.symbol.localeCompare(b.symbol))).toEqual([
+      { symbol: "checkout", file: "src/cart.ts", line: 3, depth: 1, via, at: 4, tested: false },
+      { symbol: "invoice", file: "src/invoice.ts", line: 3, depth: 1, via, at: 4, tested: true },
+    ]);
+  });
 });
 
 describe("architecture", () => {

@@ -33,6 +33,11 @@ describe("SKILL.md frontmatter", () => {
     expect(files).toContain("skills/thurview/SKILL.md");
   });
 
+  it("ships one review skill, the one that fixes what it finds", () => {
+    expect(files).toContain("skills/review-fix/SKILL.md");
+    expect(files).not.toContain("skills/forge-review/SKILL.md");
+  });
+
   it.each(files)("%s parses as YAML and names the skill", (path) => {
     const fm = loadFrontmatter(readFileSync(`${repoRoot}${path}`, "utf8"));
     expect(typeof fm["name"]).toBe("string");

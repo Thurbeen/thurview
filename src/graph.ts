@@ -335,11 +335,14 @@ export function callers(g: CodeGraph, name: string): Caller[] {
 }
 
 export interface Reach {
+  id: string;
   symbol: string;
   file: string;
   line: number;
   depth: number;
   via: string;
+  /** The line in `symbol` that references `via`. */
+  at: number;
 }
 
 /** Symbols that transitively reference any of `roots`, up to `depth` hops, nearest first. */
@@ -356,7 +359,15 @@ export function reach(g: CodeGraph, roots: string[], depth: number): Reach[] {
         seen.add(e.from);
         next.push(e.from);
         const s = byId.get(e.from)!;
-        out.push({ symbol: s.name, file: s.file, line: s.line, depth: d, via: id });
+        out.push({
+          id: e.from,
+          symbol: s.name,
+          file: s.file,
+          line: s.line,
+          depth: d,
+          via: id,
+          at: e.at,
+        });
       }
     frontier = next;
   }
@@ -389,7 +400,11 @@ export interface Changed {
 export interface Impact {
   changed: Changed[];
   edges: { added: string[]; removed: string[] };
-  reach: Reach[];
+  /**
+   * Code that depends on the change without being part of it - every changed
+   * symbol is a root, so none reappears here - and whether a test reaches it.
+   */
+  reach: (Omit<Reach, "id"> & { tested: boolean })[];
   tests: { file: string; covers: string[] }[];
   untested: string[];
   unresolved: { base: number; head: number };
@@ -486,10 +501,32 @@ export function impact(
     }
   }
   const tested = new Set([...covers.values()].flatMap((s) => [...s]));
+  // What the tests exercise within `depth` calls, walking forward from every test
+  // symbol: a caller no test reaches is where a regression ships unnoticed.
+  const calls = new Map<string, string[]>();
+  for (const e of head.edges) {
+    const list = calls.get(e.from) ?? [];
+    list.push(e.to);
+    calls.set(e.from, list);
+  }
+  const exercised = new Set<string>();
+  let front = head.symbols.filter((s) => isTestFile(s.file)).map((s) => s.id);
+  for (let d = 1; d <= depth && front.length; d++) {
+    const next: string[] = [];
+    for (const id of front)
+      for (const to of calls.get(id) ?? [])
+        if (!exercised.has(to)) {
+          exercised.add(to);
+          next.push(to);
+        }
+    front = next;
+  }
   return {
     changed,
     edges: { added, removed },
-    reach: r.filter((x) => !isTestFile(x.file)),
+    reach: r
+      .filter((x) => !isTestFile(x.file))
+      .map(({ id, ...x }) => ({ ...x, tested: exercised.has(id) })),
     tests: [...covers]
       .map(([file, set]) => ({ file, covers: [...set].sort() }))
       .sort((a, b) => a.file.localeCompare(b.file)),
