@@ -73,7 +73,7 @@ reads the Agent Skills format:
 
 ```sh
 npx skills add Thurbeen/thurview --skill thurview
-npx skills add Thurbeen/thurview --skill forge-review   # optional, see below
+npx skills add Thurbeen/thurview --skill review-fix     # optional, see below
 ```
 
 That form tracks this repository's default branch: `skills update` takes
@@ -178,7 +178,7 @@ bar.
 | `thurview open --review ID [--view T]`                                | Start the server if needed and open the browser                   |
 | `thurview wait --review ID [--timeout S]`                             | Block until the reader needs the agent                            |
 | `thurview threads list\|get\|reply\|resolve`                          | Read and answer threads                                           |
-| `thurview graph interfaces\|impact\|callers\|tests-for\|architecture` | Ask the code graph at the pinned commits                          |
+| `thurview graph interfaces\|impact\|callers\|tests-for\|architecture` | Ask the code graph at a review's pins, or at `--base`/`--head`    |
 | `thurview forge status\|prior\|submit\|reply`                         | Read a change request through its forge, and post the review back |
 | `thurview serve` / `thurview stop`                                    | Run the server in the foreground / stop the background one        |
 | `thurview setup hooks\|skill\|status`                                 | Session hooks, agent skill, install state                         |
@@ -194,11 +194,26 @@ arguments shows live state for the current directory instead of a manual.
 `thurview <command> --help` is the fallback. Progress and diagnostics go to
 stderr.
 
-## Posting the review to the forge
+## Review and fix
 
-A thurview review is read in the browser. When the change is a pull request on
-GitHub or a merge request on GitLab, the `forge-review` skill posts it there as
-well: inline comments anchored to lines, a summary, and a verdict.
+The `review-fix` skill reviews a branch, a commit range or a pull or merge
+request, fixes what it is sure of and reports the rest, with no browser and no
+approval step. For each changed symbol it asks the code graph who calls it and
+which tests reach it, so a finding can name a caller the diff never shows.
+Fixes that pass the repository's own tests and lint land as one local commit;
+nothing is pushed unless you ask.
+
+```sh
+thurview graph impact --head HEAD                 # changed symbols, the callers they left alone, the tests
+thurview graph callers discount --head HEAD       # every call site of one symbol
+```
+
+`--base` and `--head` ask about two commits directly; `--head` alone diffs
+from where it forked from trunk. Each caller in `impact.reach` carries the line
+of its call and whether any test reaches it.
+
+With `--post`, the skill posts the findings it did not fix as inline comments
+on the change request, through `thurview forge`:
 
 ```sh
 thurview forge status --change 123    # what CI actually did, and whether it is a gate at all
@@ -224,7 +239,7 @@ and gitlab.com are matched against what those CLIs are authenticated for, and
 an unmatched host is refused rather than guessed. The differences that survive
 the seam - GitLab has no changes-requested state, no atomic review and no
 multi-line comment anchor - are listed in
-[skills/forge-review/references/forges.md](skills/forge-review/references/forges.md).
+[skills/review-fix/references/forges.md](skills/review-fix/references/forges.md).
 
 ## Authoring format
 

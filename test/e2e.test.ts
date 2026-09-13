@@ -264,6 +264,36 @@ describe("thurview end to end", () => {
     expect(badSide["code"]).toBe("VALIDATION_ERROR");
   });
 
+  it("answers on two commits without a review, pinned the way scaffold pins them", async () => {
+    const main = (await git("rev-parse", "main")).stdout.trim();
+    const feature = (await git("rev-parse", "feature")).stdout.trim();
+    const impact = await cli(["graph", "impact", "--base", "main", "--head", "feature"]);
+    expect(main.startsWith(impact["base"])).toBe(true);
+    expect(feature.startsWith(impact["head"])).toBe(true);
+    expect((impact["changed"] as Out[]).map((s) => `${s["symbol"]}:${s["change"]}`).sort()).toEqual(
+      ["audit:added", "login:modified"],
+    );
+    // --head alone diffs from the trunk fork point
+    const forked = await cli(["graph", "impact", "--head", "feature"]);
+    expect(forked["base"]).toBe(impact["base"]);
+    const callers = await cli(["graph", "callers", "audit", "--base", "main", "--head", "feature"]);
+    expect(callers["callers"]).toEqual([{ symbol: "login", file: "src/auth.ts", line: 3, at: 4 }]);
+    const before = await cli(["graph", "callers", "check", "--head", "feature", "--graph", "base"]);
+    expect(before["callers"]).toEqual([{ symbol: "login", file: "src/auth.ts", line: 1, at: 2 }]);
+    const surface = await cli(["graph", "interfaces", "--base", "feature", "--head", "surface"]);
+    expect((surface["interfaces"] as Out[]).map((r) => `${r["change"]} ${r["id"]}`)).toEqual([
+      "removed src/audit.ts:audit",
+      "changed src/auth.ts:login",
+      "added src/audit.ts:record",
+    ]);
+    const both = await cli(["graph", "impact", "--review", reviewId, "--base", "main"], {
+      expectCode: 2,
+    });
+    expect(both["code"]).toBe("VALIDATION_ERROR");
+    const unknown = await cli(["graph", "impact", "--base", "no-such-ref"], { expectCode: 2 });
+    expect(unknown["code"]).toBe("VALIDATION_ERROR");
+  }, 30_000);
+
   it("rejects a document whose anchors do not resolve", async () => {
     expect(reviewDir).toBeTruthy();
     await writeFile(

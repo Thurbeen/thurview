@@ -36,10 +36,9 @@ document:
     Each class of fact has exactly one owner document. README.md owns the
     introduction, install, the reader-facing feature list and the CLI table.
     skills/thurview/SKILL.md owns the agent workflow for authoring a document,
-    skills/forge-review/SKILL.md the workflow for reviewing a change request
-    and posting it back, with references/forges.md owning the two forges'
-    differences and references/security-surfaces.md the per-surface checklist;
-    and the thurview references own
+    skills/review-fix/SKILL.md the workflow for reviewing a change and fixing
+    what it finds, with references/forges.md owning the two forges'
+    differences; and the thurview references own
     the contracts: references/document-authoring.md the document rules,
     references/components.md every data.yaml shape and fenced component,
     references/lifecycle.md statuses, storage and threads,

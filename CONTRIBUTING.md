@@ -36,8 +36,8 @@ locally.
 - `src/ui/`: the browser app, vanilla TypeScript bundled by esbuild.
 - `skills/thurview/`: the agent skill and its references, the single source
   for every authored file's shape.
-- `skills/forge-review/`: the skill that reviews a pull or merge request and
-  posts it back through `thurview forge`.
+- `skills/review-fix/`: the skill that reviews a change with the code graph,
+  commits the fixes that pass, and can post the rest through `thurview forge`.
 - `test/e2e.test.ts`: the suite, driving the CLI and the server end to end.
 - `test/forge.test.ts`: the same, with a fake `gh` and `glab` on PATH, so both
   forge adapters are driven rather than asserted.
@@ -55,7 +55,7 @@ temporary directory. Re-record it when the UI or the CLI output changes.
 ## The skills and the command
 
 `skills/` holds two skills - `thurview` authors and publishes the document,
-`forge-review` posts a review of a change request back to its forge. Both are
+`review-fix` reviews a change and commits the fixes that pass. Both are
 installed three ways, and only one of them keeps the
 skill and the command in step:
 
