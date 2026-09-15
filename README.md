@@ -72,9 +72,19 @@ CLI. It works with Claude Code, Codex, Cursor, OpenCode and every agent that
 reads the Agent Skills format:
 
 ```sh
-npx skills add Thurbeen/thurview --skill thurview
-npx skills add Thurbeen/thurview --skill review-fix     # optional, see below
+npx skills@latest add https://github.com/Thurbeen/thurview \
+  --skill thurview --agent universal claude-code --global --yes
+npx skills@latest add https://github.com/Thurbeen/thurview \
+  --skill review-fix --agent universal claude-code --global --yes   # optional, see below
 ```
+
+`--global` installs for your user, so one install covers every repository.
+`universal` puts the one real copy in `~/.agents/skills/thurview`, the directory
+no single agent owns, and every other agent you name gets a symlink to it, such
+as `~/.claude/skills/thurview` → `../../.agents/skills/thurview`, so an update
+lands everywhere at once. Swap `claude-code` for any agent the skills CLI
+supports, but keep `universal` and at least one more: with `--yes` and a single
+target, the CLI copies instead of linking.
 
 That form tracks this repository's default branch: `skills update` takes
 whatever `main` holds, which can be ahead of the released command. To pin the
@@ -82,8 +92,12 @@ skill to a release instead, install it from the tag, which the skill lock
 records and later updates keep:
 
 ```sh
-npx skills add https://github.com/Thurbeen/thurview/tree/v0.1.4/skills/thurview
+npx skills@latest add https://github.com/Thurbeen/thurview/tree/v0.10.0/skills/thurview \
+  --agent universal claude-code --global --yes
 ```
+
+Releases tag without committing, so nothing moves the tag above: swap in the
+[latest release](https://github.com/Thurbeen/thurview/releases/latest).
 
 The npm package ships the same skill, so `thurview setup skill` links the copy
 that matches the command you have installed. Use that when you want the two to
