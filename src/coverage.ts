@@ -15,13 +15,7 @@
  * conclusion, drawing it is the reader's job.
  */
 import { globToRegExp } from "./document/compile.js";
-import {
-  architecture,
-  isGraphLanguage,
-  isNestedNonMethod,
-  type CodeGraph,
-  type Sym,
-} from "./graph.js";
+import { architecture, isGraphLanguage, type CodeGraph, type Sym } from "./graph.js";
 
 /** How a file at the pinned commit is accounted for. */
 export type FileState =
@@ -204,7 +198,7 @@ export function computeCoverage(input: CoverageInput): Coverage {
   // so it cannot be the same concept living in two parts, only the same word.
   const byName = new Map<string, Sym[]>();
   for (const s of graph.symbols) {
-    if (s.name === MODULE || isNestedNonMethod(s)) continue;
+    if (s.name === MODULE || s.fileScoped) continue;
     byName.set(s.name, [...(byName.get(s.name) ?? []), s]);
   }
   const spread: Coverage["sharedNames"] = [];

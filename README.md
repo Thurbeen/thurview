@@ -116,7 +116,7 @@ The review reasons over a code graph thurview builds itself from the pinned
 commits with tree-sitter, so nothing else needs installing. `thurview graph`
 answers which interfaces the change moved, what it reaches, who calls a
 symbol, what tests cover it and how files cluster, for TypeScript,
-JavaScript, Python, Go, Rust and Java.
+JavaScript, Python, Go, Rust, Java and Elixir.
 
 To run from a checkout instead:
 

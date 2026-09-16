@@ -139,7 +139,7 @@ thurview graph tests-for <symbol> --review <id>
 thurview graph architecture --review <id>       # file clusters with their hubs, the edges between them, the file-level diff
 ```
 
-The graph covers TypeScript, JavaScript, Python, Go, Rust and Java; other
+The graph covers TypeScript, JavaScript, Python, Go, Rust, Java and Elixir; other
 files are absent from it, not empty. References resolve by name, so treat
 `unresolved` as the size of what it could not place, and `<module>` as code
 outside any definition. If `truncated` is true (`truncated.base` and

@@ -22,6 +22,8 @@ export interface Sym {
   file: string;
   line: number;
   end: number;
+  /** nested inside a callable rather than a namespace, so no other file can name it */
+  fileScoped?: true;
 }
 
 export interface Edge {
@@ -39,7 +41,7 @@ export interface Edge {
  * reads as zero - a wrong number rather than an error, which is exactly what a
  * document that states derived facts must never do.
  */
-export const GRAPH_SCHEMA = 2;
+export const GRAPH_SCHEMA = 3;
 
 export interface CodeGraph {
   schema: number;
@@ -94,6 +96,11 @@ const GRAMMARS: Record<string, Grammar> = {
   go: { pkg: "tree-sitter-go", wasm: "tree-sitter-go.wasm", tags: ["tree-sitter-go"] },
   rust: { pkg: "tree-sitter-rust", wasm: "tree-sitter-rust.wasm", tags: ["tree-sitter-rust"] },
   java: { pkg: "tree-sitter-java", wasm: "tree-sitter-java.wasm", tags: ["tree-sitter-java"] },
+  elixir: {
+    pkg: "tree-sitter-elixir",
+    wasm: "tree-sitter-elixir.wasm",
+    tags: ["tree-sitter-elixir"],
+  },
 };
 GRAMMARS["jsx"] = GRAMMARS["javascript"]!;
 
@@ -144,21 +151,44 @@ async function tagsOf(lang: string, text: string): Promise<Tag[]> {
   const tree = parser.parse(text);
   if (!tree) return [];
   try {
-    const tags: Tag[] = [];
+    const found: { at: string; tag: Tag }[] = [];
+    // A pattern that claims a name but produces no tag is asking for that name to be left
+    // alone - Elixir spends seven of them keeping `def`, `import` and the rest of the
+    // macros that parse as ordinary calls out of the reference set.
+    const leaveAlone = new Set<string>();
+    // A name a definition claims is that definition, not a call to it: Elixir's `def f(x)`
+    // nests a real call node inside the macro, so without this every function references
+    // itself on the line that defines it.
+    const defined = new Set<string>();
     for (const m of query.matches(tree.rootNode)) {
       const tag = m.captures.find((c) => /^(definition|reference)\./.test(c.name));
       const name = m.captures.find((c) => c.name === "name");
-      if (!tag || !name) continue;
+      if (!tag) {
+        for (const c of m.captures) {
+          if (c.name === "ignore") leaveAlone.add(`${c.node.startIndex}:${c.node.endIndex}`);
+        }
+        continue;
+      }
+      if (!name) continue;
       const [role, kind] = tag.name.split(".") as ["definition" | "reference", string];
-      tags.push({
-        name: name.node.text,
-        kind,
-        role,
-        line: tag.node.startPosition.row + 1,
-        end: tag.node.endPosition.row + 1,
+      const at = `${name.node.startIndex}:${name.node.endIndex}`;
+      if (role === "definition") defined.add(at);
+      found.push({
+        at,
+        tag: {
+          name: name.node.text,
+          kind,
+          role,
+          line: tag.node.startPosition.row + 1,
+          end: tag.node.endPosition.row + 1,
+        },
       });
     }
-    return tags;
+    return found
+      .filter(
+        ({ at, tag }) => !leaveAlone.has(at) && !(tag.role === "reference" && defined.has(at)),
+      )
+      .map(({ tag }) => tag);
   } finally {
     tree.delete();
   }
@@ -166,13 +196,12 @@ async function tagsOf(lang: string, text: string): Promise<Tag[]> {
 
 const SKIP = /(^|\/)(node_modules|dist|build|vendor|target|\.git)\//;
 
-/** A definition nested inside another (its qualified name has a dot) that isn't a class
- *  method has no meaning outside the file that scopes it, so it can't be a cross-file
- *  resolution target picked by the repo-wide-unique fallback. */
-export function isNestedNonMethod(s: Sym): boolean {
-  const qualified = s.id.slice(s.file.length + 1).replace(/#\d+$/, "");
-  return qualified.includes(".") && s.kind !== "method";
-}
+/** Kinds that give their contents a name rather than hide them: a definition inside one is
+ *  addressable from another file as `Parent.child`, one inside a callable is not. The
+ *  enclosing kind is what decides this, never the nested one, because a grammar is free not
+ *  to distinguish a method at all - Python and Elixir both tag one `function`, so a rule
+ *  reading the nested kind would hide every method those two languages define. */
+const NAMESPACE_KINDS = new Set(["class", "interface", "module"]);
 
 export function isTestFile(path: string): boolean {
   const name = path.split("/").pop() ?? "";
@@ -226,10 +255,12 @@ export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph
         .sort((a, b) => a.line - b.line || b.end - a.end);
       for (const t of ordered) {
         let parent = "";
+        let enclosedBy: Sym | undefined;
         for (let i = defs.length - 1; i >= 0; i--) {
           const d = defs[i]!;
           if (d.line <= t.line && t.end <= d.end && !(d.line === t.line && d.end === t.end)) {
             parent = qualified[i]!;
+            enclosedBy = d;
             break;
           }
         }
@@ -237,7 +268,12 @@ export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph
         const n = (seen.get(q) ?? 0) + 1;
         seen.set(q, n);
         const id = `${file}:${q}${n > 1 ? `#${n}` : ""}`;
-        const s = { id, name: t.name, kind: t.kind, file, line: t.line, end: t.end };
+        const s: Sym = { id, name: t.name, kind: t.kind, file, line: t.line, end: t.end };
+        // an enclosing definition that is itself unreachable takes its contents with it,
+        // so a namespace nested in a function does not make its members addressable
+        if (enclosedBy && (enclosedBy.fileScoped || !NAMESPACE_KINDS.has(enclosedBy.kind))) {
+          s.fileScoped = true;
+        }
         defs.push(s);
         qualified.push(q);
         define(s);
@@ -268,8 +304,7 @@ export async function buildGraph(cwd: string, commit: string): Promise<CodeGraph
       const candidates = byName.get(r.name) ?? [];
       const sole = candidates.length === 1 ? candidates[0]! : undefined;
       const target =
-        candidates.find((c) => c.file === file) ??
-        (sole && !isNestedNonMethod(sole) ? sole : undefined);
+        candidates.find((c) => c.file === file) ?? (sole && !sole.fileScoped ? sole : undefined);
       if (!target) {
         unresolved++;
         unresolvedByFile[file] = (unresolvedByFile[file] ?? 0) + 1;

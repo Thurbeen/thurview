@@ -1,5 +1,6 @@
 allowBuilds:
   esbuild: true
+  tree-sitter-elixir: false
   tree-sitter-go: false
   tree-sitter-java: false
   tree-sitter-javascript: false
