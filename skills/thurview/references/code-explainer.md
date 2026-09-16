@@ -99,7 +99,7 @@ Two consequences worth planning for:
 
 Coverage also states what the code graph could not read: files in languages it
 does not parse (`thurview graph` covers TypeScript, JavaScript, Python, Go,
-Rust and Java), and whether its file list was capped. Those files are absent
+Rust, Java and Elixir), and whether its file list was capped. Those files are absent
 from the structure, not empty. If a large part of the scope is outside the
 graph, say so in the document rather than letting the map imply the system is
 smaller than it is.

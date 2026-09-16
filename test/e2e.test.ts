@@ -296,6 +296,50 @@ describe("thurview end to end", () => {
     expect(unknown["code"]).toBe("VALIDATION_ERROR");
   }, 30_000);
 
+  it("reads an Elixir surface instead of filing every symbol as internal", async () => {
+    const ex = await mkdtemp(join(tmpdir(), "thurview-elixir-"));
+    const exGit = (...a: string[]) =>
+      sh(ex, "git", a, {
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@t",
+      });
+    const module = (extra: string, body: string) =>
+      `defmodule Chats do\n  def fetch(id) do\n    ${body}\n  end\n\n` +
+      `  defp hidden(id) do\n    id\n  end\n${extra}end\n`;
+    await exGit("init", "-q", "-b", "main");
+    await mkdir(join(ex, "lib"), { recursive: true });
+    await writeFile(join(ex, "lib", "chats.ex"), module("", "id"));
+    await exGit("add", ".");
+    await exGit("commit", "-q", "-m", "base");
+    const base = (await exGit("rev-parse", "HEAD")).stdout.trim();
+
+    // a language the graph reads is never "outside the code graph", and a body that
+    // moves while the signature holds still is not the surface moving
+    await writeFile(join(ex, "lib", "chats.ex"), module("", "to_string(id)"));
+    await exGit("commit", "-q", "-am", "body only");
+    const body = await cli(["graph", "interfaces", "--base", base, "--head", "HEAD"], { cwd: ex });
+    expect(body["interfaces"]).toEqual([]);
+    expect(body["unreadable"]).toEqual([]);
+    expect(String(body["verdict"])).not.toMatch(/outside the code graph/);
+
+    // `def` is the surface and `defp` is not, so only one of the two shows up
+    const held = (await exGit("rev-parse", "HEAD")).stdout.trim();
+    await writeFile(
+      join(ex, "lib", "chats.ex"),
+      module(
+        "\n  def purge!(id) do\n    id\n  end\n\n  defp secret(id) do\n    id\n  end\n",
+        "to_string(id)",
+      ),
+    );
+    await exGit("commit", "-q", "-am", "add a public and a private function");
+    const added = await cli(["graph", "interfaces", "--base", held, "--head", "HEAD"], { cwd: ex });
+    expect((added["interfaces"] as Out[]).map((r) => `${r["change"]} ${r["id"]}`)).toEqual([
+      "added lib/chats.ex:Chats.purge!",
+    ]);
+  }, 30_000);
+
   it("rejects a document whose anchors do not resolve", async () => {
     expect(reviewDir).toBeTruthy();
     await writeFile(

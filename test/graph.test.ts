@@ -74,6 +74,70 @@ describe("buildGraph", () => {
     expect(g.unresolvedByFile).toEqual({ "src/a.ts": 1 });
   });
 
+  it("resolves a cross-module call in Elixir, where a definition nests inside defmodule", async () => {
+    const { dir, git } = await repo();
+    await writeFile(
+      join(dir, "src", "a.ex"),
+      `defmodule Chats do\n  def fetch(id) do\n    id\n  end\nend\n`,
+    );
+    await writeFile(
+      join(dir, "src", "b.ex"),
+      `defmodule Logout do\n  def run(id) do\n    Chats.fetch(id)\n  end\nend\n`,
+    );
+    await git("add", ".");
+    await git("commit", "-q", "-m", "base");
+    const head = (await git("rev-parse", "HEAD")).stdout.trim();
+    const g = await buildGraph(dir, head);
+    // every Elixir function is nested in a defmodule, so the edge only exists if
+    // that nesting does not read as a file-scoped definition
+    const edge = g.edges.find((e) => e.from.startsWith("src/b.ex:") && e.to.includes("fetch"));
+    expect(edge).toEqual({
+      from: "src/b.ex:Logout.run",
+      to: "src/a.ex:Chats.fetch",
+      kind: "call",
+      at: 3,
+    });
+  });
+
+  it("does not read Elixir's def macro as a call to the function it defines", async () => {
+    const { dir, git } = await repo();
+    await writeFile(
+      join(dir, "src", "a.ex"),
+      `defmodule Chats do\n  def fetch(id) do\n    id\n  end\nend\n`,
+    );
+    await git("add", ".");
+    await git("commit", "-q", "-m", "base");
+    const head = (await git("rev-parse", "HEAD")).stdout.trim();
+    const g = await buildGraph(dir, head);
+    // `def fetch(id)` nests a real call node inside the macro, and the query asks for the
+    // macro itself to be ignored; honouring neither makes every definition both call its
+    // own name and leave `def` dangling, which is noise proportional to the file's size
+    expect(g.edges).toEqual([]);
+    expect(g.unresolved).toBe(0);
+  });
+
+  it("keeps an Elixir function whose own name is one of the macros the query skips", async () => {
+    const { dir, git } = await repo();
+    await writeFile(
+      join(dir, "src", "kw.ex"),
+      `defmodule Importer do\n  def import(path), do: path\n  def raise(msg), do: msg\n` +
+        `  def normal(x), do: x\nend\n`,
+    );
+    await git("add", ".");
+    await git("commit", "-q", "-m", "base");
+    const head = (await git("rev-parse", "HEAD")).stdout.trim();
+    const g = await buildGraph(dir, head);
+    // the skip list names call targets, never definitions: `def import(path)` puts a
+    // listed word on the node that defines a function, and honouring it there deletes
+    // the function from the graph rather than quieting a call
+    expect(g.symbols.map((s) => s.id).sort()).toEqual([
+      "src/kw.ex:Importer",
+      "src/kw.ex:Importer.import",
+      "src/kw.ex:Importer.normal",
+      "src/kw.ex:Importer.raise",
+    ]);
+  });
+
   it("does not resolve a call to a nested non-method definition in another file", async () => {
     const { dir, git } = await repo();
     await writeFile(
