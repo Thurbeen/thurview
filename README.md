@@ -9,7 +9,7 @@ approve or send it back.
 ## Install
 
 Give your agent the skill, with the [skills](https://github.com/vercel-labs/skills)
-CLI — it works with Claude Code, Codex, Cursor, OpenCode and every agent that
+CLI - it works with Claude Code, Codex, Cursor, OpenCode and every agent that
 reads the Agent Skills format:
 
 ```sh
@@ -17,7 +17,9 @@ npx skills@latest add https://github.com/Thurbeen/thurview \
   --skill thurview --agent universal claude-code --global --yes
 ```
 
-Then, in any repository, ask your agent:
+The skill reaches the `thurview` command through `npx`, so the requirements
+are Node 22 or later and git (`gh` for pull requests, `glab` for merge
+requests). Then, in any repository, ask your agent:
 
 ```text
 Use the thurview skill to review my current branch against up-to-date main
@@ -34,8 +36,9 @@ threads panel the answer to a question already asked, and sending the review
 back with changes requested.
 
 <details>
-<summary><b>Other ways to install</b> — pin the skill to a release, install the
-command from npm, run from a checkout, session hooks</summary>
+<summary><b>Other ways to install</b> - pin the skill to a release, install the
+command from npm, run from a checkout, session hooks, the review-fix
+skill</summary>
 
 `--global` installs for your user, so one install covers every repository.
 `universal` puts the one real copy in `~/.agents/skills/thurview`, the directory
@@ -62,13 +65,11 @@ The npm package ships the same skill, so `thurview setup skill` links the copy
 that matches the command you have installed. Use that when you want the two to
 move together.
 
-The skill drives the `thurview` command, which needs Node 22 or later and
-git (`gh` for pull requests, `glab` for merge requests). Install it, or let
-the skill reach it through `npx`:
+Install the command itself, rather than leaving the skill to reach it through
+`npx` on every run:
 
 ```sh
 npm install -g thurview     # or: pnpm add -g thurview
-npx -y thurview             # no install; the skill falls back to this
 ```
 
 The review reasons over a code graph thurview builds itself from the pinned

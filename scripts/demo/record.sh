@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Record media/thurview-demo.{mp4,gif}: the reader side in the browser, captured
 # from headless Chromium as a screencast and encoded by ffmpeg. The demo is of
-# the interface, so the agent side — scaffold, publish, the reply to the
-# reader's question — runs off camera, before the recording starts.
+# the interface, so the agent side - scaffold, publish, the reply to the
+# reader's question - runs off camera, before the recording starts.
 #
 # Isolation: THURVIEW_HOME and the demo repository live in a throwaway directory,
 # and the server runs on its own port, so nothing touches your reviews.
@@ -22,7 +22,8 @@ cd "$repo"
 uuid="$(thurview scaffold --title "Audit every login" | sed -n 's/^ *uuid: //p')"
 [ -n "$uuid" ] || { echo "scaffold printed no uuid" >&2; exit 1; }
 cp "$root/scripts/demo/review/review.md" "$root/scripts/demo/review/data.yaml" "$root/scripts/demo/review/map.yaml" "$THURVIEW_HOME/reviews/$uuid/"
-thurview publish --review "$uuid" >"$work/publish.log" 2>&1
+thurview publish --review "$uuid" >"$work/publish.log" 2>&1 ||
+  { tail -20 "$work/publish.log" >&2; exit 1; }
 
 thurview serve --port "$port" >"$work/server.log" 2>&1 &
 server_pid=$!
