@@ -507,8 +507,17 @@ describe("thurview forge, on GitLab", () => {
     expect(out["submitted"].comments).toBe(1);
     expect(out["notes"].join(" ")).toContain("anchored at line 44");
     expect(out["notes"].join(" ")).toContain("no changes-requested state");
-    const made = (await calls()).map((c) => c.args.join(" "));
-    expect(made.some((a) => a.includes("position[new_line]=44"))).toBe(true);
+    const logged = await calls();
+    const made = logged.map((c) => c.args.join(" "));
+    // The position goes on stdin as one JSON document: glab sends a bracketed
+    // `--raw-field` name literally, and the API refuses `position[new_line]`.
+    const discussion = logged.find((c) => c.args.join(" ").includes("discussions"));
+    expect(made.every((a) => !a.includes("position["))).toBe(true);
+    expect(JSON.parse(discussion!.body)).toMatchObject({
+      body: "0644 here.",
+      position: { position_type: "text", new_path: "src/clip.rs", new_line: 44 },
+    });
+    expect(discussion!.args.join(" ")).toContain("Content-Type: application/json");
     expect(made.some((a) => a.includes("unapprove"))).toBe(true);
     expect(made.some((a) => a.includes("merge_requests/7/notes"))).toBe(true);
   });

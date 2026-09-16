@@ -267,28 +267,30 @@ export class GitLabForge implements Forge {
     for (const c of s.comments) {
       if (c.startLine && c.startLine < c.line)
         notes.push(`${c.path}:${c.startLine}-${c.line} anchored at line ${c.line}`);
+      // The position is a nested object, and glab sends `--raw-field` names
+      // literally: a bracketed name reaches a JSON body as the key
+      // `position[position_type]`, which the API rejects. Post the document on
+      // stdin instead, with the content type glab does not set for `--input`.
+      const position = {
+        position_type: "text",
+        base_sha: refs!.base_sha,
+        start_sha: refs!.start_sha,
+        head_sha: refs!.head_sha,
+        new_path: c.path,
+        old_path: c.path,
+        ...(c.side === "base" ? { old_line: c.line } : { new_line: c.line }),
+      };
       await runJson<unknown>(
         "glab",
         this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/discussions`, [
           "--method",
           "POST",
-          "--raw-field",
-          `body=${c.body}`,
-          "--raw-field",
-          "position[position_type]=text",
-          "--raw-field",
-          `position[base_sha]=${refs!.base_sha}`,
-          "--raw-field",
-          `position[start_sha]=${refs!.start_sha}`,
-          "--raw-field",
-          `position[head_sha]=${refs!.head_sha}`,
-          "--raw-field",
-          `position[new_path]=${c.path}`,
-          "--raw-field",
-          `position[old_path]=${c.path}`,
-          "--raw-field",
-          c.side === "base" ? `position[old_line]=${c.line}` : `position[new_line]=${c.line}`,
+          "--header",
+          "Content-Type: application/json",
+          "--input",
+          "-",
         ]),
+        { input: JSON.stringify({ body: c.body, position }) },
       );
       posted++;
     }
