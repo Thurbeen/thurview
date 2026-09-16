@@ -131,9 +131,10 @@ review:
       instructions: |
         The demo recorder. The review under scripts/demo/review/ must keep
         validating against the repository make-repo.sh builds: a changed line
-        range in the demo sources moves the anchors in data.yaml. The tape is a
-        template; VHS takes no absolute Output path and no escaped quotes in a
-        typed string, which is why the API call lives in a sourced helper.
+        range in the demo sources moves the anchors in data.yaml. The clip is
+        of the interface alone: everything the agent does - scaffold, publish,
+        answer the reader's question - runs off camera, before the recording
+        starts, and no terminal is filmed.
     - path: "README.md"
       instructions: |
         Prose. Do not request test coverage. It must stay accurate to the CLI

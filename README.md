@@ -1,10 +1,110 @@
 # thurview
 
-Guided, evidence-anchored reviews of agent-written code.
+Guided, evidence-anchored reviews of agent-written code. A coding agent studies
+a branch, pull request or commit range and writes a short document in which
+every claim is anchored to an exact file and line range at a pinned commit. You
+read it in your browser, ask the agent questions, comment on the code, and
+approve or send it back.
 
-A coding agent studies a branch, pull request or commit range and writes a
-short document in which every claim is anchored to an exact file and line
-range at a pinned commit. thurview validates the anchors, seals a revision,
+## Install
+
+Give your agent the skill, with the [skills](https://github.com/vercel-labs/skills)
+CLI - it works with Claude Code, Codex, Cursor, OpenCode and every agent that
+reads the Agent Skills format:
+
+```sh
+npx skills@latest add https://github.com/Thurbeen/thurview \
+  --skill thurview --agent universal claude-code --global --yes
+```
+
+The skill reaches the `thurview` command through `npx`, so the requirements
+are Node 22 or later and git (`gh` for pull requests, `glab` for merge
+requests). Then, in any repository, ask your agent:
+
+```text
+Use the thurview skill to review my current branch against up-to-date main
+and open it.
+```
+
+![thurview demo: the reader follows an anchor into the code, comments on a line
+range in the diff, reads the agent's answer and requests changes](./media/thurview-demo.gif)
+
+The clip is the reader's half, the agent working off camera: following an anchor
+from the prose into the code, opening a call stack frame, commenting on a line
+range of the diff, seeing on the map what the change added, reading in the
+threads panel the answer to a question already asked, and sending the review
+back with changes requested.
+
+<details>
+<summary><b>Other ways to install</b> - pin the skill to a release, install the
+command from npm, run from a checkout, session hooks, the review-fix
+skill</summary>
+
+`--global` installs for your user, so one install covers every repository.
+`universal` puts the one real copy in `~/.agents/skills/thurview`, the directory
+no single agent owns, and every other agent you name gets a symlink to it, such
+as `~/.claude/skills/thurview` → `../../.agents/skills/thurview`, so an update
+lands everywhere at once. Swap `claude-code` for any agent the skills CLI
+supports, but keep `universal` and at least one more: with `--yes` and a single
+target, the CLI copies instead of linking.
+
+That form tracks this repository's default branch: `skills update` takes
+whatever `main` holds, which can be ahead of the released command. To pin the
+skill to a release instead, install it from the tag, which the skill lock
+records and later updates keep:
+
+```sh
+npx skills@latest add https://github.com/Thurbeen/thurview/tree/v0.10.0/skills/thurview \
+  --agent universal claude-code --global --yes
+```
+
+Releases tag without committing, so nothing moves the tag above: swap in the
+[latest release](https://github.com/Thurbeen/thurview/releases/latest).
+
+The npm package ships the same skill, so `thurview setup skill` links the copy
+that matches the command you have installed. Use that when you want the two to
+move together.
+
+Install the command itself, rather than leaving the skill to reach it through
+`npx` on every run:
+
+```sh
+npm install -g thurview     # or: pnpm add -g thurview
+```
+
+The review reasons over a code graph thurview builds itself from the pinned
+commits with tree-sitter, so nothing else needs installing. `thurview graph`
+answers which interfaces the change moved, what it reaches, who calls a
+symbol, what tests cover it and how files cluster, for TypeScript,
+JavaScript, Python, Go, Rust, Java and Elixir.
+
+To run from a checkout instead:
+
+```sh
+pnpm install
+pnpm build
+npm link                    # puts `thurview` on PATH
+```
+
+Optional, for ambient context: `thurview setup hooks` installs a
+SessionStart hook for Claude Code, Codex and OpenCode, so every session opens
+with the reviews of its working directory. `thurview setup skill` links the
+skill from this checkout instead of the `skills` CLI copy; use one or the
+other.
+
+Also available: `review-fix`, the browserless companion skill described
+[below](#review-and-fix).
+
+```sh
+npx skills@latest add https://github.com/Thurbeen/thurview \
+  --skill review-fix --agent universal claude-code --global --yes
+```
+
+</details>
+
+## How it works
+
+thurview validates every anchor against the pinned commits, seals a revision,
 and serves it in your browser: the walkthrough, live code peeks, the diff,
 commits, and a software map. You ask questions, leave anchored comments, and
 approve or request changes. The agent answers and republishes.
@@ -18,13 +118,15 @@ what it did not examine.
 It does not review the code for you. It helps you understand it fast enough
 to review it yourself.
 
-![thurview demo: the agent publishes and answers in the terminal, the reader
-peeks, comments and decides in the browser](./media/thurview-demo.gif)
-
-The clip is the `/thurview` skill's loop end to end: `thurview publish`, a
-question arriving in `thurview wait`, the reply, then the reader following an
-anchor into the code, commenting on a line range in the diff, reading the
-answer in the threads panel and requesting changes.
+```mermaid
+flowchart LR
+  A[Branch, PR or range] --> B[Agent pins base and head]
+  B --> C[Agent authors review.md + data.yaml + map.yaml]
+  C --> D[thurview publish: validate, seal revision]
+  D --> E[You read, ask, comment in the browser]
+  E -->|Request changes| C
+  E -->|Approve| F[Done]
+```
 
 ## What the reader sees
 
@@ -55,91 +157,7 @@ Approve, or send it back with the comments:
 ![The submit dialog, one pending comment, Approve or Request
 changes](./media/review-decision.png)
 
-```mermaid
-flowchart LR
-  A[Branch, PR or range] --> B[Agent pins base and head]
-  B --> C[Agent authors review.md + data.yaml + map.yaml]
-  C --> D[thurview publish: validate, seal revision]
-  D --> E[You read, ask, comment in the browser]
-  E -->|Request changes| C
-  E -->|Approve| F[Done]
-```
-
-## Install
-
-Give your agent the skill, with the [skills](https://github.com/vercel-labs/skills)
-CLI. It works with Claude Code, Codex, Cursor, OpenCode and every agent that
-reads the Agent Skills format:
-
-```sh
-npx skills@latest add https://github.com/Thurbeen/thurview \
-  --skill thurview --agent universal claude-code --global --yes
-npx skills@latest add https://github.com/Thurbeen/thurview \
-  --skill review-fix --agent universal claude-code --global --yes   # optional, see below
-```
-
-`--global` installs for your user, so one install covers every repository.
-`universal` puts the one real copy in `~/.agents/skills/thurview`, the directory
-no single agent owns, and every other agent you name gets a symlink to it, such
-as `~/.claude/skills/thurview` → `../../.agents/skills/thurview`, so an update
-lands everywhere at once. Swap `claude-code` for any agent the skills CLI
-supports, but keep `universal` and at least one more: with `--yes` and a single
-target, the CLI copies instead of linking.
-
-That form tracks this repository's default branch: `skills update` takes
-whatever `main` holds, which can be ahead of the released command. To pin the
-skill to a release instead, install it from the tag, which the skill lock
-records and later updates keep:
-
-```sh
-npx skills@latest add https://github.com/Thurbeen/thurview/tree/v0.10.0/skills/thurview \
-  --agent universal claude-code --global --yes
-```
-
-Releases tag without committing, so nothing moves the tag above: swap in the
-[latest release](https://github.com/Thurbeen/thurview/releases/latest).
-
-The npm package ships the same skill, so `thurview setup skill` links the copy
-that matches the command you have installed. Use that when you want the two to
-move together.
-
-The skill drives the `thurview` command, which needs Node 22 or later and
-git (`gh` for pull requests, `glab` for merge requests). Install it, or let
-the skill reach it through `npx`:
-
-```sh
-npm install -g thurview     # or: pnpm add -g thurview
-npx -y thurview             # no install; the skill falls back to this
-```
-
-The review reasons over a code graph thurview builds itself from the pinned
-commits with tree-sitter, so nothing else needs installing. `thurview graph`
-answers which interfaces the change moved, what it reaches, who calls a
-symbol, what tests cover it and how files cluster, for TypeScript,
-JavaScript, Python, Go, Rust, Java and Elixir.
-
-To run from a checkout instead:
-
-```sh
-pnpm install
-pnpm build
-npm link                    # puts `thurview` on PATH
-```
-
-Optional, for ambient context: `thurview setup hooks` installs a
-SessionStart hook for Claude Code, Codex and OpenCode, so every session opens
-with the reviews of its working directory. `thurview setup skill` links the
-skill from this checkout instead of the `skills` CLI copy; use one or the
-other.
-
-Then, in any repository, ask your agent:
-
-```text
-Use the thurview skill to review my current branch against up-to-date main
-and open it.
-```
-
-## What the reader gets
+## What's in a review
 
 - **Interface delta**: above the document, what the change added to, changed
   in or removed from the surfaces other code can reach - exported functions
