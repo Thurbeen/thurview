@@ -1,82 +1,41 @@
 # thurview
 
-Guided, evidence-anchored reviews of agent-written code.
-
-A coding agent studies a branch, pull request or commit range and writes a
-short document in which every claim is anchored to an exact file and line
-range at a pinned commit. thurview validates the anchors, seals a revision,
-and serves it in your browser: the walkthrough, live code peeks, the diff,
-commits, and a software map. You ask questions, leave anchored comments, and
-approve or request changes. The agent answers and republishes.
-
-It also explains a codebase. A **code explainer** is the same document over a
-different unit: one pinned commit instead of a range, so a reader can see the
-architecture well enough to spot design problems themselves. It has no diff and
-nothing to approve, it surfaces structure rather than grading it, and it states
-what it did not examine.
-
-It does not review the code for you. It helps you understand it fast enough
-to review it yourself.
-
-![thurview demo: the agent publishes and answers in the terminal, the reader
-peeks, comments and decides in the browser](./media/thurview-demo.gif)
-
-The clip is the `/thurview` skill's loop end to end: `thurview publish`, a
-question arriving in `thurview wait`, the reply, then the reader following an
-anchor into the code, commenting on a line range in the diff, reading the
-answer in the threads panel and requesting changes.
-
-## What the reader sees
-
-Prose with every claim anchored to code, opened beside the text:
-
-![The review document, with a call stack diff, a storage view and an anchored
-peek open in the side panel](./media/review-review.png)
-
-The diff at the pinned commits, commenting on a selected line range:
-
-![The Files tab, split diff, with a comment on lines 9 to 12 of
-src/auth.ts](./media/review-files.png)
-
-The software map: where the change landed in the system, and what sits next to
-it — the question the diff cannot answer:
-
-![The Map tab: the parts the change touched, drawn first, the links between
-them, and the selected node's files, code and neighbours](./media/review-map.png)
-
-Threads: a question the agent already answered, and a comment held for the
-decision:
-
-![The threads panel, one answered question and one pending
-comment](./media/review-threads.png)
-
-Approve, or send it back with the comments:
-
-![The submit dialog, one pending comment, Approve or Request
-changes](./media/review-decision.png)
-
-```mermaid
-flowchart LR
-  A[Branch, PR or range] --> B[Agent pins base and head]
-  B --> C[Agent authors review.md + data.yaml + map.yaml]
-  C --> D[thurview publish: validate, seal revision]
-  D --> E[You read, ask, comment in the browser]
-  E -->|Request changes| C
-  E -->|Approve| F[Done]
-```
+Guided, evidence-anchored reviews of agent-written code. A coding agent studies
+a branch, pull request or commit range and writes a short document in which
+every claim is anchored to an exact file and line range at a pinned commit. You
+read it in your browser, ask the agent questions, comment on the code, and
+approve or send it back.
 
 ## Install
 
 Give your agent the skill, with the [skills](https://github.com/vercel-labs/skills)
-CLI. It works with Claude Code, Codex, Cursor, OpenCode and every agent that
+CLI — it works with Claude Code, Codex, Cursor, OpenCode and every agent that
 reads the Agent Skills format:
 
 ```sh
 npx skills@latest add https://github.com/Thurbeen/thurview \
   --skill thurview --agent universal claude-code --global --yes
-npx skills@latest add https://github.com/Thurbeen/thurview \
-  --skill review-fix --agent universal claude-code --global --yes   # optional, see below
 ```
+
+Then, in any repository, ask your agent:
+
+```text
+Use the thurview skill to review my current branch against up-to-date main
+and open it.
+```
+
+![thurview demo: the reader follows an anchor into the code, comments on a line
+range in the diff, reads the agent's answer and requests changes](./media/thurview-demo.gif)
+
+The clip is the reader's half, the agent working off camera: following an anchor
+from the prose into the code, opening a call stack frame, commenting on a line
+range of the diff, seeing on the map what the change added, reading in the
+threads panel the answer to a question already asked, and sending the review
+back with changes requested.
+
+<details>
+<summary><b>Other ways to install</b> — pin the skill to a release, install the
+command from npm, run from a checkout, session hooks</summary>
 
 `--global` installs for your user, so one install covers every repository.
 `universal` puts the one real copy in `~/.agents/skills/thurview`, the directory
@@ -132,14 +91,72 @@ with the reviews of its working directory. `thurview setup skill` links the
 skill from this checkout instead of the `skills` CLI copy; use one or the
 other.
 
-Then, in any repository, ask your agent:
+Also available: `review-fix`, the browserless companion skill described
+[below](#review-and-fix).
 
-```text
-Use the thurview skill to review my current branch against up-to-date main
-and open it.
+```sh
+npx skills@latest add https://github.com/Thurbeen/thurview \
+  --skill review-fix --agent universal claude-code --global --yes
 ```
 
-## What the reader gets
+</details>
+
+## How it works
+
+thurview validates every anchor against the pinned commits, seals a revision,
+and serves it in your browser: the walkthrough, live code peeks, the diff,
+commits, and a software map. You ask questions, leave anchored comments, and
+approve or request changes. The agent answers and republishes.
+
+It also explains a codebase. A **code explainer** is the same document over a
+different unit: one pinned commit instead of a range, so a reader can see the
+architecture well enough to spot design problems themselves. It has no diff and
+nothing to approve, it surfaces structure rather than grading it, and it states
+what it did not examine.
+
+It does not review the code for you. It helps you understand it fast enough
+to review it yourself.
+
+```mermaid
+flowchart LR
+  A[Branch, PR or range] --> B[Agent pins base and head]
+  B --> C[Agent authors review.md + data.yaml + map.yaml]
+  C --> D[thurview publish: validate, seal revision]
+  D --> E[You read, ask, comment in the browser]
+  E -->|Request changes| C
+  E -->|Approve| F[Done]
+```
+
+## What the reader sees
+
+Prose with every claim anchored to code, opened beside the text:
+
+![The review document, with a call stack diff, a storage view and an anchored
+peek open in the side panel](./media/review-review.png)
+
+The diff at the pinned commits, commenting on a selected line range:
+
+![The Files tab, split diff, with a comment on lines 9 to 12 of
+src/auth.ts](./media/review-files.png)
+
+The software map: where the change landed in the system, and what sits next to
+it — the question the diff cannot answer:
+
+![The Map tab: the parts the change touched, drawn first, the links between
+them, and the selected node's files, code and neighbours](./media/review-map.png)
+
+Threads: a question the agent already answered, and a comment held for the
+decision:
+
+![The threads panel, one answered question and one pending
+comment](./media/review-threads.png)
+
+Approve, or send it back with the comments:
+
+![The submit dialog, one pending comment, Approve or Request
+changes](./media/review-decision.png)
+
+## What's in a review
 
 - **Interface delta**: above the document, what the change added to, changed
   in or removed from the surfaces other code can reach - exported functions
