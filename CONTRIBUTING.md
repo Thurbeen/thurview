@@ -44,13 +44,14 @@ locally.
 
 ## Demo media
 
-`scripts/demo/record.sh` re-records `media/thurview-demo.{mp4,gif}` from
-scratch: it builds the demo repository (`make-repo.sh`), publishes the review
-under `scripts/demo/review/`, records the agent side with VHS
-(`agent.tape.in`) and the reader side with a Chromium screencast
-(`record-browser.mjs`), and joins both with ffmpeg. It needs `vhs`, `ttyd`,
-`ffmpeg`, `chromium` and `thurview` on PATH, and touches nothing outside a
-temporary directory. Re-record it when the UI or the CLI output changes.
+`scripts/demo/record.sh` re-records `media/thurview-demo.{mp4,gif}` and the
+stills beside them from scratch: it builds the demo repository
+(`make-repo.sh`), publishes the review under `scripts/demo/review/` and answers
+the reader's question, all off camera, then records the reader driving the
+interface as a Chromium screencast (`record-browser.mjs`) and encodes it with
+ffmpeg. The demo is of the UI, so nothing of the agent's terminal is filmed. It
+needs `ffmpeg`, `chromium` (or `$CHROMIUM`) and `thurview` on PATH, and touches
+nothing outside a temporary directory. Re-record it when the UI changes.
 
 ## The skills and the command
 

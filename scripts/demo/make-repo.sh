@@ -8,6 +8,9 @@ rm -rf "$dir"
 mkdir -p "$dir/src"
 cd "$dir"
 git init -q -b main
+# Throwaway commits nobody verifies, so a configured signing key is only a
+# way for the recording to fail on a machine where the agent is not loaded.
+git config commit.gpgsign false
 export GIT_AUTHOR_NAME=demo GIT_AUTHOR_EMAIL=demo@example.invalid GIT_COMMITTER_NAME=demo GIT_COMMITTER_EMAIL=demo@example.invalid
 cat >src/store.ts <<'TS'
 import { readFile, writeFile } from "node:fs/promises";

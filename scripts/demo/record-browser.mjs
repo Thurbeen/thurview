@@ -2,6 +2,7 @@
 // the DevTools protocol with a visible pointer, capture a screencast, and write
 // it as a frame sequence for ffmpeg.
 // Stills of the moments worth showing on their own are written to <shots-dir>.
+// Chromium is taken from $CHROMIUM, or `chromium` on PATH.
 // Usage: node scripts/demo/record-browser.mjs <review-url> <frames-dir> [fps] [shots-dir]
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -24,7 +25,7 @@ const port = 9500 + Math.floor(Math.random() * 400);
 // desktop experience, so the pointer is forced to a mouse. Blink enums:
 // hover hover=2, pointer fine=4.
 const chrome = spawn(
-  "chromium",
+  process.env.CHROMIUM || "chromium",
   [
     "--headless=new",
     "--no-sandbox",
