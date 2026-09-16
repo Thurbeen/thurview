@@ -116,6 +116,28 @@ describe("buildGraph", () => {
     expect(g.unresolved).toBe(0);
   });
 
+  it("keeps an Elixir function whose own name is one of the macros the query skips", async () => {
+    const { dir, git } = await repo();
+    await writeFile(
+      join(dir, "src", "kw.ex"),
+      `defmodule Importer do\n  def import(path), do: path\n  def raise(msg), do: msg\n` +
+        `  def normal(x), do: x\nend\n`,
+    );
+    await git("add", ".");
+    await git("commit", "-q", "-m", "base");
+    const head = (await git("rev-parse", "HEAD")).stdout.trim();
+    const g = await buildGraph(dir, head);
+    // the skip list names call targets, never definitions: `def import(path)` puts a
+    // listed word on the node that defines a function, and honouring it there deletes
+    // the function from the graph rather than quieting a call
+    expect(g.symbols.map((s) => s.id).sort()).toEqual([
+      "src/kw.ex:Importer",
+      "src/kw.ex:Importer.import",
+      "src/kw.ex:Importer.normal",
+      "src/kw.ex:Importer.raise",
+    ]);
+  });
+
   it("does not resolve a call to a nested non-method definition in another file", async () => {
     const { dir, git } = await repo();
     await writeFile(

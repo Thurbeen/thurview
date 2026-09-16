@@ -153,8 +153,10 @@ async function tagsOf(lang: string, text: string): Promise<Tag[]> {
   try {
     const found: { at: string; tag: Tag }[] = [];
     // A pattern that claims a name but produces no tag is asking for that name to be left
-    // alone - Elixir spends seven of them keeping `def`, `import` and the rest of the
-    // macros that parse as ordinary calls out of the reference set.
+    // alone as a CALL - Elixir spends seven of them keeping `def`, `import` and the rest of
+    // the macros that parse as ordinary calls out of the reference set. It never speaks to
+    // definitions: `def import(path)` puts the very name the pattern lists on the node that
+    // defines a function, and dropping that would delete the function from the graph.
     const leaveAlone = new Set<string>();
     // A name a definition claims is that definition, not a call to it: Elixir's `def f(x)`
     // nests a real call node inside the macro, so without this every function references
@@ -186,7 +188,7 @@ async function tagsOf(lang: string, text: string): Promise<Tag[]> {
     }
     return found
       .filter(
-        ({ at, tag }) => !leaveAlone.has(at) && !(tag.role === "reference" && defined.has(at)),
+        ({ at, tag }) => tag.role === "definition" || !(leaveAlone.has(at) || defined.has(at)),
       )
       .map(({ tag }) => tag);
   } finally {

@@ -52,6 +52,32 @@ describe("computeCoverage", () => {
     });
     expect(cov.unresolved).toBe(2);
   });
+
+  it("does not report a dunder as one concept living in two parts", () => {
+    const sym = (file: string, name: string) => ({
+      id: `${file}:Model.${name}`,
+      name,
+      kind: "function",
+      file,
+      line: 2,
+      end: 3,
+    });
+    const files = ["src/a/one.py", "src/b/two.py"];
+    const cov = computeCoverage({
+      commit: "deadbeef",
+      scope: "**",
+      allFiles: files,
+      graph: graph({
+        files,
+        symbols: files.flatMap((f) => [sym(f, "__init__"), sym(f, "prepare_tensors")]),
+      }),
+      anchored: [],
+      owners: [],
+    });
+    // Python tags a method `function`, so methods are shared names like any other -
+    // but `__init__` is a slot every class fills and says nothing about the split
+    expect(cov.sharedNames.map((s) => s.name)).toEqual(["prepare_tensors"]);
+  });
 });
 
 describe("scopeTruncated", () => {

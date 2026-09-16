@@ -196,9 +196,12 @@ export function computeCoverage(input: CoverageInput): Coverage {
   // Only definitions a consumer outside the file could name. A definition nested
   // inside another - an `onclick` handler, a local helper - is scoped to its file,
   // so it cannot be the same concept living in two parts, only the same word.
+  // A dunder is the one name that is always the same word and never the same concept:
+  // `__init__` is a slot every class fills, so it would top this list in any Python
+  // repository while saying nothing about how that repository is split.
   const byName = new Map<string, Sym[]>();
   for (const s of graph.symbols) {
-    if (s.name === MODULE || s.fileScoped) continue;
+    if (s.name === MODULE || s.fileScoped || /^__\w+__$/.test(s.name)) continue;
     byName.set(s.name, [...(byName.get(s.name) ?? []), s]);
   }
   const spread: Coverage["sharedNames"] = [];

@@ -44,7 +44,14 @@ export interface InterfaceDelta {
   truncated: { base: boolean; head: boolean };
 }
 
-type Family = "js" | "python" | "go" | "rust" | "java";
+/**
+ * Every language the graph reads needs an entry here. A grammar registered in GRAMMARS but
+ * missing from FAMILY is the worst of both: its files stop counting as unreadable, so the
+ * verdict no longer says an interface may hide there, while nothing classifies its symbols
+ * and each one lands in `internal` - a public function reported as having no visible
+ * surface, which is a wrong answer where the honest one was already available.
+ */
+type Family = "js" | "python" | "go" | "rust" | "java" | "elixir";
 
 const FAMILY: Record<string, Family> = {
   typescript: "js",
@@ -55,6 +62,7 @@ const FAMILY: Record<string, Family> = {
   go: "go",
   rust: "rust",
   java: "java",
+  elixir: "elixir",
 };
 
 /** Kinds whose body is part of the surface: a field added to an exported type is a change. */
@@ -92,7 +100,13 @@ function declarationOf(lines: string[], s: Sym): string {
     const line = lines[n - 1] ?? "";
     parts.push(line.trim());
     for (const c of line) open += c === "(" ? 1 : c === ")" ? -1 : 0;
-    whole = open <= 0 && (/[{;]/.test(line) || /:\s*$/.test(line.trim()));
+    const t = line.trim();
+    // `do` closes a declaration the way `{` does elsewhere. Without it an Elixir
+    // declaration runs to the line cap and swallows the body, so editing a single
+    // statement inside a function reads as the function's surface having moved.
+    whole =
+      open <= 0 &&
+      (/[{;]/.test(line) || /:\s*$/.test(t) || /(^|\s)do:?$/.test(t) || /,\s*do:\s/.test(t));
   }
   const text = parts
     .join(" ")
@@ -149,14 +163,20 @@ function visibleIds(graph: CodeGraph, texts: Map<string, string>): Set<string> {
             return /^pub(\s|\()/.test(decl);
           case "java":
             return /\bpublic\b/.test(decl);
+          case "elixir":
+            // the private forms are the same words with a `p`: defp, defmacrop, defguardp
+            return /^def(?:module|protocol|macro|delegate|guard|n)?(?=[\s(])/.test(decl);
         }
       };
       const q = qualifiedOf(s);
       const parent = q.includes(".") ? q.slice(0, q.lastIndexOf(".")) : "";
       let visible: boolean;
       if (!parent) visible = declares();
-      // a method rides on its type's visibility, except in Rust where `pub` is on the line
-      else if (family === "rust") visible = declares();
+      // a method rides on its type's visibility, except where the line already says it:
+      // Rust puts `pub` there, and Elixir has no private module and marks the function
+      // itself - and its module names hold dots of their own, so the parent of
+      // `Chat.Repo.fetch` is not a symbol to look up
+      else if (family === "rust" || family === "elixir") visible = declares();
       else if (family === "js")
         visible =
           exported.has(parent) && s.kind === "method" && !/^(private|protected|#)/.test(decl);
