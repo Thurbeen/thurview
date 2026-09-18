@@ -211,7 +211,7 @@ bar.
 | `thurview wait --review ID [--timeout S]`                             | Block until the reader needs the agent                            |
 | `thurview threads list\|get\|reply\|resolve`                          | Read and answer threads                                           |
 | `thurview graph interfaces\|impact\|callers\|tests-for\|architecture` | Ask the code graph at a review's pins, or at `--base`/`--head`    |
-| `thurview forge status\|prior\|submit\|reply`                         | Read a change request through its forge, and post the review back |
+| `thurview forge status\|prior\|pass\|submit\|reply`                   | Read a change request through its forge, and post the review back |
 | `thurview serve` / `thurview stop`                                    | Run the server in the foreground / stop the background one        |
 | `thurview setup hooks\|skill\|status`                                 | Session hooks, agent skill, install state                         |
 | `thurview update`                                                     | Self-update from npm                                              |
@@ -250,6 +250,7 @@ on the change request, through `thurview forge`:
 ```sh
 thurview forge status --change 123    # what CI actually did, and whether it is a gate at all
 thurview forge prior  --change 123    # the previous pass, thread by thread
+thurview forge pass   --review <id>   # the reader's submitted threads, as the file below takes
 thurview forge submit --change 123 --file pass.json --dry-run
 thurview forge reply <threadId> --change 123 --body "<answer>" --resolve --at <head>
 ```
@@ -259,6 +260,14 @@ separately, and compares them against what the target branch's own tip runs -
 a change request from a fork typically runs a fraction of them, and a
 cancelled job shows no failure while asserting nothing. `ci.trustworthy` is
 the only field that means the tests really passed.
+
+`pass` goes the other way, from a review a reader submitted in the browser to
+that same file: one inline comment per thread anchored to a line, questions and
+resolved threads left out, and threads with no line - a document block, a map
+node, a whole file - gathered into the summary and named in the output, so
+nobody assumes their comment was posted where they wrote it. The verdict comes
+from the reader's decision, `close` becomes a `comment`, and an approve with
+threads still open is refused rather than quietly downgraded.
 
 `submit` takes one JSON file so a human can read the pass before it is posted,
 refuses an `approve` without `--confirm`, and warns about comments too long to

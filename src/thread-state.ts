@@ -1,4 +1,4 @@
-import type { Thread } from "./store.js";
+import type { Thread, ThreadTarget } from "./store.js";
 import type { Presence } from "./presence.js";
 
 /** Threads the agent must act on: open, submitted, and the last message is from the reviewer. */
@@ -26,4 +26,26 @@ export function deliveryOf(th: Thread, agent: Presence): Delivery {
   if (!th.submitted) return "held";
   if (!needsAgent(th)) return "answered";
   return agent.attached ? "listening" : "queued";
+}
+
+export function truncate(text: string, max: number): string {
+  return text.length > max
+    ? `${text.slice(0, max)}... (truncated, ${text.length} chars total)`
+    : text;
+}
+
+/**
+ * How a thread's target reads to a human. The CLI's listings and the summary
+ * note a forge pass carries both name a target from here, so the reader cannot
+ * be shown two different words for the same comment.
+ */
+export function targetLabel(t: ThreadTarget): string {
+  if (t.type === "document") return `document${t.quote ? ` "${truncate(t.quote, 40)}"` : ""}`;
+  if (t.type === "file") {
+    if (!t.line) return `${t.path} (file)`;
+    const range = t.endLine && t.endLine > t.line ? `${t.line}-${t.endLine}` : String(t.line);
+    return `${t.path}:${range}${t.side === "base" ? " (base)" : ""}`;
+  }
+  if (t.type === "map") return `map ${t.node}`;
+  return "review";
 }

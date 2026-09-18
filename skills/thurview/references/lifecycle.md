@@ -79,6 +79,31 @@ revision never touches a thread's status.
 threads. Resolve a thread only when its requested change is present. Do not
 rewrite or merge threads.
 
+### Carrying a submitted review to the change request
+
+When the review is bound to a change request, `thurview forge pass --review
+<id>` writes the submission `thurview forge submit --file` takes, and prints
+what it decided. Three rules, and they are not options:
+
+- A `question` thread never goes. It is a conversation with you, and posting it
+  shows the author an instruction that was never addressed to them. A
+  `resolved` thread never goes either: it has done its job, and posting it
+  again is how one comment arrives twice.
+- The verdict is the reader's decision. `close` becomes a `comment`, because
+  ending a review here is not a state change to make on somebody else's change
+  request. An `approve` with threads still open is refused with a non-zero exit
+  and never downgraded to a `comment`.
+- A thread with no line - a document block, a map node, a whole file - cannot
+  be an inline comment, so it goes in the summary note and the output names
+  which comments went there. Tell the reader.
+
+The file lands in `passes/<id>.json`, outside the review's own directory: the
+server watches that directory and a write in it reloads the reader's page.
+Every anchor is a line at the review's pinned head, so check with `thurview
+forge status` that the change request's head has not moved before posting -
+a forge refuses a comment on a line its head does not have. Read the file,
+then post it with `thurview forge submit`.
+
 ### Presence: what the reader is told
 
 While `thurview wait` runs it writes a heartbeat to
@@ -106,6 +131,7 @@ ${THURVIEW_HOME:-~/.thurview}/
 ├── THURVIEW.md              user guidance (optional)
 ├── server.json              running server, if any
 ├── agents/<id>.json         heartbeat of a running `wait`, removed when it ends
+├── passes/<id>.json         the submission `forge pass` wrote, for `forge submit`
 └── reviews/<id>/
     ├── review.md            you edit
     ├── data.yaml            you edit
