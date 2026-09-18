@@ -26,6 +26,7 @@ import {
   reviewsFor,
   reviewDir,
   revisionDir,
+  passFile,
   readThreads,
   readText,
   writeText,
@@ -38,7 +39,6 @@ import {
   type Binding,
   type DocumentKind,
   type Thread,
-  type ThreadTarget,
 } from "./store.js";
 import { compileDocument, compileMap, globToRegExp, type Diagnostic } from "./document/compile.js";
 import {
@@ -53,6 +53,7 @@ import type { InterfaceDelta } from "./interfaces.js";
 import { parseTheme, compileTheme, type CompiledTheme } from "./theme.js";
 import { registerTheme } from "./highlight.js";
 import { replyThread, setThreadStatus, needsAgent } from "./threads.js";
+import { targetLabel, truncate } from "./thread-state.js";
 import { attach } from "./presence.js";
 import { startServer } from "./server/server.js";
 import { parseFlags, helpFor, str, bool, type FlagSpec, type Parsed } from "./flags.js";
@@ -64,7 +65,7 @@ import {
   type Forge,
   type RepoId,
 } from "./forge/index.js";
-import { parseSubmission, longComments } from "./forge/submission.js";
+import { parseSubmission, longComments, buildPass } from "./forge/submission.js";
 import { VERSION } from "./version.js";
 
 const execFileP = promisify(execFile);
@@ -78,21 +79,6 @@ function note(msg: string): void {
 }
 function short(id: string): string {
   return id.slice(0, 8);
-}
-function truncate(text: string, max: number): string {
-  return text.length > max
-    ? `${text.slice(0, max)}... (truncated, ${text.length} chars total)`
-    : text;
-}
-function targetLabel(t: ThreadTarget): string {
-  if (t.type === "document") return `document${t.quote ? ` "${truncate(t.quote, 40)}"` : ""}`;
-  if (t.type === "file") {
-    if (!t.line) return `${t.path} (file)`;
-    const range = t.endLine && t.endLine > t.line ? `${t.line}-${t.endLine}` : String(t.line);
-    return `${t.path}:${range}${t.side === "base" ? " (base)" : ""}`;
-  }
-  if (t.type === "map") return `map ${t.node}`;
-  return "review";
 }
 /** `PR #12` or `MR !12`, because the forge's own word is what the reader knows. */
 function bindingLabel(b: Binding): string {
@@ -125,7 +111,16 @@ async function worktreeOf(cwd: string): Promise<string | null> {
   }
 }
 
-async function resolveReview(idOpt: string | undefined): Promise<ReviewState> {
+/**
+ * `terminal` keeps an approved or closed review in the search. `forge pass`
+ * needs it: approve and close are two of the three decisions it carries, and
+ * both of them end the review, so without it the command cannot find the very
+ * review it was asked about unless the id is spelled out.
+ */
+async function resolveReview(
+  idOpt: string | undefined,
+  opts: { terminal?: boolean } = {},
+): Promise<ReviewState> {
   if (idOpt) {
     const r = await readReview(idOpt);
     if (r) return r;
@@ -143,7 +138,7 @@ async function resolveReview(idOpt: string | undefined): Promise<ReviewState> {
       "Run inside the source worktree, or pass --review <id>",
     ]);
   const mine = (await reviewsFor(worktree)).filter(
-    (r) => !r.dismissed && r.status !== "accepted" && r.status !== "closed",
+    (r) => !r.dismissed && (opts.terminal || (r.status !== "accepted" && r.status !== "closed")),
   );
   if (mine.length === 1) return mine[0]!;
   if (mine.length)
@@ -557,7 +552,7 @@ const SPECS: Record<
   },
   forge: {
     description: "Read a pull or merge request through its forge, and post the review back to it",
-    args: 'status|prior|submit --file <path>|reply <threadId> --body "<text>"',
+    args: 'status|prior|pass|submit --file <path>|reply <threadId> --body "<text>"',
     flags: {
       review: { kind: "string", help: "review id prefix; its binding names the change request" },
       change: { kind: "string", help: "change request number or URL, instead of a review binding" },
@@ -567,6 +562,10 @@ const SPECS: Record<
       },
       repo: { kind: "string", help: "host/path, when `origin` is not the repository to post to" },
       file: { kind: "string", help: "submit: the JSON submission to post" },
+      out: {
+        kind: "string",
+        help: "pass: where to write the submission (default: ~/.thurview/passes/<id>.json)",
+      },
       body: { kind: "string", help: "reply: the answer text" },
       resolve: { kind: "boolean", help: "reply: resolve the thread as well as answering it" },
       at: { kind: "string", help: "reply --resolve: the commit the point was verified at" },
@@ -583,6 +582,7 @@ const SPECS: Record<
     examples: [
       "thurview forge status --change 123",
       "thurview forge prior --change 123 --mine",
+      "thurview forge pass --review <id>",
       "thurview forge submit --file pass.json --dry-run",
       'thurview forge reply <threadId> --body "<answer>" --resolve --at <sha>',
     ],
@@ -1631,10 +1631,11 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const usage = [
       "thurview forge status [--change <ref>] [--review <id>]",
       "thurview forge prior [--change <ref>] [--mine] [--full]",
+      "thurview forge pass [--review <id>] [--out <path>]",
       "thurview forge submit --file <path> [--dry-run] [--confirm]",
       'thurview forge reply <threadId> --body "<text>" [--resolve --at <sha>]',
     ];
-    if (!sub || !["status", "prior", "submit", "reply"].includes(sub))
+    if (!sub || !["status", "prior", "pass", "submit", "reply"].includes(sub))
       throw new AxiError(`unknown forge command${sub ? ` ${sub}` : ""}`, "VALIDATION_ERROR", usage);
     const common = {
       review: s["review"]!,
@@ -1752,6 +1753,71 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
                 full ? "" : "Pass --full for the untruncated bodies",
               ].filter(Boolean)
             : ["This is the first pass; there is no prior review to answer"],
+      };
+    }
+
+    if (sub === "pass") {
+      const p = parseFlags("forge pass", rest, { review: s["review"]!, out: s["out"]! });
+      // Approve and close both end the review, so a pass has to be able to
+      // reach a finished one - but only when no active review answers first,
+      // or a review the reader finished last week shadows the one in hand.
+      const review = await resolveReview(str(p, "review")).catch((e) => {
+        if (e instanceof AxiError && e.code === "NOT_FOUND")
+          return resolveReview(str(p, "review"), { terminal: true });
+        throw e;
+      });
+      const t = await readThreads(review.id);
+      const id = short(review.id);
+      const decision = t.decisions[t.decisions.length - 1];
+      if (!decision)
+        throw new AxiError(`review ${id} has no decision to carry to the forge`, "NOT_FOUND", [
+          "The reader decides in the browser; nothing is posted before they submit",
+          `Run \`thurview wait --review ${id}\` to block until they do`,
+        ]);
+      const plan = buildPass(t.threads, decision);
+      const out = resolve(process.cwd(), str(p, "out") ?? passFile(review.id));
+      const text = JSON.stringify(plan.submission, null, 2) + "\n";
+      // Checked by the parser `submit` reads it with, so a file this wrote is
+      // never one that command refuses.
+      parseSubmission(text, out);
+      await writeText(out, text);
+      return {
+        pass: {
+          review: id,
+          file: out,
+          decision: plan.decision,
+          verdict: plan.submission.verdict,
+          ...(plan.verdictReason ? { why: plan.verdictReason } : {}),
+          inline: plan.inline.length,
+          summary: plan.summary.length,
+          skipped: plan.skipped.length,
+          anchoredAt: review.pins.head,
+        },
+        comments: plan.inline.length
+          ? plan.inline.map((c) => ({ thread: c.thread, at: c.at, side: c.side }))
+          : "0 (a summary-only pass)",
+        summary: plan.summary.length
+          ? plan.summary.map((x) => ({ thread: x.thread, target: x.target, why: x.why }))
+          : "0 (every comment is anchored to a line)",
+        skipped: plan.skipped.length
+          ? plan.skipped.map((x) => ({ thread: x.thread, target: x.target, why: x.why }))
+          : "0 (no question, resolved or held thread to leave out)",
+        help: [
+          `Read ${out} before it is posted; the file is the thing a human checks`,
+          `Every anchor is a line at ${review.pins.head.slice(0, 12)}; run \`thurview forge status --review ${id}\` first, because a forge refuses a comment on a line its current head does not have`,
+          `Run \`thurview forge submit --review ${id} --file ${out} --dry-run\` to see what would reach the change request`,
+          "Tell the reader which comments went to the summary, and why they are not on their line",
+          ...(decision.revision === review.revision
+            ? []
+            : [
+                `The decision is the reader's on revision ${decision.revision} and the review is at ${review.revision}; they have not judged what you published since`,
+              ]),
+          ...(review.binding.kind === "pr"
+            ? []
+            : [
+                `This review is bound to ${review.binding.name}, not to a change request; \`forge submit\` will need --change <ref>`,
+              ]),
+        ],
       };
     }
 

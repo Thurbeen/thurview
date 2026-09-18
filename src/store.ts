@@ -118,6 +118,16 @@ export function serverStateFile(): string {
 }
 
 /**
+ * The submission `forge pass` wrote for this review, waiting for a human to
+ * read it and `forge submit` to post it. Outside `reviewDir` for the same
+ * reason as `agentFile`: the server watches that directory, and a write in it
+ * reloads the reader's page.
+ */
+export function passFile(id: string): string {
+  return join(home(), "passes", `${id}.json`);
+}
+
+/**
  * Heartbeat of an agent draining this review's threads. It lives outside
  * `reviewDir` on purpose: the server watches that directory to push changes to
  * the browser, and a file rewritten every few seconds would reload the page
@@ -183,6 +193,8 @@ export async function listReviews(): Promise<ReviewState[]> {
 export async function deleteReview(id: string): Promise<void> {
   await rm(reviewDir(id), { recursive: true, force: true });
   await rm(agentFile(id), { force: true });
+  // The pass carries the reader's own words, so it goes with the review.
+  await rm(passFile(id), { force: true });
 }
 
 export async function readThreads(id: string): Promise<ThreadsFile> {

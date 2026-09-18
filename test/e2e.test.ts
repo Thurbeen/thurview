@@ -902,4 +902,195 @@ check
       expect(after.attached).toBe(false);
     }, 20_000);
   });
+
+  // The other half of the loop: the reader submitted, and these threads have to
+  // become the file `forge submit` takes without carrying the wrong ones over.
+  describe("the pass a submitted review becomes", () => {
+    let pid = "";
+    beforeEach(async () => {
+      pid = (await cli(["scaffold"]))["review"].uuid as string;
+    }, 30_000);
+    afterEach(async () => {
+      if (pid) await cli(["delete", "--review", pid]);
+    }, 30_000);
+
+    const thread = (kind: "comment" | "question", target: unknown, body: string) =>
+      post(`/api/reviews/${pid}/threads`, {
+        kind,
+        mode: kind === "question" ? "ask" : "review",
+        target,
+        body,
+      }) as Promise<{ id: string }>;
+    const at = (line: number, endLine?: number, side: "head" | "base" = "head") => ({
+      type: "file",
+      path: "src/auth.ts",
+      side,
+      line,
+      ...(endLine ? { endLine } : {}),
+    });
+    const submit = (decision: string, body?: string) =>
+      post(`/api/reviews/${pid}/submit`, { decision, ...(body ? { body } : {}) });
+    const passFile = async (out: Out) =>
+      JSON.parse(await readFile(String(out["pass"].file), "utf8")) as {
+        verdict: string;
+        body: string;
+        comments: { path: string; line: number; startLine?: number; side?: string; body: string }[];
+      };
+
+    it("anchors file threads inline and takes the verdict from the decision", async () => {
+      await thread("comment", at(4, 5), "Audit after check instead.");
+      await thread("comment", at(2, undefined, "base"), "This line was the contract.");
+      await submit("request-changes", "One change.");
+
+      const out = await cli(["forge", "pass", "--review", pid]);
+      expect(out["pass"].verdict).toBe("request-changes");
+      expect(out["pass"].decision).toBe("request-changes");
+      expect(out["pass"].inline).toBe(2);
+      expect(out["pass"].summary).toBe(0);
+      expect(out["pass"].skipped).toBe(0);
+      expect(out["comments"].map((c: Out) => c["at"])).toEqual([
+        "src/auth.ts:4-5",
+        "src/auth.ts:2",
+      ]);
+      expect(String(out["summary"])).toMatch(/^0 /);
+
+      const file = await passFile(out);
+      // Outside reviewDir, which the server watches: a write there reloads the reader's page.
+      expect(String(out["pass"].file)).toBe(join(home, "passes", `${pid}.json`));
+      expect(file.verdict).toBe("request-changes");
+      expect(file.body).toContain("One change.");
+      expect(file.comments).toEqual([
+        {
+          path: "src/auth.ts",
+          line: 5,
+          startLine: 4,
+          side: "head",
+          body: "Audit after check instead.",
+        },
+        { path: "src/auth.ts", line: 2, side: "base", body: "This line was the contract." },
+      ]);
+    }, 30_000);
+
+    it("leaves questions and resolved threads out of the pass and counts them", async () => {
+      await thread("comment", at(4), "Audit after check instead.");
+      await thread("question", { type: "document", blockId: "b1" }, "Why before check?");
+      const done = await thread("comment", at(2), "Already fixed upstream.");
+      await submit("request-changes", "One change.");
+      await cli(["threads", "resolve", done.id, "--review", pid]);
+
+      const out = await cli(["forge", "pass", "--review", pid]);
+      expect(out["pass"].inline).toBe(1);
+      expect(out["pass"].skipped).toBe(2);
+      expect(out["skipped"].map((s: Out) => String(s["why"]).split(":")[0]).sort()).toEqual([
+        "question",
+        "resolved",
+      ]);
+
+      const file = await passFile(out);
+      expect(file.comments).toHaveLength(1);
+      expect(JSON.stringify(file)).not.toContain("Why before check?");
+      expect(JSON.stringify(file)).not.toContain("Already fixed upstream.");
+    }, 30_000);
+
+    it("puts a thread with no line to anchor in the summary and names which", async () => {
+      await thread("comment", at(4), "Audit after check instead.");
+      await thread("comment", { type: "document", blockId: "b1", quote: "audit" }, "Say why here.");
+      await thread("comment", at(0), "This whole file wants a header.");
+      await submit("request-changes", "Two notes.");
+
+      const out = await cli(["forge", "pass", "--review", pid]);
+      expect(out["pass"].inline).toBe(1);
+      expect(out["pass"].summary).toBe(2);
+      expect(out["summary"].map((s: Out) => String(s["target"]))).toEqual([
+        'document "audit"',
+        "src/auth.ts (file)",
+      ]);
+      expect(String(out["summary"][0].why)).toContain("line");
+
+      const file = await passFile(out);
+      expect(file.comments).toHaveLength(1);
+      expect(file.body).toContain("Two notes.");
+      expect(file.body).toContain("Say why here.");
+      expect(file.body).toContain("This whole file wants a header.");
+      expect(file.body).toContain('document "audit"');
+    }, 30_000);
+
+    it("refuses an approve while threads are still open, and writes nothing", async () => {
+      const open = await thread("comment", at(4), "Audit after check instead.");
+      await submit("approve");
+
+      const refused = await cli(["forge", "pass", "--review", pid], { expectCode: 1 });
+      expect(refused["code"]).toBe("THREADS_OPEN");
+      expect(String(refused["error"])).toContain("approve");
+      await expect(readFile(join(home, "passes", `${pid}.json`), "utf8")).rejects.toThrow();
+
+      await cli(["threads", "resolve", open.id, "--review", pid]);
+      const out = await cli(["forge", "pass", "--review", pid]);
+      expect(out["pass"].verdict).toBe("approve");
+      expect(out["pass"].inline).toBe(0);
+      expect(String(out["comments"])).toMatch(/^0 /);
+      expect((await passFile(out)).verdict).toBe("approve");
+    }, 60_000);
+
+    // The reader's own evidence for the resolved rule: a thread they reopened
+    // after a pass would otherwise carry its first message to the forge twice.
+    it("carries only what the reader wrote after the last answer", async () => {
+      const th = await thread("comment", at(4), "Audit after check instead.");
+      await submit("request-changes", "One change.");
+      await cli(["threads", "reply", th.id, "--review", pid, "--body", "Moved it below check."]);
+      await post(`/api/reviews/${pid}/threads/${th.id}/reply`, { body: "Line 5 is still wrong." });
+
+      const file = await passFile(await cli(["forge", "pass", "--review", pid]));
+      expect(file.comments).toHaveLength(1);
+      expect(file.comments[0]!.body).toBe("Line 5 is still wrong.");
+    }, 60_000);
+
+    // Approve and close both end the review, and they are two of the three
+    // decisions this command carries: it has to find one without --review.
+    it("finds the review it carries after the reader has ended it", async () => {
+      const solo = await mkdtemp(join(tmpdir(), "thurview-pass-repo-"));
+      const env = {
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@t",
+      };
+      await sh(solo, "git", ["init", "-q", "-b", "main"], env);
+      await writeFile(join(solo, "a.ts"), "export const a = 1;\n");
+      await sh(solo, "git", ["add", "."], env);
+      await sh(solo, "git", ["commit", "-q", "-m", "base"], env);
+      await writeFile(join(solo, "a.ts"), "export const a = 2;\n");
+      await sh(solo, "git", ["add", "."], env);
+      await sh(solo, "git", ["commit", "-q", "-m", "change"], env);
+      const solid = (await cli(["scaffold", "--base", "HEAD~1", "--head", "HEAD"], { cwd: solo }))[
+        "review"
+      ].uuid as string;
+      await post(`/api/reviews/${solid}/threads`, {
+        kind: "comment",
+        mode: "review",
+        target: { type: "document", blockId: "b1" },
+        body: "Read the ordering once more.",
+      });
+      await post(`/api/reviews/${solid}/submit`, { decision: "close", body: "Superseded." });
+
+      const out = await cli(["forge", "pass"], { cwd: solo });
+      expect(out["pass"].review).toBe(solid.slice(0, 8));
+      expect(out["pass"].verdict).toBe("comment");
+      expect(out["pass"].summary).toBe(1);
+      // The pass carries the reader's own words, so deleting the review takes it too.
+      await cli(["delete", "--review", solid]);
+      await expect(readFile(String(out["pass"].file), "utf8")).rejects.toThrow();
+    }, 60_000);
+
+    it("posts a closed review as a comment and says why it is not the decision", async () => {
+      await thread("comment", at(4), "Audit after check instead.");
+      await submit("close", "Superseded by the other branch.");
+
+      const out = await cli(["forge", "pass", "--review", pid]);
+      expect(out["pass"].verdict).toBe("comment");
+      expect(out["pass"].decision).toBe("close");
+      expect(String(out["pass"].why)).toContain("close");
+      expect((await passFile(out)).verdict).toBe("comment");
+    }, 30_000);
+  });
 });
