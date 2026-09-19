@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { h, popover, closePopover } from "./dom.js";
-import { state, emit, threadsFor, navigate } from "./state.js";
+import { state, emit, threadsFor, navigate, kind, VIEWS } from "./state.js";
 import type { Thread, ThreadTarget } from "../store.js";
 import type { CompiledAnchor } from "../document/compile.js";
 import { commentPopover, threadPinRow } from "./threads.js";
@@ -306,6 +306,12 @@ export function renderPeek(container: HTMLElement): void {
   const p = current;
   if (!p) return;
   const inChanges = !!state.data?.changes.some((c) => c.path === p.path);
+  // Only a review has a Files tab. On the other kinds `navigate("files", …)`
+  // lands on a tab that does not exist and the reader is bounced to the
+  // document, so the control that promises it is not drawn at all.
+  const hasFiles = VIEWS[kind()].includes("files");
+  const openFile = () =>
+    navigate("files", { path: p.path, line: p.highlightLine ?? p.from, side: p.graph });
   const head = h(
     "div",
     { class: "side-head" },
@@ -316,25 +322,22 @@ export function renderPeek(container: HTMLElement): void {
       h(
         "div",
         {
-          class: "path",
+          class: `path${hasFiles ? "" : " inert"}`,
           title: p.path,
-          onclick: () =>
-            navigate("files", { path: p.path, line: p.highlightLine ?? p.from, side: p.graph }),
+          ...(hasFiles ? { onclick: openFile } : {}),
         },
         `${p.path}:${p.from}-${p.to}`,
         " ",
         h("span", { class: `badge ${p.graph === "base" ? "del" : ""}` }, p.graph),
       ),
     ),
-    h(
-      "button",
-      {
-        class: "small",
-        onclick: () =>
-          navigate("files", { path: p.path, line: p.highlightLine ?? p.from, side: p.graph }),
-      },
-      inChanges ? "Open in Files" : "Open file",
-    ),
+    hasFiles
+      ? h(
+          "button",
+          { class: "small", onclick: openFile },
+          inChanges ? "Open in Files" : "Open file",
+        )
+      : null,
     h(
       "button",
       {

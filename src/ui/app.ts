@@ -26,7 +26,7 @@ const app = document.getElementById("app")!;
 async function home(): Promise<void> {
   clear(app);
   const reviews = await api.reviews();
-  const el = h("div", { class: "home" }, h("h2", null, "Reviews and explainers"));
+  const el = h("div", { class: "home" }, h("h2", null, "Reviews, explainers and designs"));
   const active = reviews.filter((r) => !r.dismissed);
   const dismissed = reviews.filter((r) => r.dismissed);
   const item = (r: (typeof reviews)[number]) =>
@@ -44,7 +44,7 @@ async function home(): Promise<void> {
       h(
         "div",
         { class: "empty-state" },
-        "Nothing published yet. Ask your agent for a review of a change, or an explainer of the codebase.",
+        "Nothing published yet. Ask your agent for a review of a change, an explainer of the codebase, or a design of what to build next.",
       ),
     );
   active.forEach((r) => el.appendChild(item(r)));
@@ -112,9 +112,9 @@ function renderTopbar(): void {
   const r = d.review;
   const pending = d.threads.filter((t) => !t.submitted).length;
   const open = d.threads.filter((t) => t.status === "open").length;
-  const explainer = kind() === "explainer";
+  const k = kind();
   const labels: Record<View, string> = {
-    review: explainer ? "Explainer" : "Review",
+    review: k === "explainer" ? "Explainer" : k === "design" ? "Design" : "Review",
     commits: "Commits",
     files: `Files${d.changes.length ? ` (${d.changes.length})` : ""}`,
     map: "Map",
@@ -250,9 +250,9 @@ function moreMenu(e: MouseEvent): void {
     h(
       "div",
       { class: "item muted" },
-      kind() === "explainer"
-        ? `commit ${r.pins.head.slice(0, 12)}`
-        : `base ${r.pins.base.slice(0, 12)} · head ${r.pins.head.slice(0, 12)}`,
+      kind() === "review"
+        ? `base ${r.pins.base.slice(0, 12)} · head ${r.pins.head.slice(0, 12)}`
+        : `commit ${r.pins.head.slice(0, 12)}`,
     ),
     h(
       "div",

@@ -37,8 +37,8 @@ back with changes requested.
 
 <details>
 <summary><b>Other ways to install</b> - pin the skill to a release, install the
-command from npm, run from a checkout, session hooks, the review-fix
-skill</summary>
+command from npm, run from a checkout, session hooks, the thurview-design and
+review-fix skills</summary>
 
 `--global` installs for your user, so one install covers every repository.
 `universal` puts the one real copy in `~/.agents/skills/thurview`, the directory
@@ -92,10 +92,13 @@ with the reviews of its working directory. `thurview setup skill` links the
 skill from this checkout instead of the `skills` CLI copy; use one or the
 other.
 
-Also available: `review-fix`, the browserless companion skill described
-[below](#review-and-fix).
+Also available: `thurview-design`, which authors the design kind described
+[below](#how-it-works), and `review-fix`, the browserless companion skill
+described [below](#review-and-fix).
 
 ```sh
+npx skills@latest add https://github.com/Thurbeen/thurview \
+  --skill thurview-design --agent universal claude-code --global --yes
 npx skills@latest add https://github.com/Thurbeen/thurview \
   --skill review-fix --agent universal claude-code --global --yes
 ```
@@ -114,6 +117,12 @@ different unit: one pinned commit instead of a range, so a reader can see the
 architecture well enough to spot design problems themselves. It has no diff and
 nothing to approve, it surfaces structure rather than grading it, and it states
 what it did not examine.
+
+And it reads a plan. A **design** is the same document over a change that is
+not written yet: one pinned commit — the code it argues from — anchors on the
+code as it stands, and what it would build declared as proposals, each attached
+to the code it lands in today. An anchor never points at code that does not
+exist; the reader approves the design or sends it back.
 
 It does not review the code for you. It helps you understand it fast enough
 to review it yourself.
@@ -201,20 +210,21 @@ bar.
 
 ## CLI
 
-| Command                                                               | Purpose                                                           |
-| --------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `thurview scaffold [--pr N \| --base R --head R]`                     | Create a review pinned to exact commits (`--update` re-pins)      |
-| `thurview explain [<path>] [--commit R]`                              | Create a code explainer of a codebase or subsystem at one commit  |
-| `thurview info [--all]`                                               | Reviews bound to this worktree                                    |
-| `thurview publish --review ID [--view T] [--open]`                    | Validate the document and map, seal a revision                    |
-| `thurview open --review ID [--view T]`                                | Start the server if needed and open the browser                   |
-| `thurview wait --review ID [--timeout S]`                             | Block until the reader needs the agent                            |
-| `thurview threads list\|get\|reply\|resolve`                          | Read and answer threads                                           |
-| `thurview graph interfaces\|impact\|callers\|tests-for\|architecture` | Ask the code graph at a review's pins, or at `--base`/`--head`    |
-| `thurview forge status\|prior\|pass\|submit\|reply`                   | Read a change request through its forge, and post the review back |
-| `thurview serve` / `thurview stop`                                    | Run the server in the foreground / stop the background one        |
-| `thurview setup hooks\|skill\|status`                                 | Session hooks, agent skill, install state                         |
-| `thurview update`                                                     | Self-update from npm                                              |
+| Command                                                               | Purpose                                                               |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `thurview scaffold [--pr N \| --base R --head R]`                     | Create a review pinned to exact commits (`--update` re-pins)          |
+| `thurview explain [<path>] [--commit R]`                              | Create a code explainer of a codebase or subsystem at one commit      |
+| `thurview design [<path>] [--commit R]`                               | Create a design of what to build, pinned to the commit it argues from |
+| `thurview info [--all]`                                               | Reviews, explainers and designs bound to this worktree                |
+| `thurview publish --review ID [--view T] [--open]`                    | Validate the document and map, seal a revision                        |
+| `thurview open --review ID [--view T]`                                | Start the server if needed and open the browser                       |
+| `thurview wait --review ID [--timeout S]`                             | Block until the reader needs the agent                                |
+| `thurview threads list\|get\|reply\|resolve`                          | Read and answer threads                                               |
+| `thurview graph interfaces\|impact\|callers\|tests-for\|architecture` | Ask the code graph at a review's pins, or at `--base`/`--head`        |
+| `thurview forge status\|prior\|pass\|submit\|reply`                   | Read a change request through its forge, and post the review back     |
+| `thurview serve` / `thurview stop`                                    | Run the server in the foreground / stop the background one            |
+| `thurview setup hooks\|skill\|status`                                 | Session hooks, agent skill, install state                             |
+| `thurview update`                                                     | Self-update from npm                                                  |
 
 thurview is an [AXI](https://axi.md): built for agents that drive it through a
 shell. Output is [TOON](https://toonformat.dev) on stdout, errors are
@@ -302,12 +312,23 @@ An explainer writes the same files, minus `interfaces`: there is no change to
 derive a delta from, and `graph: base` on an anchor is an error because there
 is one commit.
 
+A design writes the same files, and `interfaces` means something else in it:
+each entry is a **proposal** — what the design would add, change or remove,
+with the anchor of the code that proposal lands in, replaces or plugs into
+today. `graph: base` is an error for the same reason as in an explainer, a
+`symbol:` entry is an error because no diff derived one, and a design that
+proposes nothing is refused: that document is an explainer. In its `map.yaml`,
+`base` is the structure as it stands and `nodes` the structure it proposes, so
+a proposed part may own files that do not exist yet while a `base` node may
+not.
+
 `thurview publish` rejects an anchor whose file or lines do not exist at the
 pinned commit, a call stack frame that claims an added or removed call the
 diff does not show, a storage operation on an unknown field, a map edge
 to an unknown node, an interface annotation for a symbol the change did not
 move, a declared interface whose anchor holds no added or deleted line, and an
-explainer that anchors nothing at all. The full format is in
+explainer that anchors nothing at all, and a design that proposes nothing or
+whose proposal names no site in the code as it stands. The full format is in
 [skills/thurview/references](skills/thurview/references).
 
 Optional guidance for the agent: `~/.thurview/THURVIEW.md` for you,

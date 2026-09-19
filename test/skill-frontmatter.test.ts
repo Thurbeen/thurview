@@ -59,6 +59,23 @@ describe("SKILL.md frontmatter", () => {
     expect(description).toMatch(/code explainer/);
   });
 
+  // A third kind with no skill beside it is a CLI command nobody reaches for,
+  // and one whose description does not say "not a review" is a skill that
+  // triggers on the wrong request.
+  it("ships the design skill and keeps it apart from the review one", () => {
+    expect(files).toContain("skills/thurview-design/SKILL.md");
+    const fm = loadFrontmatter(readFileSync(`${repoRoot}skills/thurview-design/SKILL.md`, "utf8"));
+    const description = String(fm["description"]);
+    expect(description).toMatch(/design/);
+    expect(description).toMatch(/implementation plan/);
+    expect(description).toMatch(/not for reviewing a change/i);
+    // Routing matches on the description, so thurview's own must redirect a
+    // design request rather than leave it to be corrected once the body is read.
+    const thurview = readFileSync(`${repoRoot}skills/thurview/SKILL.md`, "utf8");
+    expect(thurview).toContain("thurview-design");
+    expect(String(loadFrontmatter(thurview)["description"])).toContain("thurview-design");
+  });
+
   it("rejects the unquoted `key: value` that broke the installer", () => {
     // The exact shape shipped on main: `Two kinds: ` inside an unquoted
     // scalar reads as a nested mapping, which no installer will load.

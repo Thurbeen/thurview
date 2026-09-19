@@ -1,13 +1,13 @@
 ---
 name: thurview
-description: Author and publish a thurview document - a guided, evidence-anchored explanation the reader opens in the browser, annotates, asks questions about, and approves or sends back. Two kinds — a review of a branch, pull request or commit range, and a code explainer of a whole codebase or one subsystem at a pinned commit. Use when the user asks to review a branch or PR, to explain or walk through a change, "review my branch against main", to explain how a codebase or subsystem works or where its design problems might be, or invokes /thurview. Not for a pass/fail bug hunt.
+description: Author and publish a thurview document - a guided, evidence-anchored explanation the reader opens in the browser, annotates, asks questions about, and approves or sends back. Two kinds — a review of a branch, pull request or commit range, and a code explainer of a whole codebase or one subsystem at a pinned commit. For a design, an architecture proposal or an implementation plan — a change not written yet — use the thurview-design skill instead. Use when the user asks to review a branch or PR, to explain or walk through a change, "review my branch against main", to explain how a codebase or subsystem works or where its design problems might be, or invokes /thurview. Not for a pass/fail bug hunt.
 user-invocable: true
 argument-hint: "[<pr-number|pr-url> | --base <ref> --head <ref> | explain [<path>]]"
 ---
 
 # thurview
 
-There are two kinds of document, and the first decision is which one the
+There are three kinds of document, and the first decision is which one the
 request asks for.
 
 - A **review** explains a CHANGE: a branch, a pull request, a commit range. It
@@ -18,6 +18,12 @@ request asks for.
   design problems themselves. It has no diff and nothing to approve, and it
   states what it did not examine. Read
   [Code explainer](references/code-explainer.md) and follow that instead.
+- A **design** explains a change that is NOT WRITTEN YET: a design, an
+  architecture proposal, an implementation plan. It is pinned to the one commit
+  it argues from, its anchors are the code as it stands, and what it would
+  build is declared as a proposal attached to the code that proposal lands in.
+  It is a separate skill — `thurview-design`, installed beside this one; run
+  `thurview skill` for its path. Stop here and read that instead.
 
 Reviewing a change and fixing what the review finds - and posting what stays
 unfixed to a pull or merge request - is the `review-fix` skill, not this one.
@@ -61,7 +67,9 @@ Empty: a review of the current branch against its up-to-date trunk. A PR
 number or URL: that pull request. `--base`/`--head`: that range. `explain`, or
 a request to explain the codebase, a subsystem or its architecture rather than
 a change: a code explainer, per
-[Code explainer](references/code-explainer.md).
+[Code explainer](references/code-explainer.md). A request for how something
+_should_ be built rather than what was built: a design, per the
+`thurview-design` skill.
 
 ## Before authoring
 
@@ -320,6 +328,13 @@ Run `thurview explain [<path>]` instead and follow
 author, publish, wait, answer - over a document kind whose unit is a codebase:
 no diff, no commits, no interface delta, and a Coverage tab stating what the
 document reached and what it did not.
+
+## Designing a change rather than reviewing one
+
+Same trap, same answer. A plan pinned as a review claims a diff that does not
+exist. Run `thurview design [<path>]` and follow the `thurview-design` skill:
+one pinned commit, anchors on the code as it stands, and what the design would
+build declared as proposals the reader approves or sends back.
 
 ## Completion criteria
 

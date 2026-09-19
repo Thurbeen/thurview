@@ -1,5 +1,5 @@
 import { h, popover } from "../dom.js";
-import { state, threadsFor, navigate, kind } from "../state.js";
+import { state, threadsFor, navigate, kind, VIEWS } from "../state.js";
 import { codeTable, openAnchorPeek } from "../code.js";
 import { commentPopover, threadPinRow } from "../threads.js";
 import { sequenceDiagram, callstackDiff, databaseLens } from "../diagrams.js";
@@ -115,8 +115,14 @@ const CHANGE_CLASS: Record<InterfaceEntry["change"], string> = {
  * What the change did to the surfaces other code can reach, above the document
  * because it is the reader's first question. Derived at publish from the code
  * graph, so a refactor that moved nothing says exactly that.
+ *
+ * On a design the same panel, in the same slot, states what the document
+ * PROPOSES to do to those surfaces - declared by the author, not derived, since
+ * the code is not written. The words differ everywhere they must, so a proposal
+ * can never be misread as something that already happened.
  */
 function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
+  const design = kind() === "design";
   const wrap = h("div", { class: "block ifd", "data-block": DELTA_BLOCK });
   const threads = threadsFor((t) => t.type === "document" && t.blockId === DELTA_BLOCK);
   if (threads.length) wrap.classList.add("has-threads");
@@ -128,7 +134,7 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
       "button",
       {
         class: threads.length ? "count" : "",
-        title: "Comment on the interface delta",
+        title: design ? "Comment on what this design proposes" : "Comment on the interface delta",
         onclick: (e: MouseEvent) => {
           if (state.viewingRevision !== null) return;
           popover(commentPopover({ type: "document", blockId: DELTA_BLOCK }), {
@@ -156,7 +162,7 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
     h(
       "div",
       { class: "ifd-head" },
-      h("span", { class: "t" }, "Interface delta"),
+      h("span", { class: "t" }, design ? "What this design proposes" : "Interface delta"),
       counts.map(([c, n]) => h("span", { class: `badge ${CHANGE_CLASS[c]}` }, `${n} ${c}`)),
       h("span", { class: "spacer" }),
       toggle,
@@ -167,7 +173,11 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
     h(
       "p",
       { class: "ifd-verdict" },
-      delta ? delta.verdict : "Unavailable: the code graph could not be built for these commits.",
+      delta
+        ? delta.verdict
+        : design
+          ? "Unavailable: this revision declared no proposal."
+          : "Unavailable: the code graph could not be built for these commits.",
     ),
   );
   const entries = delta?.entries ?? [];
@@ -265,12 +275,18 @@ function coveragePanel(cov: Coverage | null): HTMLElement {
 }
 
 function interfaceRow(e: InterfaceEntry): HTMLElement {
+  // A design has no Files tab: its entry is a proposal, and what the reader can
+  // actually open is the site it names - real code at the pinned commit.
+  const anchor = kind() === "design" && e.anchor ? state.data?.document?.anchors[e.anchor] : null;
   return h(
     "div",
     {
       class: `ifd-entry ifd-${e.change}`,
-      title: "Open in Files",
-      onclick: () => navigate("files", { path: e.file, line: e.line, side: e.graph }),
+      title: anchor ? `Open ${anchor.title}` : "Open in Files",
+      onclick: () =>
+        anchor
+          ? openAnchorPeek(anchor)
+          : navigate("files", { path: e.file, line: e.line, side: e.graph }),
     },
     h("span", { class: `badge ${CHANGE_CLASS[e.change]}` }, e.change),
     h(
@@ -280,7 +296,11 @@ function interfaceRow(e: InterfaceEntry): HTMLElement {
       h("code", { class: "ifd-name" }, e.name),
       e.capability ? h("div", { class: "ifd-cap" }, e.capability) : null,
     ),
-    h("span", { class: "ifd-where mono" }, `${e.file}:${e.line}`),
+    h(
+      "span",
+      { class: "ifd-where mono", title: anchor ? "Where it lands in the code today" : null },
+      `${anchor ? "at " : ""}${e.file}:${e.line}`,
+    ),
   );
 }
 
@@ -335,18 +355,23 @@ function renderBlock(b: Block): HTMLElement {
               "div",
               { class: "frame-head" },
               h("span", { class: "title" }, a.title),
+              // Only a review has a Files tab; on the other kinds this would
+              // navigate to a tab that does not exist and bounce the reader to
+              // the document, so it offers nothing rather than offering that.
               h(
                 "span",
-                {
-                  class: "path",
-                  title: "Open in Files",
-                  onclick: () =>
-                    navigate("files", {
-                      path: a.peek!.file,
-                      line: a.peek!.from,
-                      side: a.peek!.graph,
-                    }),
-                },
+                VIEWS[kind()].includes("files")
+                  ? {
+                      class: "path",
+                      title: "Open in Files",
+                      onclick: () =>
+                        navigate("files", {
+                          path: a.peek!.file,
+                          line: a.peek!.from,
+                          side: a.peek!.graph,
+                        }),
+                    }
+                  : { class: "path inert" },
                 `${a.peek.file}:${a.peek.from}-${a.peek.to}`,
               ),
               h("span", { class: `badge ${a.peek.graph === "base" ? "del" : ""}` }, a.peek.graph),

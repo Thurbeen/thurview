@@ -8,15 +8,19 @@ export type View = "review" | "commits" | "files" | "map" | "coverage";
  * and the interface delta all mean something. An explainer is a CODEBASE at one
  * commit: those three would render an empty claim about a change that does not
  * exist, so they are absent, and Coverage - what the document reached and what
- * it did not - takes their place.
+ * it did not - takes their place. A design is a change that is NOT WRITTEN YET:
+ * there is no diff to show and no coverage to state, so it keeps the document
+ * and the map, where its proposed structure sits beside today's.
  */
 export const VIEWS: Record<DocumentKind, View[]> = {
   review: ["review", "commits", "files", "map"],
   explainer: ["review", "map", "coverage"],
+  design: ["review", "map"],
 };
 
 export function kind(): DocumentKind {
-  return state.data?.review.kind === "explainer" ? "explainer" : "review";
+  const k = state.data?.review.kind;
+  return k === "explainer" || k === "design" ? k : "review";
 }
 
 /** The current view, or the document's first tab when this kind has no such tab. */
