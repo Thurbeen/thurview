@@ -54,11 +54,11 @@ whole repository. The rest of the request is what to design.
 
 ## Which kind is this
 
-| The request is about                                          | Kind       | Skill                                    |
-| ------------------------------------------------------------- | ---------- | ---------------------------------------- |
-| code that is written — a branch, a PR, a range                | review     | `thurview`                               |
-| code that exists, explained — "how does this work"            | explainer  | `thurview`, its code-explainer reference |
-| code that is **not written yet** — "how should we build this" | **design** | this one                                 |
+| The request is about                                          | Kind       | Skill              |
+| ------------------------------------------------------------- | ---------- | ------------------ |
+| code that is written — a branch, a PR, a range                | review     | `thurview`         |
+| code that exists, explained — "how does this work"            | explainer  | `thurview-explain` |
+| code that is **not written yet** — "how should we build this" | **design** | this one           |
 
 A plan for work already done is a review. An explanation with a
 recommendation stapled on is an explainer that broke its own rule. If the

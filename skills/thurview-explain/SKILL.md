@@ -1,33 +1,80 @@
-# Code explainer
+---
+name: thurview-explain
+description: Author and publish a thurview code explainer - a guided, evidence-anchored explanation of a codebase, or one subsystem of it, at a single pinned commit, which the reader opens in the browser, annotates, asks questions about, and sends back or marks done. Every claim is anchored to a file and line range, a software map carries the parts the prose does not reach, and coverage states what was never examined. Use when the user asks to explain or walk through a codebase, how a system or a subsystem works, where its design problems might be, "explain this repository", "how does the server work", or invokes /thurview-explain. Not for reviewing a change that is already written, which is the thurview skill.
+user-invocable: true
+argument-hint: "[<path scope>] [--commit <ref>]"
+---
+
+# thurview explain
 
 A **review** explains a change. An **explainer** explains a codebase, or one
 subsystem of it, at a single pinned commit, so the reader can see the
 architecture well enough to spot design problems themselves.
 
 Same engine, different unit. It shares anchors, peeks, the map, threads,
-revisions and the publish → wait → answer loop. It has no diff, no commits and
-no interface delta, because those are claims about a change and there is no
-change. Where a review shows the interface delta, an explainer shows
-**coverage**: what it examined at that commit, and what it did not.
+revisions and the publish → wait → answer loop with the `thurview` skill's
+review. It has no diff, no commits and no interface delta, because those are
+claims about a change and there is no change. Where a review shows the
+interface delta, an explainer shows **coverage**: what it examined at that
+commit, and what it did not.
 
-| Tab           | Review                             | Explainer                                     |
-| ------------- | ---------------------------------- | --------------------------------------------- |
-| Review        | the walkthrough, with the delta    | **Explainer**: the document, with coverage     |
-| Files         | split diff of the changed files    | absent                                         |
-| Commits       | base..head                         | absent                                         |
-| Map           | parts, marked added/changed/removed | parts at the pinned commit                    |
-| Coverage      | absent                             | **what the document reached, and what it did not** |
-| Threads       | ask, comment, decide               | same, and the decision reads *Done reading* / *Send it back* |
+| Tab      | Review                              | Explainer                                                    |
+| -------- | ----------------------------------- | ------------------------------------------------------------ |
+| Review   | the walkthrough, with the delta     | **Explainer**: the document, with coverage                   |
+| Files    | split diff of the changed files     | absent                                                       |
+| Commits  | base..head                          | absent                                                       |
+| Map      | parts, marked added/changed/removed | parts at the pinned commit                                   |
+| Coverage | absent                              | **what the document reached, and what it did not**           |
+| Threads  | ask, comment, decide                | same, and the decision reads _Done reading_ / _Send it back_ |
 
-## When to write one
+## Which kind is this
 
 Write an explainer when the request is about the code as it stands: "explain
 this codebase", "how does the server work", "walk me through `src/graph`",
-"I want to see the architecture". Write a review when the request is about a
-change: a branch, a pull request, a range.
+"I want to see the architecture".
+
+| The request is about                                          | Kind          | Skill             |
+| ------------------------------------------------------------- | ------------- | ----------------- |
+| code that exists, explained - "how does this work"            | **explainer** | this one          |
+| code that is written - a branch, a PR, a range                | review        | `thurview`        |
+| code that is **not written yet** - "how should we build this" | design        | `thurview-design` |
 
 If the request is a change, do not reach for an explainer because the change is
-large. A large change is still a change.
+large. A large change is still a change. An explanation with a recommendation
+stapled on is an explainer that broke its own rule - see "Surface structure; do
+not grade it" below, and write the design instead when the request is genuinely
+"explain this, then propose a change".
+
+## Request
+
+$ARGUMENTS
+
+A path scope narrows the explainer to one part of the system; with none it is
+the whole repository.
+
+## Before authoring
+
+Read the guidance files that exist, in this order; the second wins on conflict.
+
+1. `~/.thurview/THURVIEW.md` (or `$THURVIEW_HOME/THURVIEW.md`), user guidance.
+2. `THURVIEW.md` at the repository root, repository guidance.
+
+`thurview explain` lists the ones it found under `guidance`.
+
+The `thurview` skill ships the references this one shares - document authoring,
+components, software map, theme, lifecycle. `thurview skill` prints the path of
+every bundled SKILL.md; the references sit beside each one. Read **Document
+authoring** before you write `review.md`, **Components** before you edit
+`data.yaml`, **Software map** before you author `map.yaml`, **Theme** before you
+write `theme.yaml`, and **Lifecycle** for statuses, storage and thread rules -
+they are identical for all three kinds.
+
+Run the CLI as `thurview`; `npx -y thurview` runs the published package with
+the same commands. Every command prints TOON on stdout - the result, then
+`help[]` with the next commands. Errors are structured on stdout too (`error`,
+`code`, `help`); exit 1 is a failure, 2 a usage error. If a command answers
+`unknown command` for something this skill tells you to run, the installed CLI
+is older than the skill: run `thurview update`, retry once, then report it.
 
 ## The document kind, in one command
 
@@ -59,7 +106,8 @@ So work in three layers, and let each carry what it is good at.
    `thurview graph architecture --review <id>`: communities become nodes, their
    files become the node's `files` globs, and the edges between communities
    become edges. Every part of the scope should appear here, including the parts
-   the prose will not reach. See [Software map](software-map.md) for the shape.
+   the prose will not reach. See the `thurview` skill's Software map
+   reference for the shape.
 2. **Subsystem — the prose carries depth.** Pick the parts that carry the most
    structure and the most traffic, and explain those. Three to six sections.
    Everything else stays on the map.
@@ -85,7 +133,7 @@ puts one of three states on it:
 
 The counts go above the document and onto the Coverage tab, and `publish`
 prints them with the files it did not examine. You cannot forget to state
-coverage, and you cannot overstate it: to move a file out of *not examined* you
+coverage, and you cannot overstate it: to move a file out of _not examined_ you
 have to actually anchor it or actually place it on the map.
 
 Two consequences worth planning for:
@@ -106,8 +154,8 @@ smaller than it is.
 
 ## Surface structure; do not grade it
 
-thurview's thesis holds here: *it does not review the code for you; it helps
-you understand it fast enough to review it yourself.* An explainer exists so
+thurview's thesis holds here: _it does not review the code for you; it helps
+you understand it fast enough to review it yourself._ An explainer exists so
 the reader can **detect** design problems. That is only consistent with the
 thesis if you surface structure and leave the conclusion to them.
 
@@ -145,18 +193,19 @@ the code" - not a finding.
    `thurview graph callers <name>` and `tests-for <name>` answer the follow-ups.
    `graph interfaces` and `graph impact` compare two commits and are refused.
 3. Author `map.yaml` from the architecture output, covering the whole scope.
-   Dispatch a sub-agent for it if you have one, exactly as a review does.
-4. Author `review.md` and `data.yaml` per [Document authoring](document-authoring.md),
-   minus the interface-delta section: an explainer has none, and declaring
+   Dispatch a sub-agent for it if you have one, exactly as the `thurview`
+   skill's review does.
+4. Author `review.md` and `data.yaml` per **Document authoring**, minus the
+   interface-delta section: an explainer has none, and declaring
    `interfaces` in `data.yaml` is an error. So is `security`, which is what a
    change carries input across and an explainer has no change. So is
    `graph: base` on an anchor - there is one commit.
-5. `theme.yaml` as usual - see [Theme](theme.md).
+5. `theme.yaml` as usual - see **Theme**.
 6. `thurview publish --review <id>`. Read `coverage` and `notExamined`. If the
    split is not the one you meant, anchor or place more and publish again.
 7. `thurview open --review <id>`, then `thurview wait --review <id>`. The loop,
    the statuses and the thread rules are identical to a review; see
-   [Lifecycle](lifecycle.md).
+   **Lifecycle**.
 
 ## Hand over
 
@@ -165,3 +214,18 @@ words (including how many files were not examined), which parts you chose to
 explain and on what basis, and that you are waiting for their questions. Do not
 list the design problems you think you saw. The document is built so the reader
 finds them.
+
+## Completion criteria
+
+Report completion only when all of these hold:
+
+- The reader has the URL of a published revision.
+- Every `error` diagnostic is resolved.
+- The map is published, or you said why it is not - and the coverage split says
+  the same thing the document does.
+- The explainer is waiting on the reader, accepted, closed, dismissed or
+  deleted.
+
+Close with the decision and its summary (`wait.decision`) and the URL. When the
+reader has not responded, say so and leave it open; a later session picks it up
+from `thurview` in the same worktree.

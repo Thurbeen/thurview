@@ -37,8 +37,8 @@ back with changes requested.
 
 <details>
 <summary><b>Other ways to install</b> - pin the skill to a release, install the
-command from npm, run from a checkout, session hooks, the thurview-design and
-thurview-fix skills</summary>
+command from npm, run from a checkout, session hooks, the thurview-explain,
+thurview-design and thurview-fix skills</summary>
 
 `--global` installs for your user, so one install covers every repository.
 `universal` puts the one real copy in `~/.agents/skills/thurview`, the directory
@@ -92,16 +92,29 @@ with the reviews of its working directory. `thurview setup skill` links the
 skill from this checkout instead of the `skills` CLI copy; use one or the
 other.
 
-Also available: `thurview-design`, which authors the design kind described
-[below](#how-it-works), and `thurview-fix`, the browserless companion skill
-described [below](#review-and-fix).
+Also available: `thurview-explain` and `thurview-design`, which author the
+explainer and design kinds described [below](#how-it-works), and
+`thurview-fix`, the browserless companion skill described
+[below](#review-and-fix).
 
 ```sh
+npx skills@latest add https://github.com/Thurbeen/thurview \
+  --skill thurview-explain --agent universal claude-code --global --yes
 npx skills@latest add https://github.com/Thurbeen/thurview \
   --skill thurview-design --agent universal claude-code --global --yes
 npx skills@latest add https://github.com/Thurbeen/thurview \
   --skill thurview-fix --agent universal claude-code --global --yes
 ```
+
+`thurview-explain` was a second kind inside the `thurview` skill, so an install
+made before the split does not have it under that name. Which command adds it
+depends on the route you installed by, and mixing the two is the thing to
+avoid. Under the `skills` CLI a skill is installed by name and updating
+`thurview` adds no second one, so run the first command above. Under
+`thurview setup skill`, update the command first - `thurview update`, or pull
+and rebuild the checkout you linked from - and run `thurview setup skill`
+again: it links every skill the installed command carries, so it picks the new
+one up on its own.
 
 `thurview-fix` was called `review-fix`. A skill name is an address, so nothing
 updates the old one in place: an install made before the rename keeps answering
