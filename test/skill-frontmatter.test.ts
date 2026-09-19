@@ -34,8 +34,15 @@ describe("SKILL.md frontmatter", () => {
   });
 
   it("ships one review skill, the one that fixes what it finds", () => {
-    expect(files).toContain("skills/review-fix/SKILL.md");
+    expect(files).toContain("skills/thurview-fix/SKILL.md");
     expect(files).not.toContain("skills/forge-review/SKILL.md");
+    expect(files).not.toContain("skills/review-fix/SKILL.md");
+  });
+
+  // A skill name is what the agent resolves and what the reader types, so it
+  // has to say which product it belongs to; `review-fix` did not.
+  it("names every skill after the product it belongs to", () => {
+    for (const path of files) expect(path).toMatch(/^skills\/thurview(-[a-z-]+)?\/SKILL\.md$/);
   });
 
   it.each(files)("%s parses as YAML and names the skill", (path) => {

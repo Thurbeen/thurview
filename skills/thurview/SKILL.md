@@ -26,7 +26,7 @@ request asks for.
   `thurview skill` for its path. Stop here and read that instead.
 
 Reviewing a change and fixing what the review finds - and posting what stays
-unfixed to a pull or merge request - is the `review-fix` skill, not this one.
+unfixed to a pull or merge request - is the `thurview-fix` skill, not this one.
 This skill's document is read in the browser.
 
 The agent studies the change and writes a short document in which every claim
