@@ -148,8 +148,9 @@ the code" - not a finding.
    Dispatch a sub-agent for it if you have one, exactly as a review does.
 4. Author `review.md` and `data.yaml` per [Document authoring](document-authoring.md),
    minus the interface-delta section: an explainer has none, and declaring
-   `interfaces` in `data.yaml` is an error. So is `graph: base` on an anchor -
-   there is one commit.
+   `interfaces` in `data.yaml` is an error. So is `security`, which is what a
+   change carries input across and an explainer has no change. So is
+   `graph: base` on an anchor - there is one commit.
 5. `theme.yaml` as usual - see [Theme](theme.md).
 6. `thurview publish --review <id>`. Read `coverage` and `notExamined`. If the
    split is not the one you meant, anchor or place more and publish again.

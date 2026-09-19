@@ -91,7 +91,14 @@ async function revisionData(id: string, n: number) {
     readJson<CompiledTheme>(join(dir, "theme.json")),
   ]);
   return {
-    document,
+    // A revision is read back exactly as it was sealed, so one from before a
+    // field existed simply lacks it. The browser is written for a field that is
+    // absent by being null, not by being missing, so fill it here rather than
+    // teach every reader of the document two ways to be absent.
+    document:
+      document && typeof document === "object" && !("security" in document)
+        ? { ...document, security: null }
+        : document,
     map,
     changes: changes ?? [],
     coverage,

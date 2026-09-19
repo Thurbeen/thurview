@@ -317,33 +317,44 @@ The agent writes three files in `~/.thurview/reviews/<id>/`:
   `## Heading {collapsed}` folds a section by default.
 - `data.yaml`: typed inputs: `actors`, `anchors` (file, from, to, graph),
   `stores`, `interfaces` (a capability line per derived entry, plus the
-  interfaces the graph cannot see).
+  interfaces the graph cannot see), and `security`, where a review says where
+  the change lets input cross a trust boundary.
 - `map.yaml`: the software map at head, optionally at base. In an explainer it
   carries the breadth the prose has no room for, and a node's `files` globs are
   what let a file count as placed rather than not examined.
 - `theme.yaml`: the look, derived from the reviewed project's own design
   system (tokens, fonts, shape, code palette). Empty means the default skin.
 
-An explainer writes the same files, minus `interfaces`: there is no change to
-derive a delta from, and `graph: base` on an anchor is an error because there
-is one commit.
+`security` is a review's own dimension, shown to the reader under the interface
+delta rather than left to a section the agent might not write. It is
+`security: none` when the change crosses no trust boundary, or one entry per
+place it does — a sentence and the head anchor the reader opens. Left out, it
+publishes as "not assessed", so a review that has not looked and one that looked
+and found nothing are never the same page. What counts as a trust boundary is
+defined in one place — the `thurview-fix` skill's finding rules — and
+nothing else restates it.
+
+An explainer writes the same files, minus `interfaces` and `security`: there is
+no change to derive a delta from or to carry input across a boundary, and
+`graph: base` on an anchor is an error because there is one commit.
 
 A design writes the same files, and `interfaces` means something else in it:
 each entry is a **proposal** — what the design would add, change or remove,
 with the anchor of the code that proposal lands in, replaces or plugs into
-today. `graph: base` is an error for the same reason as in an explainer, a
-`symbol:` entry is an error because no diff derived one, and a design that
-proposes nothing is refused: that document is an explainer. In its `map.yaml`,
-`base` is the structure as it stands and `nodes` the structure it proposes, so
-a proposed part may own files that do not exist yet while a `base` node may
-not.
+today. `graph: base` and `security` are errors for the same reason as in an
+explainer, a `symbol:` entry is an error because no diff derived one, and a
+design that proposes nothing is refused: that document is an explainer. In its
+`map.yaml`, `base` is the structure as it stands and `nodes` the structure it
+proposes, so a proposed part may own files that do not exist yet while a `base`
+node may not.
 
 `thurview publish` rejects an anchor whose file or lines do not exist at the
 pinned commit, a call stack frame that claims an added or removed call the
 diff does not show, a storage operation on an unknown field, a map edge
 to an unknown node, an interface annotation for a symbol the change did not
-move, a declared interface whose anchor holds no added or deleted line, and an
-explainer that anchors nothing at all, and a design that proposes nothing or
+move, a declared interface whose anchor holds no added or deleted line, a trust
+boundary crossing whose anchor resolves to nothing or reads the base commit, and
+an explainer that anchors nothing at all, and a design that proposes nothing or
 whose proposal names no site in the code as it stands. The full format is in
 [skills/thurview/references](skills/thurview/references).
 
