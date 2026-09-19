@@ -1,82 +1,123 @@
 # thurview
 
-Guided, evidence-anchored reviews of agent-written code. A coding agent studies
-a branch, pull request or commit range and writes a short document in which
-every claim is anchored to an exact file and line range at a pinned commit. You
-read it in your browser, ask the agent questions, comment on the code, and
-approve or send it back.
+**Your coding agent writes the review; you read it in the browser, anchored to
+the code, and approve it or send it back.**
+
+[![CI](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml/badge.svg)](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/thurview)](https://www.npmjs.com/package/thurview)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+![thurview demo: the reader follows an anchor into the code, comments on a line
+range in the diff, reads the agent's answer and requests changes](./media/thurview-demo.gif)
+
+_The reader's half of it; the agent is working off camera._
+
+- **Every claim is anchored to code.** The prose links to an exact file and
+  line range at a pinned commit, and the reader opens that code beside the
+  text — no hunting for what a sentence is about.
+- **You read it in your browser, not in a comment thread.** An argument in the
+  order somebody chose to make it, with the code, the diff between the pinned
+  commits and the system around it one click away — instead of forty remarks
+  in the order they happened to be written.
+- **You ask, and the agent answers in the document.** A question goes to the
+  agent — at once if one is listening, queued if not — and the answer lands
+  in the same thread; a comment waits for your decision. Then you approve the
+  change or send it back with the comments attached.
+- **A code graph answers what the diff cannot.** Who calls the symbol that
+  moved, which tests reach it, where the change landed in the system and what
+  sits next to it. thurview builds the graph itself with tree-sitter from the
+  pinned commits, for TypeScript, JavaScript, Python, Go, Rust, Java and Elixir.
+- **The evidence is checked, not taken on trust.** An anchor whose lines
+  do not exist at the pinned commit, a call stack frame asserting a call the
+  diff does not show, an interface annotation for a symbol the change never
+  moved, a trust boundary crossing that resolves to nothing — publishing
+  rejects each one rather than rendering it.
 
 ## Install
 
-Give your agent the skill, with the [skills](https://github.com/vercel-labs/skills)
-CLI - it works with Claude Code, Codex, Cursor, OpenCode and every agent that
-reads the Agent Skills format:
+One command gives your agent every skill this repository ships, through the
+[skills](https://github.com/vercel-labs/skills) CLI - it works with Claude
+Code, Codex, Cursor, OpenCode and every agent that reads the Agent Skills
+format:
 
 ```sh
 npx skills@latest add https://github.com/Thurbeen/thurview \
-  --skill thurview --agent universal claude-code --global --yes
+  --skill '*' --agent universal claude-code --global --yes
 ```
 
-The skill reaches the `thurview` command through `npx`, so the requirements
-are Node 22 or later and git (`gh` for pull requests, `glab` for merge
-requests). Then, in any repository, ask your agent:
+`--skill '*'` takes all four; quote the star so your shell does not expand it
+against the current directory. The skills reach the `thurview` command through
+`npx`, so the requirements are Node 22 or later and git (`gh` for pull
+requests, `glab` for merge requests). Then, in any repository, ask your agent:
 
 ```text
 Use the thurview skill to review my current branch against up-to-date main
 and open it.
 ```
 
-![thurview demo: the reader follows an anchor into the code, comments on a line
-range in the diff, reads the agent's answer and requests changes](./media/thurview-demo.gif)
+## The four skills
 
-The clip is the reader's half, the agent working off camera: following an anchor
-from the prose into the code, opening a call stack frame, commenting on a line
-range of the diff, seeing on the map what the change added, reading in the
-threads panel the answer to a question already asked, and sending the review
-back with changes requested.
+Three kinds of document, and one companion that writes none:
+
+- **`thurview`** - a change that is already written: a branch, a pull request,
+  a commit range. The document carries the diff, the commits and the interface
+  delta, and the reader approves it or sends it back.
+- **`thurview-explain`** - a codebase, or one subsystem of it, at a single
+  pinned commit. No diff and nothing to approve: it surfaces the architecture
+  well enough for the reader to spot design problems, and states what it did
+  not examine.
+- **`thurview-design`** - a change that is not written yet: a design, an
+  architecture proposal, an implementation plan. It anchors on the code as it
+  stands and declares what it would build as proposals, each attached to the
+  code it lands in today.
+- **`thurview-fix`** - no browser and no reader. It reviews, fixes what it is
+  sure of behind the repository's own tests and lint, and reports the rest -
+  optionally as inline comments on the change request.
 
 <details>
-<summary><b>Other ways to install</b> - pin the skill to a release, install the
-command from npm, run from a checkout, session hooks, the thurview-explain,
-thurview-design and thurview-fix skills</summary>
+<summary><b>Other ways to install</b> - one skill at a time, pin to a release,
+install the command from npm, run from a checkout, session hooks, and coming
+from an older install</summary>
 
 `--global` installs for your user, so one install covers every repository.
-`universal` puts the one real copy in `~/.agents/skills/thurview`, the directory
-no single agent owns, and every other agent you name gets a symlink to it, such
-as `~/.claude/skills/thurview` → `../../.agents/skills/thurview`, so an update
-lands everywhere at once. Swap `claude-code` for any agent the skills CLI
-supports, but keep `universal` and at least one more: with `--yes` and a single
-target, the CLI copies instead of linking.
+`universal` puts the one real copy of each skill under `~/.agents/skills/`,
+the directory no single agent owns, and every other agent you name gets a
+symlink to it - `~/.claude/skills/thurview` →
+`../../.agents/skills/thurview`, and the same for the other three - so an
+update lands everywhere at once. Swap `claude-code` for any agent the skills
+CLI supports, but keep `universal` and at least one more: with `--yes` and a
+single target, the CLI copies instead of linking.
 
-That form tracks this repository's default branch: `skills update` takes
-whatever `main` holds, which can be ahead of the released command. To pin the
-skill to a release instead, install it from the tag, which the skill lock
-records and later updates keep:
+`--skill` also takes names, one or several, when you do not want all four:
+`--skill thurview`, or `--skill thurview thurview-fix`.
+
+The untagged URL above tracks this repository's default branch:
+`skills update` takes whatever `main` holds, which can be ahead of the
+released command. To pin the skills to a release instead, install from the
+tag, which the skill lock records and later updates keep:
 
 ```sh
-npx skills@latest add https://github.com/Thurbeen/thurview/tree/v0.10.0/skills/thurview \
-  --agent universal claude-code --global --yes
+npx skills@latest add https://github.com/Thurbeen/thurview/tree/v0.15.0 \
+  --skill '*' --agent universal claude-code --global --yes
 ```
 
 Releases tag without committing, so nothing moves the tag above: swap in the
 [latest release](https://github.com/Thurbeen/thurview/releases/latest).
 
-The npm package ships the same skill, so `thurview setup skill` links the copy
-that matches the command you have installed. Use that when you want the two to
-move together.
+The npm package ships the same skills, so `thurview setup skill` links the
+copies that match the command you have installed. Use that when you want the
+two to move together.
 
-Install the command itself, rather than leaving the skill to reach it through
+Install the command itself, rather than leaving the skills to reach it through
 `npx` on every run:
 
 ```sh
 npm install -g thurview     # or: pnpm add -g thurview
 ```
 
-The review reasons over a code graph thurview builds itself from the pinned
-commits with tree-sitter, so nothing else needs installing. `thurview graph`
-answers which interfaces the change moved, what it reaches, who calls a
-symbol, what tests cover it and how files cluster, for TypeScript,
-JavaScript, Python, Go, Rust, Java and Elixir.
+Nothing else needs installing: the code graph is built from the pinned commits
+with tree-sitter. `thurview graph` answers which interfaces the change moved,
+what it reaches, who calls a symbol, what tests cover it and how files cluster.
 
 To run from a checkout instead:
 
@@ -89,43 +130,27 @@ npm link                    # puts `thurview` on PATH
 Optional, for ambient context: `thurview setup hooks` installs a
 SessionStart hook for Claude Code, Codex and OpenCode, so every session opens
 with the reviews of its working directory. `thurview setup skill` links the
-skill from this checkout instead of the `skills` CLI copy; use one or the
+skills from this checkout instead of the `skills` CLI copies; use one or the
 other.
 
-Also available: `thurview-explain` and `thurview-design`, which author the
-explainer and design kinds described [below](#how-it-works), and
-`thurview-fix`, the browserless companion skill described
-[below](#review-and-fix).
+**Coming from an older install.** A skill name is an address, so nothing
+renames or splits one in place - the command above adds what is missing, and
+what is stale has to go.
 
-```sh
-npx skills@latest add https://github.com/Thurbeen/thurview \
-  --skill thurview-explain --agent universal claude-code --global --yes
-npx skills@latest add https://github.com/Thurbeen/thurview \
-  --skill thurview-design --agent universal claude-code --global --yes
-npx skills@latest add https://github.com/Thurbeen/thurview \
-  --skill thurview-fix --agent universal claude-code --global --yes
-```
+`thurview-explain` used to be a second kind inside the `thurview` skill, so an
+install made before the split does not have it. Under the `skills` CLI,
+updating `thurview` adds no second skill; run the install command above, which
+takes all four. Under `thurview setup skill`, update the command first -
+`thurview update`, or pull and rebuild the checkout you linked from - and run
+`thurview setup skill` again: it links every skill the installed command
+carries, so it picks the new one up on its own.
 
-`thurview-explain` was a second kind inside the `thurview` skill, so an install
-made before the split does not have it under that name. Which command adds it
-depends on the route you installed by, and mixing the two is the thing to
-avoid. Under the `skills` CLI a skill is installed by name and updating
-`thurview` adds no second one, so run the first command above. Under
-`thurview setup skill`, update the command first - `thurview update`, or pull
-and rebuild the checkout you linked from - and run `thurview setup skill`
-again: it links every skill the installed command carries, so it picks the new
-one up on its own.
-
-`thurview-fix` was called `review-fix`. A skill name is an address, so nothing
-updates the old one in place: an install made before the rename keeps answering
-to `/review-fix` from a copy that will never change again, and one made with
-`thurview setup skill` leaves a symlink pointing at a directory this repository
-no longer ships. Remove it and add the skill under its new name:
+`thurview-fix` was called `review-fix`, and an install made before the rename
+keeps answering to `/review-fix` from a copy that will never change again.
+Remove it:
 
 ```sh
 npx skills@latest remove --global review-fix
-npx skills@latest add https://github.com/Thurbeen/thurview \
-  --skill thurview-fix --agent universal claude-code --global --yes
 ```
 
 For a `thurview setup skill` install, delete the stale link -
@@ -141,20 +166,14 @@ and serves it in your browser: the walkthrough, live code peeks, the diff,
 commits, and a software map. You ask questions, leave anchored comments, and
 approve or request changes. The agent answers and republishes.
 
-It also explains a codebase. A **code explainer** is the same document over a
-different unit: one pinned commit instead of a range, so a reader can see the
-architecture well enough to spot design problems themselves. It has no diff and
-nothing to approve, it surfaces structure rather than grading it, and it states
-what it did not examine.
+An explainer and a design run the same loop over a different unit. An
+explainer pins one commit instead of a range, so it has no diff and nothing to
+approve. A design pins the commit it argues from: its anchors land on the code
+as it stands, never on code that does not exist yet, and what it would build
+rides beside them as proposals.
 
-And it reads a plan. A **design** is the same document over a change that is
-not written yet: one pinned commit — the code it argues from — anchors on the
-code as it stands, and what it would build declared as proposals, each attached
-to the code it lands in today. An anchor never points at code that does not
-exist; the reader approves the design or sends it back.
-
-It does not review the code for you. It helps you understand it fast enough
-to review it yourself.
+The document does not review the code for you. It helps you understand the
+code fast enough to judge it yourself.
 
 ```mermaid
 flowchart LR
