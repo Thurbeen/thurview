@@ -71,12 +71,48 @@ export const InterfaceSchema = z
     message: "change and anchor come from the graph for a symbol entry",
   });
 
+/**
+ * One place this change lets input cross a trust boundary, with the anchor that
+ * shows it. What counts as one is defined once, in the `thurview-fix` skill's
+ * SKILL.md under "Findings"; nothing here restates it, so the two cannot drift
+ * into disagreeing.
+ */
+export const CrossingSchema = z.object({ boundary: z.string().min(1), anchor: id }).strict();
+
+export type Crossing = z.infer<typeof CrossingSchema>;
+
+/**
+ * The crossings, when the author lists any. An empty list is refused rather
+ * than read as either of the two words below: a list nobody filled in is not a
+ * statement about anything.
+ */
+export const CrossingListSchema = z
+  .array(CrossingSchema)
+  .min(1, "write `none` to say the change crosses no trust boundary, or list the crossings");
+
+/**
+ * The security dimension of a review, in the three states it can honestly be
+ * in. `pending` is the document saying it has not looked yet, `none` that it
+ * looked and found nothing: different claims, and only the second is worth
+ * anything to the reader.
+ *
+ * It is not a schema on `DataSchema`, because a union there would erase the
+ * path zod reports and take the whole file down with it: one crossing missing
+ * its `anchor` would be `security: Invalid input`, and every anchor in the file
+ * would then be reported as undefined. `compileDocument` reads the raw value
+ * instead and says which entry it could not read, whatever else in the file
+ * failed.
+ */
+export type Security = "pending" | "none" | Crossing[];
+
 export const DataSchema = z
   .object({
     actors: z.record(id, ActorSchema).default({}),
     anchors: z.record(id, AnchorSchema).default({}),
     stores: z.record(id, StoreSchema).default({}),
     interfaces: z.record(id, InterfaceSchema).default({}),
+    /** read by hand, not here: see Security above for why a union cannot sit on this object */
+    security: z.unknown().optional(),
   })
   .strict();
 

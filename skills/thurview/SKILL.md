@@ -170,6 +170,13 @@ depends on what, what it left untested. Then compare the stated intent (commit
 messages, PR description, the user's own words) with what the code does. The
 gap is the most valuable finding.
 
+Answer one question explicitly while you are in there: where does the change
+let input cross a trust boundary? What counts is defined once, in the
+`thurview-fix` skill's `SKILL.md` under "Findings" - read it there rather than
+deciding again, and record the answer in `data.yaml` under `security` in step 5.
+It is a place for the reader to look, not a finding and not a severity; a
+repository with a SAST tool already has that job covered.
+
 Do not spend the review on naming, formatting, import order, or missing
 defensive checks. Linters, type checkers and `/code-review` catch those, and a
 reader who wanted them would have run those instead.
@@ -226,6 +233,13 @@ format. See [Components](references/components.md) for the shape and
 [Document authoring](references/document-authoring.md) for what earns an
 entry. Never write one for a capability the change did not deliver.
 
+Then answer the security question from step 3 in the same file: `security: none`
+when the change crosses no trust boundary, or one entry per place it does, each
+with a head anchor the reader opens. Both are answers; leaving the key out is
+not, and publishes as "not assessed". See
+[Document authoring](references/document-authoring.md) and
+[Components](references/components.md).
+
 ### 6. Theme the review after the project
 
 Read [Theme](references/theme.md). Decide the look in its order: what the
@@ -258,6 +272,8 @@ Tell the user, in a few lines and nothing more:
 - what the review covers, in one sentence, and where to start: the Review tab
   as a rule; the Files tab when the change is small and the diff is the story
 - the interface delta `verdict`, in its own words
+- the `security` verdict, in one clause: what the change crosses, or that it
+  crosses nothing
 - which theme source you used: the user's request, the project's design
   system (name the files), or the default skin
 - when the review has no map, why not, in one clause
@@ -343,6 +359,9 @@ Report completion only when all of these hold:
 - The reader has the URL of a published revision.
 - Every `error` diagnostic is resolved.
 - The map is published, or you said why it is not.
+- On a review, `security` in `data.yaml` is answered: `none`, or the crossings.
+  A review published as "not assessed" is not finished. An explainer has no
+  such key, and `publish` refuses one.
 - The review is waiting on the reader, accepted, closed, dismissed or deleted.
 
 Close with the decision and its summary (`wait.decision`), and the URL. When

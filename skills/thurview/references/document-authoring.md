@@ -94,6 +94,25 @@ only when one of these holds:
 Anything else is noise: the entry is already there, or there is nothing to
 add. An interface the change did not deliver is never an entry.
 
+## Trust boundaries
+
+Every review answers where the change lets input cross a trust boundary, in
+`data.yaml` under `security`. It is not a section you write: the browser shows
+it under the interface delta, one line per place with the anchor the reader
+opens.
+
+Answer it after you have read the diff and the graph, and answer it either way.
+`security: none` is the whole answer for a change that crosses none, and writing
+it is what makes the panel worth reading on the review where it is not none. A
+review that leaves the key out publishes as "not assessed", which is honest for
+a stub and is not an answer.
+
+What counts as a trust boundary is defined once, in the `thurview-fix` skill's
+`SKILL.md` under "Findings" - read it there rather than deciding again. Do not
+turn this into an audit: thurview surfaces the places, it does not rank them,
+and a repository that runs a SAST tool already has the other job covered. See
+[Components](components.md) for the shape and what `publish` refuses.
+
 ## Evidence
 
 Every claim about code carries an anchor. An anchor is a named source range

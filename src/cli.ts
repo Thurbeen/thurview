@@ -348,6 +348,17 @@ const TEMPLATE_DATA = `# Typed inputs for review.md: actors, anchors and stores.
 #
 # interfaces holds one capability line per interface the change moved. thurview
 # derives the list itself; run \`thurview graph interfaces\` for the ids.
+#
+# security says where this change lets input cross a trust boundary. Leave it
+# out (or write \`security: pending\`) until you have looked and the document says
+# so; then write \`security: none\`, or list what it crosses:
+#
+# security:
+#   - boundary: The --shell flag reaches execFile's argv unquoted.
+#     anchor: spawn
+#
+# What counts as a trust boundary is defined once, in the thurview-fix skill's
+# SKILL.md under "Findings". Read it there rather than deciding again.
 actors: {}
 anchors: {}
 stores: {}
@@ -1322,7 +1333,10 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           ? { coverage: coverage ? coverage.verdict : "(unavailable)" }
           : kind === "design"
             ? { proposes: doc.document.interfaces?.verdict ?? "(unavailable)" }
-            : { interfaces: doc.document.interfaces?.verdict ?? "(unavailable)" }),
+            : {
+                interfaces: doc.document.interfaces?.verdict ?? "(unavailable)",
+                security: doc.document.security?.verdict ?? "(unavailable)",
+              }),
         theme: theme?.name ?? "default",
         url: url ?? "(server not running)",
       },

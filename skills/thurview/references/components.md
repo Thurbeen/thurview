@@ -42,6 +42,10 @@ interfaces:
     change: added                         # added | changed | removed
     capability: Validate a review without sealing a revision.
     anchor: dryRunFlag                    # must hold a line the diff moved
+
+security:                                 # a review only; omit until you have looked
+  - boundary: The --shell flag reaches execFile's argv unquoted.
+    anchor: spawn                         # a head anchor, with a peek
 ```
 
 An anchor without `peek` can label a map node but cannot open code.
@@ -69,6 +73,40 @@ Each entry in `interfaces` does one of two things, and never both:
 `capability` is what a consumer can now do, or can no longer do. Write
 "`thurview publish` gains `--dry-run`", not "added a boolean to
 PublishOptions".
+
+## security
+
+Where this change lets input cross a trust boundary. The browser shows it under
+the interface delta, so the reader is told either way rather than left to
+remember to look for it.
+
+**What counts as a trust boundary is defined once**, in the `thurview-fix`
+skill's `SKILL.md` under "Findings". Read it there. Nothing here repeats it, so
+the two cannot drift into disagreeing about what counts. That skill turns what
+it names into a ranked finding; this one only puts the place in front of the
+reader, so the same definition selects the lines and stops there.
+
+Three states, and they are three different claims:
+
+- **omitted**, or the word `pending` - you have not looked yet. The panel says
+  "not assessed", which is what a stub published before the walkthrough should
+  be saying.
+- **`security: none`** - you looked, and the change crosses none. Say it
+  explicitly: it is what makes this panel worth reading the next time.
+- **a list** - one entry per place. `boundary` is one sentence in the reader's
+  terms; `anchor` is a head anchor with a `peek`, because a crossing is the
+  boundary as the change leaves it.
+
+`publish` refuses an unknown anchor, an anchor with no `peek` and a `graph: base`
+anchor: an anchor that opens nothing is how a reader stops trusting the ones that
+do. It also refuses an empty list - write `none` rather than leave the reader to
+work out which of the two you meant. Resolving a crossing marks its anchor used,
+so an anchor that only a crossing names raises no "defined but never used".
+
+There is no severity here. A crossing is a place for the reader to look; the
+severity that exists belongs to the findings in `thurview-fix`, not to this
+document. An explainer and a design are pinned to one commit and have no change,
+so `publish` refuses the key on either.
 
 ## Anchor link
 

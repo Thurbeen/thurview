@@ -19,7 +19,10 @@ import {
   DatabaseSchema,
   PeekBlockSchema,
   MapSchema,
+  CrossingListSchema,
   type Data,
+  type Security,
+  type Crossing,
   type Peek,
   type MapFile,
   type MapNode,
@@ -100,11 +103,27 @@ export type Block =
       }[];
     };
 
+/**
+ * The security dimension: where this change lets input cross a trust boundary,
+ * stated by the author and anchored like every other claim in the document.
+ * `pending` is a document that has not looked, `none` one that looked and found
+ * nothing - and the reader is shown which of the two it is, because a silence
+ * that could be either is worth nothing the next time.
+ */
+export interface CompiledSecurity {
+  state: "pending" | "none" | "crossings";
+  crossings: { boundary: string; anchor: string }[];
+  /** the whole answer in one sentence, for the agent and the reader alike */
+  verdict: string;
+}
+
 export interface CompiledDocument {
   title: string;
   blocks: Block[];
   /** derived from the pinned commits, with the agent's capability lines merged in */
   interfaces: InterfaceDelta | null;
+  /** review only: an explainer and a design have no change to cross a boundary */
+  security: CompiledSecurity | null;
   anchors: Record<string, CompiledAnchor>;
   actors: Data["actors"];
   stores: Data["stores"];
@@ -127,6 +146,10 @@ export interface CompileInput {
 /** The kind, as a message names it, so one sentence serves every kind that needs it. */
 function kindWord(kind: DocumentKind): string {
   return kind === "explainer" ? "an explainer" : kind === "design" ? "a design" : "a review";
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 function zodMessages(err: unknown): string[] {
@@ -171,6 +194,18 @@ export async function compileDocument(input: CompileInput): Promise<{
     err(
       "data.yaml",
       "an explainer has no interface delta: it explains a codebase at one commit, not a change",
+    );
+  // A trust boundary is something a CHANGE carries input across, so the
+  // dimension belongs to the kind that has one. An explainer and a design are
+  // pinned to a single commit, and a crossing declared against one would be a
+  // statement about code nobody touched. The KEY is what they cannot carry, not
+  // one of its values: leaving `security: pending` through would make the
+  // documents' "an explainer has no such key" false, and the author is being
+  // told to delete the key, not to pick a better value for it.
+  if (kind !== "review" && isRecord(dataRaw) && "security" in dataRaw)
+    err(
+      "data.yaml",
+      `security is what a change crosses: ${kindWord(kind)} is pinned to one commit and has no diff, so it has none of its own to state`,
     );
   // A design has no diff, so nothing derives a row for the agent to annotate.
   // Every entry it declares is a proposal, and it has to name its own interface.
@@ -285,6 +320,24 @@ export async function compileDocument(input: CompileInput): Promise<{
             warn,
           });
 
+  // Two questions, and only one of them needs the rest of data.yaml. The SHAPE
+  // of `security` is read from the raw file, so a mistake in it is reported
+  // beside a mistake elsewhere rather than one publish later. Resolving a
+  // crossing against `anchors` is the other: when the file did not parse those
+  // came from the fallback, and every crossing would be blamed for naming an
+  // anchor that is not missing, only unknown.
+  const declaredSecurity = kind === "review" ? parseSecurity(dataRaw, used, err) : "pending";
+  const security =
+    kind === "review"
+      ? compileSecurity({
+          declared: dataParsed.ok ? declaredSecurity : "pending",
+          anchors,
+          declaredAnchors: data.anchors,
+          used,
+          err,
+        })
+      : null;
+
   for (const id of Object.keys(anchors))
     if (!used.has(id)) warn("data.yaml", `anchor "${id}" is defined but never used`);
 
@@ -313,6 +366,7 @@ export async function compileDocument(input: CompileInput): Promise<{
       title: parsed.title,
       blocks,
       interfaces,
+      security,
       anchors,
       actors: data.actors,
       stores: data.stores,
@@ -320,6 +374,103 @@ export async function compileDocument(input: CompileInput): Promise<{
     },
     diagnostics: diags,
     anchors,
+  };
+}
+
+/**
+ * Read `security` out of the raw YAML, so a value it cannot read is reported as
+ * itself. Going through `DataSchema` instead would cost the path - zod erases
+ * it across a union - and, because a failed parse discards the whole file, it
+ * would report every anchor in `data.yaml` as undefined on top. The author
+ * would then be sent to fix anchors that are correct.
+ */
+function parseSecurity(
+  raw: unknown,
+  used: Set<string>,
+  err: (file: string, message: string) => void,
+): Security {
+  const v = isRecord(raw) ? raw["security"] : undefined;
+  if (v === undefined) return "pending";
+  if (v === "pending" || v === "none") return v;
+  if (Array.isArray(v)) {
+    // One bad entry rejects the list, but the good entries still name their
+    // anchors and those anchors are still used. Without this, a typo in the
+    // last crossing reports every anchor above it as defined and never used.
+    for (const e of v) if (isRecord(e) && typeof e["anchor"] === "string") used.add(e["anchor"]);
+    const r = parseWith(CrossingListSchema, v);
+    if (r.ok) return r.value;
+    for (const m of r.errors) {
+      // zod paths an entry by its index; the messages below count from one
+      const at = /^(\d+)(?:\.|: )/.exec(m);
+      err(
+        "data.yaml",
+        at ? `security crossing ${Number(at[1]) + 1}: ${m.slice(at[0].length)}` : `security: ${m}`,
+      );
+    }
+    return "pending";
+  }
+  err(
+    "data.yaml",
+    "security: write `none` to say the change crosses no trust boundary, or list the crossings",
+  );
+  return "pending";
+}
+
+/**
+ * Resolve the security dimension against the anchors the document already has.
+ *
+ * A crossing is a claim about the change as it stands at head, so it takes a
+ * head anchor with a peek and nothing else will do: an anchor that opens
+ * nothing is how a reader stops trusting the ones that open something, and the
+ * rest of the document lives under the same rule. Resolving one also marks the
+ * anchor used, so the dimension needs no prose link to earn its anchor.
+ */
+function compileSecurity(ctx: {
+  declared: Security;
+  anchors: Record<string, CompiledAnchor>;
+  /** what data.yaml asked for, to tell a peek that is missing from one that failed */
+  declaredAnchors: Data["anchors"];
+  used: Set<string>;
+  err: (file: string, message: string) => void;
+}): CompiledSecurity {
+  if (ctx.declared === "pending" || ctx.declared === "none")
+    return {
+      state: ctx.declared,
+      crossings: [],
+      verdict:
+        ctx.declared === "none"
+          ? "No trust boundary crossed."
+          : "Not assessed: this revision does not say whether the change crosses a trust boundary.",
+    };
+  const crossings: CompiledSecurity["crossings"] = [];
+  ctx.declared.forEach((c: Crossing, i: number) => {
+    const where = `security crossing ${i + 1}`;
+    ctx.used.add(c.anchor);
+    const anchor = ctx.anchors[c.anchor];
+    if (!anchor) return ctx.err("data.yaml", `${where}: unknown anchor "${c.anchor}"`);
+    if (!anchor.peek) {
+      // A peek that was written but could not be resolved already has its own
+      // error, and the actionable one is that one. Saying "no peek" over it
+      // sends the author to add what is in front of them.
+      if (!ctx.declaredAnchors[c.anchor]?.peek)
+        ctx.err(
+          "data.yaml",
+          `${where}: anchor "${c.anchor}" has no peek, so the reader cannot open the code it names`,
+        );
+      return;
+    }
+    if (anchor.peek.graph !== "head")
+      return ctx.err(
+        "data.yaml",
+        `${where}: anchor "${c.anchor}" reads the base commit; a crossing is the boundary as the change leaves it, so it takes a head anchor`,
+      );
+    crossings.push({ boundary: c.boundary, anchor: c.anchor });
+  });
+  const n = crossings.length;
+  return {
+    state: "crossings",
+    crossings,
+    verdict: `${n} trust boundar${n === 1 ? "y" : "ies"} crossed.`,
   };
 }
 

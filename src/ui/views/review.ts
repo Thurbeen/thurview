@@ -3,7 +3,7 @@ import { state, threadsFor, navigate, kind, VIEWS } from "../state.js";
 import { codeTable, openAnchorPeek } from "../code.js";
 import { commentPopover, threadPinRow } from "../threads.js";
 import { sequenceDiagram, callstackDiff, databaseLens } from "../diagrams.js";
-import type { Block } from "../../document/compile.js";
+import type { Block, CompiledSecurity } from "../../document/compile.js";
 import type { InterfaceDelta, InterfaceEntry } from "../../interfaces.js";
 import type { Coverage } from "../../coverage.js";
 
@@ -26,6 +26,8 @@ export function renderReview(root: HTMLElement): void {
       ? coveragePanel(state.data?.coverage ?? null)
       : interfaceDelta(doc.interfaces),
   );
+  // Only a change crosses a trust boundary, so only a review carries the panel.
+  if (kind() === "review") root.appendChild(securityPanel(doc.security));
   const layout = h("div", { class: "doc-layout" });
   const toc = h(
     "nav",
@@ -103,6 +105,7 @@ export function renderReview(root: HTMLElement): void {
 /** Ids the parser cannot produce, so the panel can hold threads like a document block. */
 const DELTA_BLOCK = "interface-delta";
 const COVERAGE_BLOCK = "coverage";
+const SECURITY_BLOCK = "security";
 const DELTA_SHOWN = 12;
 
 const CHANGE_CLASS: Record<InterfaceEntry["change"], string> = {
@@ -268,6 +271,94 @@ function coveragePanel(cov: Coverage | null): HTMLElement {
       ),
     ),
   );
+  wrap.appendChild(body);
+  if (threads.length)
+    wrap.appendChild(h("div", { class: "thread-pins" }, threads.map(threadPinRow)));
+  return wrap;
+}
+
+/**
+ * Where the change lets input cross a trust boundary, under the interface delta
+ * because it is the same kind of fact: what this change did to something the
+ * reader cares about, in one sentence, before the prose. A review that crossed
+ * none says so here, and one that has not looked says that instead - the panel
+ * is never absent, so silence cannot pass for an answer.
+ */
+function securityPanel(sec: CompiledSecurity | null | undefined): HTMLElement {
+  const wrap = h("div", { class: "block ifd", "data-block": SECURITY_BLOCK });
+  const threads = threadsFor((t) => t.type === "document" && t.blockId === SECURITY_BLOCK);
+  if (threads.length) wrap.classList.add("has-threads");
+  const actions = h(
+    "div",
+    { class: "block-actions" },
+    h(
+      "button",
+      {
+        class: threads.length ? "count" : "",
+        title: "Comment on the trust boundaries",
+        onclick: (e: MouseEvent) => {
+          if (state.viewingRevision !== null) return;
+          popover(commentPopover({ type: "document", blockId: SECURITY_BLOCK }), {
+            x: e.pageX + 10,
+            y: e.pageY,
+          });
+        },
+      },
+      threads.length ? String(threads.length) : "+",
+    ),
+  );
+  const body = h("div", { class: "ifd-body" });
+  const toggle = h("span", { class: "heading-toggle" }, "hide");
+  toggle.addEventListener("click", () => {
+    const hidden = body.hidden;
+    body.hidden = !hidden;
+    toggle.textContent = hidden ? "hide" : "show";
+  });
+  const badge = !sec
+    ? null
+    : sec.state === "none"
+      ? h("span", { class: "badge ok" }, "none")
+      : sec.state === "pending"
+        ? h("span", { class: "badge warn" }, "not assessed")
+        : h("span", { class: "badge warn" }, `${sec.crossings.length} crossed`);
+  wrap.appendChild(
+    h(
+      "div",
+      { class: "ifd-head" },
+      h("span", { class: "t" }, "Trust boundaries"),
+      badge,
+      h("span", { class: "spacer" }),
+      toggle,
+      actions,
+    ),
+  );
+  body.appendChild(
+    h(
+      "p",
+      { class: "ifd-verdict" },
+      sec ? sec.verdict : "Unavailable: this revision carries no security dimension.",
+    ),
+  );
+  for (const c of sec?.crossings ?? []) {
+    const anchor = state.data?.document?.anchors[c.anchor];
+    if (!anchor) continue;
+    body.appendChild(
+      h(
+        "div",
+        {
+          class: "ifd-entry",
+          title: `Open ${anchor.title}`,
+          onclick: () => openAnchorPeek(anchor),
+        },
+        h("div", { class: "ifd-what" }, h("div", { class: "ifd-cap" }, c.boundary)),
+        h(
+          "span",
+          { class: "ifd-where mono" },
+          anchor.peek ? `${anchor.peek.file}:${anchor.peek.from}` : anchor.title,
+        ),
+      ),
+    );
+  }
   wrap.appendChild(body);
   if (threads.length)
     wrap.appendChild(h("div", { class: "thread-pins" }, threads.map(threadPinRow)));
