@@ -361,6 +361,12 @@ kbd {
 .side-head .path:hover {
   color: var(--link);
 }
+/* A kind with no Files tab has nowhere for this to go, so it must not offer. */
+.side-head .path.inert,
+.side-head .path.inert:hover {
+  cursor: default;
+  color: var(--fg2);
+}
 .side-body {
   flex: 1;
   overflow: auto;
@@ -622,6 +628,12 @@ kbd {
 }
 .code-frame .frame-head .path:hover {
   color: var(--link);
+}
+/* Same rule as the side panel's: no Files tab, so no affordance promising one. */
+.code-frame .frame-head .path.inert,
+.code-frame .frame-head .path.inert:hover {
+  cursor: default;
+  color: var(--muted);
 }
 .code-frame .frame-head .title {
   font-family: var(--font-mono);

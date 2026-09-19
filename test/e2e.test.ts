@@ -808,6 +808,131 @@ check
     expect(cov["outsideGraph"]).toEqual([{ extension: "md", files: 1 }]);
   }, 60_000);
 
+  // ---- the design document kind ----
+  // Its own block, and it never touches reviewId or explainerId: a design is a
+  // third kind beside them, not a change to either.
+
+  let designId = "";
+  let designDir = "";
+
+  const designData = (extra = "") =>
+    `anchors:\n  login: { title: login() today, peek: { file: src/auth.ts, from: 3, to: 6 } }\ninterfaces:\n  strict:\n    name: auth.login --strict\n    change: added\n    capability: Rejects an empty user instead of answering false.\n    anchor: login\n${extra}`;
+  const designMd = `# Reject empty users at the door\n\nToday [login()](anchor:login) answers false for an empty user.\n`;
+
+  it("pins a design to one commit and the scope the reader asked for", async () => {
+    const out = await cli(["design", "src"]);
+    const d = out["design"];
+    designId = d["id"];
+    designDir = d["dir"];
+    expect(d["kind"]).toBe("design");
+    expect(d["scope"]).toBe("src/**");
+    expect(d["commit"]).toMatch(/^[0-9a-f]{40}$/);
+    const info = await cli(["info", "--fields", "pins"]);
+    const row = info["reviews"].find((r: Out) => r["id"] === designId);
+    expect(row["kind"]).toBe("design");
+    // one commit, not a range: a design argues from the code as it stands
+    expect(row["pins"]).not.toContain("..");
+  }, 20_000);
+
+  it("refuses the graph queries that compare two commits", async () => {
+    for (const sub of ["impact", "interfaces"]) {
+      const out = await cli(["graph", sub, "--review", designId], { expectCode: 2 });
+      expect(String(out["error"])).toContain("a design is pinned to one");
+    }
+    const arch = await cli(["graph", "architecture", "--review", designId]);
+    expect(arch["scope"]).toBe("src/**");
+    expect(arch["base"]).toBeUndefined();
+  }, 60_000);
+
+  it("rejects a design whose anchor points at code that is not there", async () => {
+    // `graph: base` and a proposal annotating a graph-derived symbol both claim
+    // a diff. A design has one commit and proposes what is not written yet.
+    await writeFile(
+      join(designDir, "data.yaml"),
+      `anchors:\n  old: { title: old, peek: { file: src/auth.ts, from: 1, to: 2, graph: base } }\ninterfaces:\n  audited:\n    symbol: src/audit.ts:audit\n    capability: does a thing\n`,
+    );
+    await writeFile(join(designDir, "review.md"), `# Design\n\nSee [old](anchor:old).\n`);
+    const out = await cli(["publish", "--review", designId], { expectCode: 1 });
+    const messages = out["diagnostics"].map((d: Out) => String(d["message"]));
+    expect(messages.some((m: string) => m.includes("`graph: base` has no meaning"))).toBe(true);
+    expect(messages.some((m: string) => m.includes("proposes an interface"))).toBe(true);
+  }, 60_000);
+
+  it("rejects a design that proposes nothing", async () => {
+    await writeFile(
+      join(designDir, "data.yaml"),
+      `anchors:\n  login: { title: login() today, peek: { file: src/auth.ts, from: 3, to: 6 } }\ninterfaces: {}\n`,
+    );
+    await writeFile(join(designDir, "review.md"), designMd);
+    const out = await cli(["publish", "--review", designId], { expectCode: 1 });
+    expect(
+      out["diagnostics"].some((d: Out) => String(d["message"]).includes("proposes nothing")),
+    ).toBe(true);
+  }, 60_000);
+
+  it("publishes a design and states what it proposes", async () => {
+    await writeFile(join(designDir, "data.yaml"), designData());
+    await writeFile(join(designDir, "review.md"), designMd);
+    const out = await cli(["publish", "--review", designId]);
+    expect(out["published"]["kind"]).toBe("design");
+    expect(String(out["published"]["proposes"])).toBe("Proposed: 1 added.");
+    // a design is not a change, so it has neither an interface delta nor coverage
+    expect(out["published"]["interfaces"]).toBeUndefined();
+    expect(out["published"]["coverage"]).toBeUndefined();
+  }, 60_000);
+
+  it("warns about a dead glob on today's structure and not on a proposed part", async () => {
+    await writeFile(
+      join(designDir, "map.yaml"),
+      `nodes:\n  - { id: auth, kind: component, label: Auth, files: ["src/auth.ts"] }\n  - { id: policy, kind: component, label: Policy engine, files: ["src/policy.ts"] }\nedges:\n  - { from: auth, to: policy, label: asks }\nbase:\n  nodes:\n    - { id: auth, kind: component, label: Auth, files: ["src/auth.ts"] }\n    - { id: legacy, kind: component, label: Legacy, files: ["src/legacy/**"] }\n  edges: []\n`,
+    );
+    const out = await cli(["publish", "--review", designId]);
+    expect(out["published"]["map"]).toBe(true);
+    const messages = (out["diagnostics"] ?? []).map((d: Out) => String(d["message"]));
+    // src/legacy/** is a claim about the code today, and it is wrong
+    expect(messages.some((m: string) => m.includes("src/legacy/**"))).toBe(true);
+    // src/policy.ts is the part the design proposes; it owns no file yet by design
+    expect(messages.some((m: string) => m.includes("src/policy.ts"))).toBe(false);
+  }, 60_000);
+
+  it("serves a design with its proposals, no diff and no coverage", async () => {
+    const d = await api<Out>(`/api/reviews/${designId}`);
+    expect(d["review"]["kind"]).toBe("design");
+    expect(d["changes"]).toEqual([]);
+    expect(d["coverage"]).toBe(null);
+    const proposals = d["document"]["interfaces"];
+    expect(proposals["verdict"]).toBe("Proposed: 1 added.");
+    expect(proposals["entries"]).toHaveLength(1);
+    const e = proposals["entries"][0];
+    expect(e["change"]).toBe("added");
+    expect(e["name"]).toBe("auth.login --strict");
+    expect(e["anchor"]).toBe("login");
+    // the site: real code at the pinned commit, which is what the reader opens
+    expect(e["file"]).toBe("src/auth.ts");
+    expect(e["line"]).toBe(3);
+    expect(d["map"]["diff"]["added"]).toEqual(["policy"]);
+    expect(d["map"]["diff"]["removed"]).toEqual(["legacy"]);
+  }, 20_000);
+
+  it("takes a comment on a design and the reader's approval of it", async () => {
+    // The whole point of the kind: a plan read, annotated and decided on in the
+    // surface a review uses, through the same endpoints.
+    const th = (await post(`/api/reviews/${designId}/threads`, {
+      kind: "comment",
+      mode: "review",
+      target: { type: "document", blockId: "interface-delta" },
+      body: "Does --strict change the default, or only add a flag?",
+    })) as { id: string };
+    await post(`/api/reviews/${designId}/submit`, {
+      decision: "approve",
+      body: "Build it.",
+    });
+    const after = await api<Out>(`/api/reviews/${designId}`);
+    expect(after["review"]["status"]).toBe("accepted");
+    expect(after["decisions"].at(-1)["decision"]).toBe("approve");
+    expect(after["threads"].find((t: Out) => t["id"] === th.id)["submitted"]).toBe(true);
+  }, 20_000);
+
   it("answers --help per command without loading live state", async () => {
     const h = await cli(["threads", "--help"]);
     expect(h["command"]).toContain("thurview threads");

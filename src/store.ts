@@ -14,13 +14,16 @@ export type ReviewStatus =
  * and the diff, the commits and the interface delta all mean something. An
  * explainer explains a CODEBASE at one commit: same anchors, same peeks, same
  * threads, no range — so the surfaces that describe a range are absent rather
- * than rendered empty. Records written before this field read as reviews.
+ * than rendered empty. A design explains a CHANGE THAT IS NOT WRITTEN YET,
+ * pinned to the one commit it argues from: its anchors are the code as it
+ * stands, and what it would add, change or remove is a proposal rather than a
+ * delta. Records written before this field read as reviews.
  */
-export type DocumentKind = "review" | "explainer";
+export type DocumentKind = "review" | "explainer" | "design";
 
 export interface Binding {
   kind: "branch" | "pr" | "range" | "codebase";
-  /** branch name, change request number, "base..head", or the path scope of an explainer */
+  /** branch name, change request number, "base..head", or the path scope of an explainer or design */
   name: string;
   url?: string;
   /** `github` or `gitlab` for a change request; absent on reviews pinned before forges were named. */
@@ -166,7 +169,7 @@ export async function writeJson(path: string, value: unknown): Promise<void> {
 
 /** The kind of a stored document, defaulting old records to a review. */
 export function kindOf(r: Pick<ReviewState, "kind">): DocumentKind {
-  return r.kind === "explainer" ? "explainer" : "review";
+  return r.kind === "explainer" || r.kind === "design" ? r.kind : "review";
 }
 
 export async function readReview(id: string): Promise<ReviewState | null> {

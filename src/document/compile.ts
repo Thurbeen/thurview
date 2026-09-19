@@ -10,7 +10,7 @@ import {
 } from "../git.js";
 import { highlightLines, languageFor } from "../highlight.js";
 import { parseDocument, type RawBlock } from "./parse.js";
-import { withVerdict, type InterfaceDelta } from "../interfaces.js";
+import { withVerdict, sortEntries, type InterfaceDelta } from "../interfaces.js";
 import type { DocumentKind } from "../store.js";
 import {
   DataSchema,
@@ -116,12 +116,17 @@ export interface CompileInput {
   pins: { base: string; head: string };
   reviewMd: string;
   dataYaml: string;
-  /** review (a change) or explainer (a codebase at one commit); default review */
+  /** review (a change), explainer (a codebase at one commit) or design (a proposal); default review */
   kind?: DocumentKind;
   /** registered highlighter theme name (default skin when omitted) */
   themeName?: string;
   /** the derived interface delta; null when the code graph could not be built */
   interfaces?: InterfaceDelta | null;
+}
+
+/** The kind, as a message names it, so one sentence serves every kind that needs it. */
+function kindWord(kind: DocumentKind): string {
+  return kind === "explainer" ? "an explainer" : kind === "design" ? "a design" : "a review";
 }
 
 function zodMessages(err: unknown): string[] {
@@ -167,6 +172,15 @@ export async function compileDocument(input: CompileInput): Promise<{
       "data.yaml",
       "an explainer has no interface delta: it explains a codebase at one commit, not a change",
     );
+  // A design has no diff, so nothing derives a row for the agent to annotate.
+  // Every entry it declares is a proposal, and it has to name its own interface.
+  if (kind === "design")
+    for (const [key, e] of Object.entries(data.interfaces))
+      if (e.symbol)
+        err(
+          "data.yaml",
+          `interface ${key}: a design proposes an interface, it does not annotate one the code graph derived; name it with \`name\`, \`change\` and \`anchor\``,
+        );
 
   const parsed = parseDocument(input.reviewMd);
   if (!parsed.title) err("review.md", "the document needs an H1 title");
@@ -187,10 +201,10 @@ export async function compileDocument(input: CompileInput): Promise<{
       ...(a.detail ? { detail: a.detail } : {}),
       ...(a.map ? { map: a.map } : {}),
     };
-    if (a.peek && kind === "explainer" && a.peek.graph === "base") {
+    if (a.peek && kind !== "review" && a.peek.graph === "base") {
       err(
         "data.yaml",
-        `anchor ${id}: an explainer has one pinned commit, so \`graph: base\` has no meaning`,
+        `anchor ${id}: ${kindWord(kind)} has one pinned commit, so \`graph: base\` has no meaning`,
       );
     } else if (a.peek) {
       const text = await fileAt(a.peek.graph, a.peek.file);
@@ -259,15 +273,17 @@ export async function compileDocument(input: CompileInput): Promise<{
   const interfaces =
     kind === "explainer"
       ? null
-      : compileInterfaces({
-          delta: input.interfaces ?? null,
-          declared: data.interfaces,
-          anchors,
-          changes,
-          used,
-          err,
-          warn,
-        });
+      : kind === "design"
+        ? compileProposals({ declared: data.interfaces, anchors, used, err })
+        : compileInterfaces({
+            delta: input.interfaces ?? null,
+            declared: data.interfaces,
+            anchors,
+            changes,
+            used,
+            err,
+            warn,
+          });
 
   for (const id of Object.keys(anchors))
     if (!used.has(id)) warn("data.yaml", `anchor "${id}" is defined but never used`);
@@ -279,6 +295,15 @@ export async function compileDocument(input: CompileInput): Promise<{
     err(
       "review.md",
       "an explainer needs at least one anchored claim: link prose to code with [text](anchor:<id>)",
+    );
+
+  // What separates a design from an explainer is that it proposes something.
+  // Without a proposal it is prose about the code as it stands, which is the
+  // other kind, and the reader would be asked to approve a plan with no plan.
+  if (kind === "design" && !interfaces?.entries.length)
+    err(
+      "data.yaml",
+      "this design proposes nothing: declare under `interfaces` what it would add, change or remove, each with the anchor of the code it lands in today",
     );
 
   const errors = diags.filter((d) => d.level === "error");
@@ -378,6 +403,70 @@ function compileInterfaces(ctx: {
     });
   }
   return withVerdict(delta);
+}
+
+/**
+ * What a design would add, change or remove, in the slot a review fills with
+ * the delta its code graph derived.
+ *
+ * The difference is the whole point of the kind and it is enforced here: a
+ * review's entry is PROVEN - the anchor must sit on lines the pinned diff
+ * really moved - while a design's entry is PROPOSED, and there is no diff to
+ * prove it against. What stays true is the anchor: it is the SITE, real code at
+ * the pinned commit that the proposal changes, replaces or plugs into, so a
+ * proposal is always attached to something the reader can open. An anchor never
+ * points at code that does not exist yet; nothing in thurview does.
+ */
+function compileProposals(ctx: {
+  declared: Data["interfaces"];
+  anchors: Record<string, CompiledAnchor>;
+  used: Set<string>;
+  err: (file: string, message: string) => void;
+}): InterfaceDelta {
+  const entries: InterfaceDelta["entries"] = [];
+  for (const [key, e] of Object.entries(ctx.declared)) {
+    // a symbol entry is refused earlier, with the reason a design cannot carry one
+    if (e.symbol) continue;
+    const anchor = ctx.anchors[e.anchor!];
+    ctx.used.add(e.anchor!);
+    if (!anchor) {
+      ctx.err("data.yaml", `proposal ${key}: unknown anchor "${e.anchor}"`);
+      continue;
+    }
+    if (!anchor.peek) {
+      ctx.err(
+        "data.yaml",
+        `proposal ${key}: anchor "${e.anchor}" has no peek, so it names no site in the code as it stands`,
+      );
+      continue;
+    }
+    entries.push({
+      id: `proposed:${key}`,
+      change: e.change!,
+      name: e.name!,
+      was: "",
+      kind: "proposed",
+      file: anchor.peek.file,
+      line: anchor.peek.from,
+      graph: "head",
+      capability: e.capability,
+      anchor: e.anchor!,
+    });
+  }
+  sortEntries(entries);
+  const counts = (["removed", "changed", "added"] as const)
+    .map((c) => [c, entries.filter((x) => x.change === c).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([c, n]) => `${n} ${c}`);
+  return {
+    entries,
+    internal: 0,
+    unreadable: [],
+    // "Proposed" up front, because the same panel on a review states what a
+    // change already did, and the two must never read the same.
+    verdict: counts.length ? `Proposed: ${counts.join(", ")}.` : "Nothing proposed.",
+    truncated: { base: false, head: false },
+  };
 }
 
 interface Ctx {
@@ -654,6 +743,12 @@ export async function compileMap(input: {
   const m: MapFile = r.value;
   if (input.kind === "explainer" && m.base)
     err("an explainer has one pinned commit, so there is no base structure to compare against");
+  // On a design the two halves of the map mean different things: `base` is the
+  // structure as it stands, so a glob matching nothing there is a wrong claim
+  // about today, while `nodes` is the structure the design proposes, and a part
+  // it would create owns no file yet. Warning about that would be noise the
+  // author cannot fix except by deleting the proposal.
+  const proposedHead = input.kind === "design";
   const validateGraph = async (
     g: { nodes: MapNode[]; edges: MapEdge[] },
     graph: "head" | "base",
@@ -671,9 +766,13 @@ export async function compileMap(input: {
       if (n.anchor && !input.anchors[n.anchor])
         err(`${graph}: node "${n.id}" references unknown anchor "${n.anchor}"`);
       for (const glob of n.files ?? []) {
+        if (proposedHead && graph === "head") continue;
         const re = globToRegExp(glob);
+        // A design has one commit, so naming a "base commit" here would send the
+        // author looking for the very thing `graph: base` is refused for.
+        const at = proposedHead ? "the pinned commit" : `the pinned ${graph} commit`;
         if (!files.some((f) => re.test(f)))
-          warn(`${graph}: node "${n.id}": no file matches "${glob}" at the pinned ${graph} commit`);
+          warn(`${graph}: node "${n.id}": no file matches "${glob}" at ${at}`);
       }
     }
     for (const e of g.edges) {

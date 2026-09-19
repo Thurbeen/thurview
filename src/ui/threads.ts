@@ -42,7 +42,13 @@ function listeningLine(): string {
 /** Popover to start a thread on a target. */
 export function commentPopover(target: ThreadTarget, quote?: string): HTMLElement {
   const ta = h("textarea", { placeholder: "Comment, or a question for the agent…" });
-  const held = kind() === "explainer" ? "Add to my notes" : "Add to the review";
+  const k = kind();
+  const held =
+    k === "explainer"
+      ? "Add to my notes"
+      : k === "design"
+        ? "Add to my decision"
+        : "Add to the review";
   // One click, one consequence. The old control asked the reader to set a mode
   // and then press "Save", and a question saved in the wrong mode reached
   // nobody; each button here both chooses and commits, and says which it is.
@@ -94,7 +100,13 @@ export function commentPopover(target: ThreadTarget, quote?: string): HTMLElemen
       h(
         "div",
         null,
-        `${held} — held until you ${kind() === "explainer" ? "send the document back or finish" : "submit the review"}.`,
+        `${held} — held until you ${
+          k === "explainer"
+            ? "send the document back or finish"
+            : k === "design"
+              ? "approve the design or send it back"
+              : "submit the review"
+        }.`,
       ),
     ),
   );
@@ -346,11 +358,17 @@ export function submitDialog(): void {
   const pending = (state.data?.threads ?? []).filter((t) => !t.submitted).length;
   // Same state machine, different words. A reader decides whether a CHANGE should
   // land; a reader of an explainer decides whether the DOCUMENT is finished, and
-  // "Approve" would read as a verdict on code the explainer never judged.
-  const explainer = kind() === "explainer";
-  const words = explainer
-    ? { title: "Send this back or finish", accept: "Done reading", back: "Send it back" }
-    : { title: "Submit review", accept: "Approve", back: "Request changes" };
+  // "Approve" would read as a verdict on code the explainer never judged. A
+  // reader of a design decides whether it should be BUILT, which is a verdict,
+  // but on a plan rather than on code - so it says which.
+  const k = kind();
+  const explainer = k === "explainer";
+  const words =
+    k === "explainer"
+      ? { title: "Send this back or finish", accept: "Done reading", back: "Send it back" }
+      : k === "design"
+        ? { title: "Decide on this design", accept: "Approve the design", back: "Send it back" }
+        : { title: "Submit review", accept: "Approve", back: "Request changes" };
   const ta = h("textarea", { rows: 4, placeholder: "Summary for the agent (optional)" });
   const d = dialog(
     h(
@@ -374,7 +392,9 @@ export function submitDialog(): void {
           {
             title: explainer
               ? "End it without reading it through"
-              : "End the review without approving it",
+              : k === "design"
+                ? "Drop this design without deciding on it"
+                : "End the review without approving it",
             onclick: () => decide("close"),
           },
           "Close",
