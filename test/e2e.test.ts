@@ -675,6 +675,175 @@ check
     expect((await f.arrayBuffer()).byteLength).toBeGreaterThan(1000);
   });
 
+  // ---- the security dimension ----
+  // Its own review, so the revisions the flow above publishes stay exactly what
+  // they were: whether a change crosses a trust boundary is a fact about the
+  // change, and the reader is shown it either way.
+
+  describe("where a change crosses a trust boundary", () => {
+    let secId = "";
+    let secDir = "";
+
+    beforeAll(async () => {
+      const ev = await cli(["scaffold", "--new"]);
+      secId = ev["review"].uuid as string;
+      secDir = ev["review"].dir as string;
+      await writeFile(
+        join(secDir, "review.md"),
+        `# Audit every login\n\nThe change logs every attempt.\n`,
+      );
+    }, 20_000);
+
+    afterAll(async () => {
+      if (secId) await cli(["delete", "--review", secId]);
+    });
+
+    it("says it has not assessed the change, then says the change crosses nothing", async () => {
+      // silence and "nothing here" are different claims, so the document makes
+      // both of them out loud and never lets the first pass for the second
+      await writeFile(join(secDir, "data.yaml"), `anchors: {}\n`);
+      const quiet = await cli(["publish", "--review", secId]);
+      expect(String(quiet["published"]["security"])).toContain("Not assessed");
+
+      await writeFile(join(secDir, "data.yaml"), `anchors: {}\nsecurity: none\n`);
+      const none = await cli(["publish", "--review", secId]);
+      expect(String(none["published"]["security"])).toBe("No trust boundary crossed.");
+      expect(none["diagnostics"]).toBeUndefined();
+      const d = await api<Out>(`/api/reviews/${secId}`);
+      expect(d["document"]["security"]["state"]).toBe("none");
+      expect(d["document"]["security"]["crossings"]).toEqual([]);
+    }, 30_000);
+
+    it("surfaces each crossing anchored to the code, without a section in the prose", async () => {
+      await writeFile(
+        join(secDir, "data.yaml"),
+        `anchors:\n  logLine: { title: the audit log line, peek: { file: src/audit.ts, from: 2, to: 2 } }\nsecurity:\n  - boundary: audit() writes the user id into the process log.\n    anchor: logLine\n`,
+      );
+      const out = await cli(["publish", "--review", secId]);
+      expect(String(out["published"]["security"])).toBe("1 trust boundary crossed.");
+      // the crossing is what marks the anchor used, so it needs no prose link
+      expect(out["diagnostics"]).toBeUndefined();
+      const d = await api<Out>(`/api/reviews/${secId}`);
+      const sec = d["document"]["security"];
+      expect(sec["state"]).toBe("crossings");
+      expect(sec["crossings"]).toEqual([
+        { boundary: "audit() writes the user id into the process log.", anchor: "logLine" },
+      ]);
+      // anchored like the rest of the document: the reader opens the range itself
+      expect(d["document"]["anchors"]["logLine"]["peek"]["lines"]).toHaveLength(1);
+      // and it adds nothing to the prose the agent wrote
+      expect(d["document"]["toc"]).toEqual([]);
+    }, 30_000);
+
+    it("serves a revision sealed before the dimension existed without a hole in it", async () => {
+      // revisions are read back verbatim, so an older thurview's document.json
+      // has no `security` at all. The reader opens those from the revision
+      // picker, and `undefined` is not the absence the browser is written for.
+      await writeFile(join(secDir, "data.yaml"), `anchors: {}\nsecurity: none\n`);
+      const sealed = await cli(["publish", "--review", secId]);
+      const rev = String(sealed["published"]["rev"]);
+      const doc = join(home, "reviews", secId, "revisions", rev, "document.json");
+      const old = JSON.parse(await readFile(doc, "utf8"));
+      delete old.security;
+      await writeFile(doc, JSON.stringify(old));
+      const d = await api<Out>(`/api/reviews/${secId}?revision=${rev}`);
+      expect(d["document"]["security"]).toBe(null);
+    }, 20_000);
+
+    it("blames the crossing it cannot read, not the anchors it can", async () => {
+      // a malformed `security` must not take the rest of data.yaml down with
+      // it: an author sent to fix two anchors that are correct stops reading
+      // diagnostics, which is worse than the one that was right
+      await writeFile(
+        join(secDir, "data.yaml"),
+        `anchors:\n  logLine: { title: the audit log line, peek: { file: src/audit.ts, from: 2, to: 2 } }\nsecurity:\n  - boundary: audit() writes the user id into the process log.\n`,
+      );
+      await writeFile(
+        join(secDir, "review.md"),
+        `# Audit every login\n\nThe [audit line](anchor:logLine) is new.\n`,
+      );
+      const out = await cli(["publish", "--review", secId], { expectCode: 1 });
+      const messages = out["diagnostics"].map((d: Out) => String(d["message"]));
+      expect(messages.some((m: string) => m.includes("security crossing 1: anchor:"))).toBe(true);
+      expect(messages.some((m: string) => m.includes('unknown anchor "logLine"'))).toBe(false);
+      expect(messages.some((m: string) => m.includes("anchor link to unknown anchor"))).toBe(false);
+
+      // and the other way round: a crossing that reads perfectly is not blamed
+      // for a mistake somewhere else in data.yaml. Nothing in the file parsed,
+      // so the anchors are not known to be missing - they are not known at all.
+      // The prose links none of them, so the crossing is the only thing that
+      // could name one
+      await writeFile(
+        join(secDir, "review.md"),
+        `# Audit every login\n\nThe change logs every attempt.\n`,
+      );
+      await writeFile(
+        join(secDir, "data.yaml"),
+        `anchors:\n  logLine: { title: the audit log line, peek: { file: src/audit.ts, from: 2, to: 2 } }\nstores:\n  db: { kind: relational, label: DB }\nsecurity:\n  - { boundary: audit() logs the user id., anchor: logLine }\n`,
+      );
+      const elsewhere = await cli(["publish", "--review", secId], { expectCode: 1 });
+      const other = elsewhere["diagnostics"].map((d: Out) => String(d["message"]));
+      expect(other.some((m: string) => m.includes("relational stores need tables"))).toBe(true);
+      expect(other.some((m: string) => m.includes('unknown anchor "logLine"'))).toBe(false);
+
+      // one bad entry does not un-use the anchors the good entries name: the
+      // crossing is what marks them used, and a warning saying otherwise is the
+      // same false blame one warning level down
+      await writeFile(
+        join(secDir, "data.yaml"),
+        `anchors:\n  one: { title: one, peek: { file: src/audit.ts, from: 1, to: 1 } }\n  two: { title: two, peek: { file: src/audit.ts, from: 2, to: 2 } }\nsecurity:\n  - { boundary: the first, anchor: one }\n  - { boundary: the second, anchor: two }\n  - { boundary: the third }\n`,
+      );
+      const partial = await cli(["publish", "--review", secId], { expectCode: 1 });
+      const rows = partial["diagnostics"].map((d: Out) => String(d["message"]));
+      expect(rows.some((m: string) => m.includes("security crossing 3"))).toBe(true);
+      expect(rows.some((m: string) => m.includes("defined but never used"))).toBe(false);
+
+      // and the shape of `security` is read from the raw file, so a mistake in
+      // it is reported next to a mistake elsewhere rather than one publish later
+      await writeFile(
+        join(secDir, "data.yaml"),
+        `anchors: {}\nstores:\n  db: { kind: relational, label: DB }\nsecurity:\n  - { boundary: the first }\n`,
+      );
+      const both = await cli(["publish", "--review", secId], { expectCode: 1 });
+      const two = both["diagnostics"].map((d: Out) => String(d["message"]));
+      expect(two.some((m: string) => m.includes("relational stores need tables"))).toBe(true);
+      expect(two.some((m: string) => m.includes("security crossing 1"))).toBe(true);
+
+      // a value that is neither of the two words nor a list says so in its own
+      // right, rather than as "Invalid input" over a discarded data.yaml
+      await writeFile(join(secDir, "data.yaml"), `anchors: {}\nsecurity: maybe\n`);
+      await writeFile(join(secDir, "review.md"), `# Audit every login\n\nNothing yet.\n`);
+      const word = await cli(["publish", "--review", secId], { expectCode: 1 });
+      expect(
+        word["diagnostics"].some((d: Out) => String(d["message"]).includes("write `none`")),
+      ).toBe(true);
+    }, 30_000);
+
+    it("refuses a crossing whose anchor proves nothing", async () => {
+      const cases: [string, string][] = [
+        [`anchors: {}\nsecurity:\n  - { boundary: x, anchor: nope }\n`, 'unknown anchor "nope"'],
+        [
+          `anchors:\n  bare: { title: bare }\nsecurity:\n  - { boundary: x, anchor: bare }\n`,
+          'anchor "bare" has no peek',
+        ],
+        [
+          `anchors:\n  old: { title: old, peek: { file: src/auth.ts, from: 1, to: 2, graph: base } }\nsecurity:\n  - { boundary: x, anchor: old }\n`,
+          "takes a head anchor",
+        ],
+        [`anchors: {}\nsecurity: []\n`, "write `none`"],
+      ];
+      for (const [data, message] of cases) {
+        await writeFile(join(secDir, "data.yaml"), data);
+        const out = await cli(["publish", "--review", secId], { expectCode: 1 });
+        expect(out["code"]).toBe("PUBLISH_FAILED");
+        expect(
+          out["diagnostics"].some((d: Out) => String(d["message"]).includes(message)),
+          `${data} should be refused with ${message}`,
+        ).toBe(true);
+      }
+    }, 60_000);
+  });
+
   // ---- the explainer document kind ----
   // Its own block, and it never touches reviewId: the review path above must
   // keep passing exactly as it did before explainers existed.
@@ -727,6 +896,33 @@ check
     const messages = out["diagnostics"].map((d: Out) => String(d["message"]));
     expect(messages.some((m: string) => m.includes("no interface delta"))).toBe(true);
     expect(messages.some((m: string) => m.includes("`graph: base` has no meaning"))).toBe(true);
+  }, 60_000);
+
+  it("rejects an explainer that states a trust boundary its kind cannot cross", async () => {
+    await writeFile(
+      join(explainerDir, "data.yaml"),
+      `anchors:\n  login: { title: login(), peek: { file: src/auth.ts, from: 3, to: 6 } }\nsecurity: none\n`,
+    );
+    await writeFile(join(explainerDir, "review.md"), `# Explainer\n\nSee [login](anchor:login).\n`);
+    const out = await cli(["publish", "--review", explainerId], { expectCode: 1 });
+    expect(
+      out["diagnostics"].some((d: Out) =>
+        String(d["message"]).includes("security is what a change crosses"),
+      ),
+    ).toBe(true);
+    // the key itself is what the kind cannot carry, so its default value is no
+    // more publishable than any other: the documents say "no such key", and a
+    // check on the value would make that sentence false
+    await writeFile(
+      join(explainerDir, "data.yaml"),
+      `anchors:\n  login: { title: login(), peek: { file: src/auth.ts, from: 3, to: 6 } }\nsecurity: pending\n`,
+    );
+    const pending = await cli(["publish", "--review", explainerId], { expectCode: 1 });
+    expect(
+      pending["diagnostics"].some((d: Out) =>
+        String(d["message"]).includes("security is what a change crosses"),
+      ),
+    ).toBe(true);
   }, 60_000);
 
   it("rejects an explainer with no anchored claim", async () => {
@@ -867,6 +1063,17 @@ check
     const out = await cli(["publish", "--review", designId], { expectCode: 1 });
     expect(
       out["diagnostics"].some((d: Out) => String(d["message"]).includes("proposes nothing")),
+    ).toBe(true);
+  }, 60_000);
+
+  it("rejects a design that states a trust boundary its kind cannot cross", async () => {
+    await writeFile(join(designDir, "data.yaml"), designData("security: none\n"));
+    await writeFile(join(designDir, "review.md"), designMd);
+    const out = await cli(["publish", "--review", designId], { expectCode: 1 });
+    expect(
+      out["diagnostics"].some((d: Out) =>
+        String(d["message"]).includes("security is what a change crosses"),
+      ),
     ).toBe(true);
   }, 60_000);
 
