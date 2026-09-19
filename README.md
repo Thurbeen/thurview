@@ -38,7 +38,7 @@ back with changes requested.
 <details>
 <summary><b>Other ways to install</b> - pin the skill to a release, install the
 command from npm, run from a checkout, session hooks, the thurview-design and
-review-fix skills</summary>
+thurview-fix skills</summary>
 
 `--global` installs for your user, so one install covers every repository.
 `universal` puts the one real copy in `~/.agents/skills/thurview`, the directory
@@ -93,15 +93,31 @@ skill from this checkout instead of the `skills` CLI copy; use one or the
 other.
 
 Also available: `thurview-design`, which authors the design kind described
-[below](#how-it-works), and `review-fix`, the browserless companion skill
+[below](#how-it-works), and `thurview-fix`, the browserless companion skill
 described [below](#review-and-fix).
 
 ```sh
 npx skills@latest add https://github.com/Thurbeen/thurview \
   --skill thurview-design --agent universal claude-code --global --yes
 npx skills@latest add https://github.com/Thurbeen/thurview \
-  --skill review-fix --agent universal claude-code --global --yes
+  --skill thurview-fix --agent universal claude-code --global --yes
 ```
+
+`thurview-fix` was called `review-fix`. A skill name is an address, so nothing
+updates the old one in place: an install made before the rename keeps answering
+to `/review-fix` from a copy that will never change again, and one made with
+`thurview setup skill` leaves a symlink pointing at a directory this repository
+no longer ships. Remove it and add the skill under its new name:
+
+```sh
+npx skills@latest remove --global review-fix
+npx skills@latest add https://github.com/Thurbeen/thurview \
+  --skill thurview-fix --agent universal claude-code --global --yes
+```
+
+For a `thurview setup skill` install, delete the stale link -
+`~/.agents/skills/review-fix` and the same path under `~/.claude` and
+`~/.cursor` - and run `thurview setup skill` again.
 
 </details>
 
@@ -238,7 +254,7 @@ stderr.
 
 ## Review and fix
 
-The `review-fix` skill reviews a branch, a commit range or a pull or merge
+The `thurview-fix` skill reviews a branch, a commit range or a pull or merge
 request, fixes what it is sure of and reports the rest, with no browser and no
 approval step. For each changed symbol it asks the code graph who calls it and
 which tests reach it, so a finding can name a caller the diff never shows.
@@ -290,7 +306,7 @@ and gitlab.com are matched against what those CLIs are authenticated for, and
 an unmatched host is refused rather than guessed. The differences that survive
 the seam - GitLab has no changes-requested state, no atomic review and no
 multi-line comment anchor - are listed in
-[skills/review-fix/references/forges.md](skills/review-fix/references/forges.md).
+[skills/thurview-fix/references/forges.md](skills/thurview-fix/references/forges.md).
 
 ## Authoring format
 

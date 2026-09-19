@@ -1,11 +1,11 @@
 ---
-name: review-fix
-description: Review a change and fix what the review finds - bugs, regressions for callers, missing or broken tests, security issues - with thurview's code graph showing the callers and tests a diff does not. Commits only the fixes that pass the repository's own tests and lint, and reports the rest. Use when the user asks to review and fix a branch, a commit range or a pull or merge request, to find and fix bugs in a change, or invokes /review-fix.
+name: thurview-fix
+description: Review a change and fix what the review finds - bugs, regressions for callers, missing or broken tests, security issues - with thurview's code graph showing the callers and tests a diff does not. Commits only the fixes that pass the repository's own tests and lint, and reports the rest. Use when the user asks to review and fix a branch, a commit range or a pull or merge request, to find and fix bugs in a change, or invokes /thurview-fix.
 user-invocable: true
 argument-hint: "[<branch> | <base>..<head> | <PR or MR number or URL>] [--post]"
 ---
 
-# review-fix
+# thurview-fix
 
 Review a change, fix what you are sure of, report the rest. The diff shows what
 changed; thurview's code graph shows what depends on it, which is where a
