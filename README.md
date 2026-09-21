@@ -187,6 +187,16 @@ flowchart LR
 
 ## What the reader sees
 
+The home page is a queue: every review, explainer and design, grouped by
+repository and ordered by whose turn it is - a decision not yet posted to its
+change request first, then documents waiting for your reading, then ones whose
+change request moved past the pin, then ones waiting for the agent, then ones
+not published yet. A row bound to a change request also says whether the pin is
+still the head, what you decided and whether it reached the forge, and whether
+CI is a real gate there, as of the last `forge` command and with that age on
+screen. The browser never calls the forge; explainers and designs carry those
+columns empty.
+
 Prose with every claim anchored to code, opened beside the text:
 
 ![The review document, with a call stack diff, a storage view and an anchored

@@ -23,6 +23,7 @@ import {
   serverStateFile,
   type ThreadTarget,
 } from "../store.js";
+import { queue } from "../queue.js";
 import {
   createThread,
   replyThread,
@@ -186,15 +187,7 @@ export async function startServer(
     if (parts[1] === "health") return { ok: true, pid: process.pid };
     if (parts[1] !== "reviews") throw new HttpError(404, "not found");
 
-    if (!parts[2]) {
-      const reviews = await listReviews();
-      const out = [];
-      for (const r of reviews) {
-        const t = await readThreads(r.id);
-        out.push({ ...r, openThreads: t.threads.filter((x) => x.status === "open").length });
-      }
-      return out;
-    }
+    if (!parts[2]) return (await queue(await listReviews())) as unknown as Json;
     const review = await findReview(parts[2]);
     const id = review.id;
     const sub = parts[3];

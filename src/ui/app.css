@@ -1450,6 +1450,31 @@ kbd {
   font-weight: 700;
   flex: 1;
 }
+/* Why it is this row's turn sits under the title, so the reason is read with
+   the name rather than hunted for across the row. */
+.home .item .why {
+  display: block;
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.home .item .cr {
+  font-size: 12px;
+  text-decoration: none;
+}
+.home .item .cr:hover {
+  color: var(--accent);
+}
+.home h3.repo {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-mono);
+}
 .empty-state {
   padding: 40px;
   text-align: center;

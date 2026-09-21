@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { execFile, spawn } from "node:child_process";
 import { decode } from "@toon-format/toon";
 import { promisify } from "node:util";
@@ -592,5 +592,203 @@ describe("thurview scaffold --pr, through the forge seam", () => {
     expect(out["review"].head).toBe(head);
     // gh is never asked whether it owns the host: --forge named the adapter outright.
     expect((await calls()).every((c) => c.cli === "glab")).toBe(true);
+  });
+});
+
+/**
+ * The home page is the maintainer's queue: every document, the forge facts
+ * the last forge call recorded for it, and whose turn it is. It reads the
+ * store as it stands, so nothing is republished to build it.
+ */
+describe("the maintainer's queue", () => {
+  type Row = Record<string, any> & { id: string; queue: Record<string, any> };
+  let dir: string;
+  let first: string;
+  let moved: string;
+  let server: { port: number; close(): Promise<void> };
+  const ids: Record<string, string> = {};
+  const rows = async (): Promise<Row[]> =>
+    (await fetch(`http://127.0.0.1:${server.port}/api/reviews`)).json() as Promise<Row[]>;
+  const pull = (n: number, head: string) => ({
+    cli: "gh",
+    match: [`repos/acme/web/pulls/${n}`],
+    body: {
+      ...PULL,
+      number: n,
+      title: `Change ${n}`,
+      html_url: `https://github.example.com/acme/web/pull/${n}`,
+      head: { ...PULL.head, sha: head },
+    },
+  });
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "thurview-queue-repo-"));
+    const gitEnv = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    };
+    const git = (...a: string[]) => execFileP("git", a, { cwd: dir, env: gitEnv });
+    await git("init", "-q", "-b", "main");
+    await git("remote", "add", "origin", "https://github.example.com/acme/web.git");
+    await writeFile(join(dir, "clip.ts"), "export const clip = 1;\n");
+    await git("add", ".");
+    await git("commit", "-q", "-m", "base");
+    await git("checkout", "-q", "-b", "clipboard");
+    await writeFile(join(dir, "clip.ts"), "export const clip = 2;\n");
+    await git("commit", "-q", "-am", "copy the selection");
+    first = (await git("rev-parse", "HEAD")).stdout.trim();
+    await writeFile(join(dir, "clip.ts"), "export const clip = 3;\n");
+    await git("commit", "-q", "-am", "copy it again");
+    moved = (await git("rev-parse", "HEAD")).stdout.trim();
+    await git("checkout", "-q", "main");
+
+    process.env["THURVIEW_HOME"] = home;
+    const { startServer } = await import("../src/server/server.ts");
+    server = await startServer({ hosts: ["127.0.0.1"] });
+
+    await fixtures([pull(7, first), pull(8, first), pull(9, first)]);
+    for (const [name, n] of [
+      ["read", 7],
+      ["decided", 8],
+      ["stale", 9],
+    ] as const) {
+      const out = await cli(["scaffold", "--pr", String(n), "--forge", "github", "--new"], {
+        cwd: dir,
+      });
+      ids[name] = out["review"].uuid;
+      await cli(["publish", "--review", ids[name]!], { cwd: dir });
+    }
+    ids["explainer"] = (await cli(["explain"], { cwd: dir }))["explainer"].uuid;
+    ids["design"] = (await cli(["design"], { cwd: dir }))["design"].uuid;
+    await fetch(`http://127.0.0.1:${server.port}/api/reviews/${ids["decided"]}/submit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision: "request-changes", body: "Clip once." }),
+    });
+    // The author pushed past the pin of #9; `forge status` is what learns it.
+    await fixtures([
+      pull(9, moved),
+      {
+        cli: "gh",
+        match: [`commits/${moved}/check-runs`],
+        body: checkRuns(["Nextest", "completed", "cancelled"]),
+      },
+      { cli: "gh", match: [`commits/${moved}/status`], body: { statuses: [] } },
+      { cli: "gh", match: ["repos/acme/web/commits/main"], body: { sha: TIP } },
+      {
+        cli: "gh",
+        match: [`commits/${TIP}/check-runs`],
+        body: checkRuns(["Nextest", "completed", "success"]),
+      },
+      { cli: "gh", match: [`commits/${TIP}/status`], body: { statuses: [] } },
+    ]);
+    await cli(["forge", "status", "--review", ids["stale"]!, "--forge", "github"], { cwd: dir });
+  }, 120_000);
+
+  afterAll(async () => {
+    await server?.close();
+  });
+
+  it("orders every document by whose turn it is, decided-but-unposted first", async () => {
+    // Other tests in this file leave documents of their own in the store.
+    const all = (await rows()).filter((r) => Object.values(ids).includes(r.id));
+    const order = all.map((r) => r.id);
+    expect(order.slice(0, 3)).toEqual([ids["decided"], ids["read"], ids["stale"]]);
+    expect(order.slice(3).sort()).toEqual([ids["explainer"], ids["design"]].sort());
+
+    const [decided, read, stale] = all as [Row, Row, Row];
+    expect(decided.queue).toMatchObject({
+      repo: "github.example.com/acme/web",
+      change: { number: "8", url: "https://github.example.com/acme/web/pull/8" },
+      turn: "you",
+      decision: { decision: "request-changes", posted: false },
+    });
+    expect(read.queue).toMatchObject({ turn: "you", pin: "at-head", decision: null });
+    expect(stale.queue).toMatchObject({
+      turn: "agent",
+      pin: "behind",
+      ci: { trustworthy: false },
+    });
+    expect(stale.queue["factsAt"]).toBeTruthy();
+  });
+
+  it("lists explainers and designs in the same repository, with the change request columns empty", async () => {
+    const all = await rows();
+    for (const kind of ["explainer", "design"]) {
+      const row = all.find((r) => r.id === ids[kind])!;
+      expect(row.kind).toBe(kind);
+      expect(row.queue).toMatchObject({
+        repo: "github.example.com/acme/web",
+        change: null,
+        pin: null,
+        ci: null,
+        decision: null,
+        turn: "agent",
+      });
+    }
+  });
+
+  it("drops a decision down the queue once it reached the change request", async () => {
+    await fixtures([
+      {
+        cli: "gh",
+        match: ["pulls/8/reviews", "--method POST"],
+        body: { html_url: "https://github.example.com/acme/web/pull/8#pullrequestreview-1" },
+      },
+      pull(8, first),
+    ]);
+    const file = join(bin, "queue-pass.json");
+    await writeFile(
+      file,
+      JSON.stringify({ verdict: "request-changes", body: "Clip once.", comments: [] }),
+    );
+    await cli(
+      ["forge", "submit", "--review", ids["decided"]!, "--file", file, "--forge", "github"],
+      {
+        cwd: dir,
+      },
+    );
+    const all = (await rows()).filter((r) => Object.values(ids).includes(r.id));
+    const decided = all.find((r) => r.id === ids["decided"])!;
+    expect(decided.queue).toMatchObject({
+      turn: "agent",
+      decision: { decision: "request-changes", posted: true },
+    });
+    expect(all[0]!.id).toBe(ids["read"]);
+  });
+
+  it("groups a checkout's explainer with its change requests when origin names no forge", async () => {
+    const fork = await mkdtemp(join(tmpdir(), "thurview-queue-fork-"));
+    await execFileP("git", ["clone", "-q", "--origin", "upstream", dir, fork]);
+    await fixtures([pull(7, first)]);
+    const cr = (
+      await cli(
+        ["scaffold", "--pr", "7", "--forge", "github", "--repo", "github.example.com/acme/web"],
+        { cwd: fork },
+      )
+    )["review"].uuid;
+    const ex = (await cli(["explain"], { cwd: fork }))["explainer"].uuid;
+    const all = await rows();
+    expect(all.find((r) => r.id === cr)!.queue["repo"]).toBe("github.example.com/acme/web");
+    expect(all.find((r) => r.id === ex)!.queue["repo"]).toBe("github.example.com/acme/web");
+  });
+
+  it("marks a document nobody's turn once its change request is merged", async () => {
+    await fixtures([
+      { ...pull(7, first), body: { ...pull(7, first).body, state: "closed", merged: true } },
+      { cli: "gh", match: [`commits/${first}/check-runs`], body: checkRuns() },
+      { cli: "gh", match: [`commits/${first}/status`], body: { statuses: [] } },
+      { cli: "gh", match: ["repos/acme/web/commits/main"], body: { sha: TIP } },
+      { cli: "gh", match: [`commits/${TIP}/check-runs`], body: checkRuns() },
+      { cli: "gh", match: [`commits/${TIP}/status`], body: { statuses: [] } },
+    ]);
+    await cli(["forge", "status", "--review", ids["read"]!, "--forge", "github"], { cwd: dir });
+    const all = (await rows()).filter((r) => Object.values(ids).includes(r.id));
+    const gone = all.find((r) => r.id === ids["read"])!;
+    expect(gone.queue).toMatchObject({ turn: "nobody", change: { state: "merged" } });
+    expect(all[all.length - 1]!.id).toBe(ids["read"]);
   });
 });

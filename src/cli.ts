@@ -66,6 +66,7 @@ import {
   type RepoId,
 } from "./forge/index.js";
 import { parseSubmission, longComments, buildPass } from "./forge/submission.js";
+import { recordForgeFacts, ciFacts } from "./queue.js";
 import { VERSION } from "./version.js";
 
 const execFileP = promisify(execFile);
@@ -882,6 +883,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     let base: string;
     let head: string;
     let title = str(p, "title") ?? "";
+    let pinned: { repo: RepoId; cr: ChangeRequest } | null = null;
     const b = existing?.binding;
     const pr = str(p, "pr");
     if (pr || b?.kind === "pr") {
@@ -904,6 +906,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       base = await g.mergeBase(worktree, baseRef, head);
       binding = { kind: "pr", name: cr.number, url: cr.url, forge: forge.id };
       title ||= cr.title;
+      pinned = { repo, cr };
     } else if (str(p, "base") || str(p, "head") || b?.kind === "range") {
       const [bb, hh] =
         b?.kind === "range" && !str(p, "base") && !str(p, "head")
@@ -987,6 +990,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         await writeReview(review);
       }
     }
+    if (pinned) await recordForgeFacts(review, pinned.repo, pinned.cr);
     const stat = await g.shortStat(worktree, base, head);
     const dir = reviewDir(review.id);
     return {
@@ -1816,6 +1820,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       const checks = await ctx.forge.checks(ctx.repo, ctx.cr);
       const baseline = await ctx.forge.baseline(ctx.repo, ctx.cr.baseBranch).catch(() => null);
       const ci = summariseCi(checks, baseline, ctx.cr.baseBranch);
+      await recordForgeFacts(ctx.review, ctx.repo, ctx.cr, { ci: ciFacts(ci) });
       const shown = bool(p, "full") ? checks : checks.filter((c) => c.state !== "passed");
       const hidden = checks.length - shown.length;
       const help = [
@@ -2048,6 +2053,9 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           ],
         };
       const posted = await ctx.forge.submit(ctx.repo, ctx.cr, submission);
+      await recordForgeFacts(ctx.review, ctx.repo, ctx.cr, {
+        posted: { at: now(), verdict: posted.verdict, head: ctx.cr.head },
+      });
       return {
         submitted: {
           forge: ctx.forge.id,

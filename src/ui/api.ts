@@ -5,6 +5,7 @@ import type { FileDiff } from "../diff.js";
 import type { ChangedFile, Commit } from "../git.js";
 import type { SymbolDef } from "../symbols.js";
 import type { Presence } from "../presence.js";
+import type { QueueRow } from "../queue.js";
 
 export interface Payload {
   review: ReviewState;
@@ -48,7 +49,7 @@ function post<T>(url: string, body: unknown): Promise<T> {
 }
 
 export const api = {
-  reviews: () => j<(ReviewState & { openThreads: number })[]>("/api/reviews"),
+  reviews: () => j<(ReviewState & { openThreads: number; queue: QueueRow })[]>("/api/reviews"),
   review: (id: string, revision?: number) =>
     j<Payload>(`/api/reviews/${id}${revision ? `?revision=${revision}` : ""}`),
   revisions: (id: string) =>
