@@ -1133,6 +1133,49 @@ kbd {
 .seq .msg text:hover {
   text-decoration: underline;
 }
+.flow text {
+  font: 12px var(--font-mono);
+  fill: var(--fg);
+}
+.flow .step rect,
+.flow .step path {
+  fill: var(--bg-code);
+  stroke: var(--line);
+}
+.flow .step:not(.plain) {
+  cursor: pointer;
+}
+.flow .step:not(.plain) text {
+  fill: var(--link);
+}
+.flow .step:not(.plain):hover rect,
+.flow .step:not(.plain):hover path {
+  stroke: var(--accent);
+}
+/* A step nobody can open reads as the aside it is, not as a broken link. */
+.flow .step.plain rect {
+  fill: var(--bg3);
+  stroke-dasharray: 4 4;
+}
+.flow .step text.who {
+  font-size: 10.5px;
+  fill: var(--muted);
+}
+.flow .step.decision text {
+  font-style: italic;
+}
+.flow .edge path {
+  stroke: var(--fg2);
+  marker-end: url(#flow-arr);
+}
+.flow .edge text {
+  font-size: 10.5px;
+  fill: var(--muted);
+}
+.flow .edge.back path {
+  stroke: var(--muted);
+  stroke-dasharray: 3 3;
+}
 .callstack {
   font-family: var(--font-mono);
   font-size: 12.5px;

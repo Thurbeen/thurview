@@ -354,6 +354,134 @@ describe("thurview end to end", () => {
     ).toBe(true);
   }, 20_000);
 
+  // A user flow used to have no component at all: a ```mermaid fence fell
+  // through to markdown-it and reached the reader as its own source text, with
+  // publish reporting nothing. Both halves are asserted here - the foreign
+  // fence is refused, and a flow that cannot be drawn is refused saying why.
+  it("refuses a foreign diagram fence and a flow it cannot draw", async () => {
+    expect(reviewDir).toBeTruthy();
+    await writeFile(
+      join(reviewDir, "data.yaml"),
+      `actors:
+  caller: { label: Caller }
+anchors:
+  login: { title: login(), peek: { file: src/auth.ts, from: 3, to: 6 } }
+`,
+    );
+    await writeFile(
+      join(reviewDir, "review.md"),
+      `# Title
+
+\`\`\`mermaid
+flowchart TD
+  A[Visitor] --> B{Signed in?}
+\`\`\`
+`,
+    );
+    const foreign = await cli(["publish", "--review", reviewId], { expectCode: 1 });
+    expect(foreign["code"]).toBe("PUBLISH_FAILED");
+    expect(
+      foreign["diagnostics"].some(
+        (d: Out) =>
+          String(d["message"]).includes("mermaid is not rendered") &&
+          String(d["message"]).includes("`flow`"),
+      ),
+    ).toBe(true);
+
+    const flow = (body: string) =>
+      writeFile(join(reviewDir, "review.md"), `# Title\n\n\`\`\`flow\n${body}\`\`\`\n`);
+    const refusal = async (body: string, want: string) => {
+      await flow(body);
+      const out = await cli(["publish", "--review", reviewId], { expectCode: 1 });
+      expect(
+        out["diagnostics"].map((d: Out) => String(d["message"])).join("\n"),
+        `flow:\n${body}`,
+      ).toContain(want);
+    };
+
+    await refusal(
+      `label: Sign in
+steps:
+  - { id: land, label: Caller arrives, actor: caller, next: gone }
+  - { id: post, label: Credentials posted, anchor: login }
+`,
+      'step "land" continues to unknown step "gone"',
+    );
+    await refusal(
+      `label: Sign in
+steps:
+  - { id: land, label: Caller arrives, actor: caller, next: land }
+  - { id: post, label: Credentials posted, anchor: login }
+`,
+      'step "land" follows itself',
+    );
+    await refusal(
+      `label: Sign in
+steps:
+  - { id: land, label: Caller arrives, actor: caller }
+  - { id: post, label: Credentials posted, anchor: login }
+`,
+      'step "post" is unreachable from "land", the first step',
+    );
+    await refusal(
+      `label: Sign in
+steps:
+  - { id: land, label: Caller arrives, actor: caller, next: post }
+  - { id: post, label: Credentials posted, actor: caller }
+`,
+      "no step carries an anchor",
+    );
+    await refusal(
+      `label: Sign in
+steps:
+  - { id: land, label: Caller arrives, next: post }
+  - { id: post, label: Credentials posted, anchor: login }
+`,
+      "each step needs an anchor or an actor",
+    );
+    await refusal(
+      `label: Sign in
+steps:
+  - { id: land, label: Caller arrives, actor: caller, next: post, when: [{ case: a, to: post }, { case: b, to: post }] }
+  - { id: post, label: Credentials posted, anchor: login }
+`,
+      "a step continues with `next` or branches with `when`, not both",
+    );
+    await refusal(
+      `label: Sign in
+steps:
+  - { id: land, label: Caller arrives, actor: caller, when: [{ case: only, to: post }] }
+  - { id: post, label: Credentials posted, anchor: login }
+`,
+      "a branch has two or more cases; one case is `next`",
+    );
+    await refusal(
+      `label: Sign in
+steps:
+  - { id: land, label: Caller arrives, actor: caller, next: post }
+  - { id: land, label: Again, anchor: login }
+  - { id: post, label: Credentials posted, anchor: login }
+`,
+      'duplicate step "land"',
+    );
+    await refusal(
+      `label: Sign in
+steps:
+  - { id: land, label: Caller arrives, actor: ghost, next: post }
+  - { id: post, label: Credentials posted, anchor: login }
+`,
+      'step land references unknown actor "ghost"',
+    );
+    await refusal(
+      `label: Sign in
+steps:
+  - { id: land, label: Caller arrives, actor: caller, next: post }
+  - { id: post, label: Credentials posted, anchor: nowhere }
+`,
+      'step post references unknown anchor "nowhere"',
+    );
+  }, 40_000);
+
   it("publishes a valid document with every component", async () => {
     expect(reviewDir).toBeTruthy();
     await writeFile(
@@ -431,6 +559,17 @@ usecases:
     label: Record a login
     ops:
       - { op: write, store: logdb.events.user, actor: auth, label: append event, anchor: audit }
+\`\`\`
+
+\`\`\`flow
+label: A login attempt
+steps:
+  - { id: arrive,  label: Caller calls login,   actor: caller, next: recorded }
+  - { id: recorded, label: Attempt recorded,    anchor: auditCall, next: decide }
+  - { id: decide,  label: User non-empty?,      anchor: check,
+      when: [{ case: accepted, to: allowed }, { case: rejected, to: refused }] }
+  - { id: allowed, label: login() answers true, anchor: login }
+  - { id: refused, label: Caller tries again,   actor: caller, next: arrive }
 \`\`\`
 
 ## Edge cases {collapsed}
@@ -533,8 +672,66 @@ check
     expect(p.review.title).toBe("Audit every login");
     const types = p.document.blocks.map((b) => b.type);
     expect(types).toEqual(
-      expect.arrayContaining(["heading", "html", "sequence", "callstack", "database", "peek"]),
+      expect.arrayContaining([
+        "heading",
+        "html",
+        "sequence",
+        "callstack",
+        "database",
+        "flow",
+        "peek",
+      ]),
     );
+    // The four components that predate `flow` are pinned here, so adding a
+    // fifth cannot quietly move what any of them renders.
+    const block = <T>(type: string) => p.document.blocks.find((b) => b.type === type) as T;
+    const seq = block<{ label: string; actors: { id: string }[]; messages: Out[] }>("sequence");
+    expect(seq.label).toBe("Login");
+    expect(seq.actors.map((a) => a.id)).toEqual(["caller", "auth", "log"]);
+    expect(
+      seq.messages.map((m) => `${m["from"]}->${m["to"]} ${m["anchor"] ?? m["code"].text}`),
+    ).toEqual(["caller->auth login", "auth->log auditCall", "auth->auth return check(user);"]);
+    const stack = block<{ title: string; rows: Out[] }>("callstack");
+    expect(stack.title).toBe("Login path");
+    expect(stack.rows.map((r) => `${r["kind"]} ${r["anchor"]}`)).toEqual([
+      "context login",
+      "add audit",
+      "context check",
+    ]);
+    const db = block<{ title: string; stores: string[]; usecases: Out[] }>("database");
+    expect(db.title).toBe("Audit storage");
+    expect(db.stores).toEqual(["logdb"]);
+    expect(db.usecases.map((u) => u["id"])).toEqual(["write"]);
+    expect(block<{ anchor: string }>("peek").anchor).toBe("check");
+    // The flow itself: the steps as declared, the decision marked, and the
+    // branch and retry edges - including the one that goes back up.
+    const fl = block<{
+      label: string;
+      steps: { id: string; label: string; actor?: string; anchor?: string; decision: boolean }[];
+      edges: { from: string; to: string; case?: string }[];
+    }>("flow");
+    expect(fl.label).toBe("A login attempt");
+    expect(fl.steps.map((s) => s.id)).toEqual([
+      "arrive",
+      "recorded",
+      "decide",
+      "allowed",
+      "refused",
+    ]);
+    expect(fl.steps.filter((s) => s.decision).map((s) => s.id)).toEqual(["decide"]);
+    expect(fl.steps.find((s) => s.id === "arrive")).toEqual({
+      id: "arrive",
+      label: "Caller calls login",
+      actor: "caller",
+      decision: false,
+    });
+    expect(fl.edges.map((e) => `${e.from} ${e.case ?? ""}> ${e.to}`)).toEqual([
+      "arrive > recorded",
+      "recorded > decide",
+      "decide accepted> allowed",
+      "decide rejected> refused",
+      "refused > arrive",
+    ]);
     expect(p.document.anchors["login"]!.peek!.lines).toHaveLength(4);
     expect(p.map.diff.added).toEqual(["app.audit"]);
     expect(p.map.diff.changed).toEqual(["app.auth"]);

@@ -170,6 +170,50 @@ Rules:
    against added lines in the pinned diff. Listing a frame on one side only
    for contrast is rejected.
 
+## flow
+
+````markdown
+```flow
+label: Sign in
+steps:
+  - { id: land,  label: Visitor opens /login, actor: visitor, next: post }
+  - { id: post,  label: Credentials posted,   anchor: loginRoute, next: check }
+  - { id: check, label: Credentials valid?,   anchor: checkUser,
+      when: [{ case: valid, to: home }, { case: rejected, to: retry }] }
+  - { id: retry, label: Error shown,          anchor: renderError, next: post }
+  - { id: home,  label: Dashboard,            anchor: dashboard }
+```
+````
+
+A user journey and where it branches - the shape `sequence` cannot hold,
+because a decision is not a message. The first step is the entry; a step
+continues with `next` or branches with `when`, and one with neither ends the
+flow. Cycles are fine: a retry loop is what a journey does, and a step that
+leads back up is drawn down the right-hand lane.
+
+Every step is either code or a person: `anchor` is where the code does it and
+the reader opens it by clicking, `actor` is a declared actor doing it outside
+the code, and a step carries at least one of the two. An actor-only step is
+drawn dashed, so the reader can see at a glance which parts open something.
+
+`publish` refuses:
+
+1. A step with neither `anchor` nor `actor`, and a block where no step has an
+   `anchor` at all - a flow nothing opens is prose in a box.
+2. `next` and `when` on one step, and a `when` with a single case. One is a
+   branch, the other is a `next`.
+3. A `next` or `to` naming a step the block does not declare, or naming itself.
+4. A step unreachable from the first one, a duplicate `id`, an unknown `actor`,
+   and an anchor with no `peek`.
+
+## Fences thurview does not render
+
+`mermaid`, `plantuml`, `puml`, `dot`, `graphviz` and `d2` in a document body are
+a publish error. They used to be neither components nor an error, so the block
+reached the reader as its own source text with nothing saying so. thurview draws
+only what it can anchor at the pinned commit: use `flow` for a journey and
+`sequence` for a message exchange.
+
 ## database
 
 ````markdown

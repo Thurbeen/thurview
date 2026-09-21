@@ -194,6 +194,46 @@ export const DatabaseSchema = z
   })
   .strict();
 
+const FlowBranch = z.object({ case: z.string().min(1), to: id }).strict();
+
+/**
+ * A user flow: the steps a journey passes through, and where it branches.
+ *
+ * `sequence` is message passing between actors and has nowhere to put a
+ * decision, which is the one thing a journey turns on, so a flow bent into it
+ * comes out as a sequence diagram pretending. This is the narrow component for
+ * the shape instead, and it keeps the bargain the other four keep: a step is
+ * either code the reader can open or a declared actor's own move, and the
+ * block-level rules in `compileComponent` refuse a flow that cannot be drawn
+ * rather than drawing it wrong.
+ */
+export const FlowSchema = z
+  .object({
+    label: z.string().min(1),
+    steps: z
+      .array(
+        z
+          .object({
+            id: id,
+            label: z.string().min(1),
+            actor: id.optional(),
+            anchor: id.optional(),
+            next: id.optional(),
+            when: z
+              .array(FlowBranch)
+              .min(2, "a branch has two or more cases; one case is `next`")
+              .optional(),
+          })
+          .strict()
+          .refine((s) => s.anchor || s.actor, { message: "each step needs an anchor or an actor" })
+          .refine((s) => !(s.next && s.when), {
+            message: "a step continues with `next` or branches with `when`, not both",
+          }),
+      )
+      .min(2, "a flow needs at least two steps"),
+  })
+  .strict();
+
 export const PeekBlockSchema = z.object({ anchor: id }).strict();
 
 // map.yaml

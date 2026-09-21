@@ -7,6 +7,7 @@ import { popover } from "./dom.js";
 type Seq = Extract<Block, { type: "sequence" }>;
 type Stack = Extract<Block, { type: "callstack" }>;
 type Db = Extract<Block, { type: "database" }>;
+type Flow = Extract<Block, { type: "flow" }>;
 
 function openAnchor(id: string): void {
   const a = state.data?.document?.anchors[id];
@@ -222,4 +223,144 @@ export function databaseLens(b: Db, doc: CompiledDocument): HTMLElement {
     body,
     ops,
   );
+}
+
+/**
+ * A user flow, laid out top to bottom in layers.
+ *
+ * Layers come from a walk forward from the first step, so an edge that points
+ * back to a layer already placed - a retry loop, which is what a real journey
+ * does - is routed down the right-hand lane instead of crossing the boxes. The
+ * geometry is computed here rather than at compile time for the same reason
+ * `sequence`'s is: the compiler's job is refusing a flow it cannot draw, not
+ * deciding where the boxes go.
+ */
+export function flowDiagram(b: Flow, doc: CompiledDocument): HTMLElement {
+  const boxW = 210;
+  const boxH = 46;
+  const gapX = 40;
+  const gapY = 58;
+  const pad = 14;
+  // `.diagram svg` stretches to the column, so a narrow viewBox magnifies the
+  // type: a two-wide flow would draw its 12px labels at nearer 17. A floor on
+  // the viewBox keeps a small flow close to 1:1 and centres it in the frame.
+  const minW = 700;
+  // The labels are mono at a known size, so a character budget is enough to
+  // keep one inside its box; the whole text stays in the tooltip.
+  const fit = (text: string, room: number, px: number) => {
+    const max = Math.floor(room / (px * 0.605));
+    return text.length > max ? `${text.slice(0, max - 1)}\u2026` : text;
+  };
+
+  const layer = new Map<string, number>([[b.steps[0]!.id, 0]]);
+  const queue = [b.steps[0]!.id];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    for (const e of b.edges)
+      if (e.from === cur && !layer.has(e.to)) {
+        layer.set(e.to, layer.get(cur)! + 1);
+        queue.push(e.to);
+      }
+  }
+  const rows: string[][] = [];
+  for (const s of b.steps) {
+    const li = layer.get(s.id)!;
+    (rows[li] ??= []).push(s.id);
+  }
+  const back = b.edges.some((e) => layer.get(e.to)! <= layer.get(e.from)!);
+  const widest = Math.max(...rows.map((r) => r.length));
+  const lane = back ? 34 : 0;
+  const width = Math.max(minW, pad * 2 + widest * boxW + (widest - 1) * gapX + lane);
+  const height = pad * 2 + rows.length * boxH + (rows.length - 1) * gapY;
+  const at = (id: string) => {
+    const li = layer.get(id)!;
+    const row = rows[li]!;
+    const spanW = row.length * boxW + (row.length - 1) * gapX;
+    const x = pad + (width - lane - pad * 2 - spanW) / 2 + row.indexOf(id) * (boxW + gapX);
+    return { x, y: pad + li * (boxH + gapY), cx: x + boxW / 2, li };
+  };
+
+  const el = svg("svg", { viewBox: `0 0 ${width} ${height}`, class: "flow" });
+  el.appendChild(
+    svg(
+      "defs",
+      {},
+      svg(
+        "marker",
+        {
+          id: "flow-arr",
+          viewBox: "0 0 10 10",
+          refX: "9",
+          refY: "5",
+          markerWidth: "7",
+          markerHeight: "7",
+          orient: "auto",
+        },
+        svg("path", { d: "M0,0 L10,5 L0,10 z", fill: "currentColor" }),
+      ),
+    ),
+  );
+
+  for (const e of b.edges) {
+    const from = at(e.from);
+    const to = at(e.to);
+    const g = svg("g", { class: "edge" });
+    let d: string;
+    let label: { x: number; y: number };
+    if (to.li > from.li) {
+      const mid = from.y + boxH + (to.y - from.y - boxH) / 2;
+      d = `M${from.cx},${from.y + boxH} V${mid} H${to.cx} V${to.y - 4}`;
+      label = { x: (from.cx + to.cx) / 2 + 6, y: mid - 5 };
+    } else {
+      const laneX = width - lane / 2;
+      d = `M${from.x + boxW},${from.y + boxH / 2} H${laneX} V${to.y + boxH / 2} H${to.x + boxW + 4}`;
+      label = { x: laneX - 6, y: (from.y + to.y) / 2 + boxH / 2 };
+      g.setAttribute("class", "edge back");
+    }
+    g.appendChild(svg("path", { d, fill: "none", "marker-end": "url(#flow-arr)" }));
+    if (e.case)
+      g.appendChild(svg("text", { x: label.x, y: label.y, "text-anchor": "middle" }, e.case));
+    el.appendChild(g);
+  }
+
+  for (const s of b.steps) {
+    const { x, y, cx } = at(s.id);
+    const g = svg("g", {
+      class: `step${s.decision ? " decision" : ""}${s.anchor ? "" : " plain"}`,
+    });
+    // A decision is cut at the sides so it reads as one at a glance while still
+    // holding a sentence; a diamond wide enough for the text would dwarf the row.
+    g.appendChild(
+      s.decision
+        ? svg("path", {
+            d: `M${x + 16},${y} H${x + boxW - 16} L${x + boxW},${y + boxH / 2} L${x + boxW - 16},${y + boxH} H${x + 16} L${x},${y + boxH / 2} Z`,
+          })
+        : svg("rect", { x, y, width: boxW, height: boxH, rx: 6 }),
+    );
+    // A decision is cut in at both ends, so it has less room for text than a step.
+    const room = boxW - (s.decision ? 44 : 20);
+    const actor = s.actor ? (doc.actors[s.actor]?.label ?? s.actor) : null;
+    if (actor)
+      g.appendChild(
+        svg(
+          "text",
+          { class: "who", x: cx, y: y + 17, "text-anchor": "middle" },
+          fit(actor, room, 10.5),
+        ),
+      );
+    g.appendChild(
+      svg(
+        "text",
+        { x: cx, y: actor ? y + 33 : y + boxH / 2 + 4, "text-anchor": "middle" },
+        fit(s.label, room, 12),
+      ),
+    );
+    g.appendChild(svg("title", {}, s.anchor ? `${s.label} — ${s.anchor}` : s.label));
+    if (s.anchor) {
+      g.setAttribute("role", "button");
+      g.addEventListener("click", () => openAnchor(s.anchor!));
+    }
+    el.appendChild(g);
+  }
+  return h("div", { class: "diagram" }, h("div", { class: "dhead" }, b.label), el);
 }
