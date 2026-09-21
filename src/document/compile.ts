@@ -648,7 +648,7 @@ function compileComponent(b: RawBlock, ctx: Ctx): Block | null {
   if (FOREIGN_DIAGRAM_FENCES.has(b.component!)) {
     err(
       "review.md",
-      `${b.component} is not rendered: thurview draws only what it can anchor at the pinned commit, so a user flow is the \`flow\` component and a message exchange is \`sequence\``,
+      `${b.component} is not rendered: thurview draws only what it can anchor at the pinned commit, so a user flow is the \`flow\` component and a message exchange is \`sequence\`. To quote ${b.component} source as code rather than draw it, fence it as \`text\``,
       b.line,
     );
     return null;
@@ -896,12 +896,22 @@ function compileComponent(b: RawBlock, ctx: Ctx): Block | null {
     const edges: { from: string; to: string; case?: string }[] = [];
     for (const s of r.value.steps) {
       const targets = s.when ?? (s.next ? [{ to: s.next }] : []);
+      const branched = new Set<string>();
       for (const t of targets) {
         if (t.to === s.id) {
           err("review.md", `${where}: step "${s.id}" follows itself`, b.line);
         } else if (!ids.has(t.to)) {
           err("review.md", `${where}: step "${s.id}" continues to unknown step "${t.to}"`, b.line);
+        } else if (branched.has(t.to)) {
+          // Two cases to one step are two arrows on one line with their labels
+          // stacked on each other. One case naming both reads; this does not.
+          err(
+            "review.md",
+            `${where}: step "${s.id}" branches to "${t.to}" twice; give the destination one case naming both`,
+            b.line,
+          );
         } else {
+          branched.add(t.to);
           edges.push({ from: s.id, to: t.to, ...("case" in t ? { case: t.case } : {}) });
         }
       }

@@ -1152,8 +1152,20 @@ kbd {
 .flow .step:not(.plain):hover path {
   stroke: var(--accent);
 }
-/* A step nobody can open reads as the aside it is, not as a broken link. */
-.flow .step.plain rect {
+/* The step takes focus, so the focus has to be visible on the shape itself:
+   a UA outline on an SVG group lands nowhere the reader can see. */
+.flow .step:focus {
+  outline: none;
+}
+.flow .step:focus-visible rect,
+.flow .step:focus-visible path {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+/* A step nobody can open reads as the aside it is, not as a broken link.
+   A decision is a path rather than a rect, so both shapes carry the rule. */
+.flow .step.plain rect,
+.flow .step.plain path {
   fill: var(--bg3);
   stroke-dasharray: 4 4;
 }

@@ -212,7 +212,9 @@ drawn dashed, so the reader can see at a glance which parts open something.
 a publish error. They used to be neither components nor an error, so the block
 reached the reader as its own source text with nothing saying so. thurview draws
 only what it can anchor at the pinned commit: use `flow` for a journey and
-`sequence` for a message exchange.
+`sequence` for a message exchange. To quote one of those languages as source -
+reviewing a change to a repository's own diagrams - fence it as `text`, which
+renders as the code block it is.
 
 ## database
 

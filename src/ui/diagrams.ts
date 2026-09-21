@@ -267,17 +267,20 @@ export function flowDiagram(b: Flow, doc: CompiledDocument): HTMLElement {
     const li = layer.get(s.id)!;
     (rows[li] ??= []).push(s.id);
   }
-  const back = b.edges.some((e) => layer.get(e.to)! <= layer.get(e.from)!);
+  const lanes = b.edges.some((e) => layer.get(e.to)! <= layer.get(e.from)!);
   const widest = Math.max(...rows.map((r) => r.length));
-  const lane = back ? 34 : 0;
+  const lane = lanes ? 34 : 0;
+  // A lane edge turns in the empty bands above and below a row, so the first
+  // and last rows need a band of their own once one exists.
+  const band = lanes ? gapY / 2 : 0;
   const width = Math.max(minW, pad * 2 + widest * boxW + (widest - 1) * gapX + lane);
-  const height = pad * 2 + rows.length * boxH + (rows.length - 1) * gapY;
+  const height = pad * 2 + band * 2 + rows.length * boxH + (rows.length - 1) * gapY;
   const at = (id: string) => {
     const li = layer.get(id)!;
     const row = rows[li]!;
     const spanW = row.length * boxW + (row.length - 1) * gapX;
     const x = pad + (width - lane - pad * 2 - spanW) / 2 + row.indexOf(id) * (boxW + gapX);
-    return { x, y: pad + li * (boxH + gapY), cx: x + boxW / 2, li };
+    return { x, y: pad + band + li * (boxH + gapY), cx: x + boxW / 2, li };
   };
 
   const el = svg("svg", { viewBox: `0 0 ${width} ${height}`, class: "flow" });
@@ -304,22 +307,28 @@ export function flowDiagram(b: Flow, doc: CompiledDocument): HTMLElement {
   for (const e of b.edges) {
     const from = at(e.from);
     const to = at(e.to);
-    const g = svg("g", { class: "edge" });
+    // Only an edge that climbs is a loop. One inside a row is still forward,
+    // and dashing it would tell the reader the journey goes back when it does not.
+    const g = svg("g", { class: to.li < from.li ? "edge back" : "edge" });
     let d: string;
-    let label: { x: number; y: number };
+    let label: { x: number; y: number; at: string };
     if (to.li > from.li) {
       const mid = from.y + boxH + (to.y - from.y - boxH) / 2;
       d = `M${from.cx},${from.y + boxH} V${mid} H${to.cx} V${to.y - 4}`;
-      label = { x: (from.cx + to.cx) / 2 + 6, y: mid - 5 };
+      label = { x: (from.cx + to.cx) / 2 + 6, y: mid - 5, at: "middle" };
     } else {
+      // Out through the band below this row, up the lane, and back in through
+      // the band above the target. Every horizontal run is then in empty space,
+      // so the edge never crosses a box standing beside either of its ends.
       const laneX = width - lane / 2;
-      d = `M${from.x + boxW},${from.y + boxH / 2} H${laneX} V${to.y + boxH / 2} H${to.x + boxW + 4}`;
-      label = { x: laneX - 6, y: (from.y + to.y) / 2 + boxH / 2 };
-      g.setAttribute("class", "edge back");
+      const out = from.y + boxH + gapY / 2;
+      const into = to.y - gapY / 2;
+      d = `M${from.cx},${from.y + boxH} V${out} H${laneX} V${into} H${to.cx} V${to.y - 4}`;
+      label = { x: laneX - 6, y: (out + into) / 2, at: "end" };
     }
     g.appendChild(svg("path", { d, fill: "none", "marker-end": "url(#flow-arr)" }));
     if (e.case)
-      g.appendChild(svg("text", { x: label.x, y: label.y, "text-anchor": "middle" }, e.case));
+      g.appendChild(svg("text", { x: label.x, y: label.y, "text-anchor": label.at }, e.case));
     el.appendChild(g);
   }
 
@@ -357,8 +366,19 @@ export function flowDiagram(b: Flow, doc: CompiledDocument): HTMLElement {
     );
     g.appendChild(svg("title", {}, s.anchor ? `${s.label} — ${s.anchor}` : s.label));
     if (s.anchor) {
+      // The only way to open code from a flow, so it answers the keyboard as
+      // well as the mouse rather than announcing a button nothing can reach.
+      const open = () => openAnchor(s.anchor!);
       g.setAttribute("role", "button");
-      g.addEventListener("click", () => openAnchor(s.anchor!));
+      g.setAttribute("tabindex", "0");
+      g.addEventListener("click", open);
+      g.addEventListener("keydown", (e) => {
+        const k = (e as KeyboardEvent).key;
+        if (k === "Enter" || k === " ") {
+          e.preventDefault();
+          open();
+        }
+      });
     }
     el.appendChild(g);
   }

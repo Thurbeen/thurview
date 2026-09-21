@@ -480,6 +480,15 @@ steps:
 `,
       'step post references unknown anchor "nowhere"',
     );
+    await refusal(
+      `label: Sign in
+steps:
+  - { id: land, label: Caller arrives, actor: caller,
+      when: [{ case: first, to: post }, { case: again, to: post }] }
+  - { id: post, label: Credentials posted, anchor: login }
+`,
+      'step "land" branches to "post" twice',
+    );
   }, 40_000);
 
   it("publishes a valid document with every component", async () => {
@@ -559,6 +568,13 @@ usecases:
     label: Record a login
     ops:
       - { op: write, store: logdb.events.user, actor: auth, label: append event, anchor: audit }
+\`\`\`
+
+The refusal points at \`text\`, so quoting the source that way has to publish:
+
+\`\`\`text
+flowchart TD
+  A[Visitor] --> B{Signed in?}
 \`\`\`
 
 \`\`\`flow
@@ -703,6 +719,13 @@ check
     expect(db.stores).toEqual(["logdb"]);
     expect(db.usecases.map((u) => u["id"])).toEqual(["write"]);
     expect(block<{ anchor: string }>("peek").anchor).toBe("check");
+    // The escape hatch the mermaid refusal names: re-fenced as `text` the same
+    // source publishes and arrives as a code block, not as a component.
+    expect(
+      p.document.blocks.some(
+        (b) => b.type === "html" && (b as { html: string }).html.includes("flowchart TD"),
+      ),
+    ).toBe(true);
     // The flow itself: the steps as declared, the decision marked, and the
     // branch and retry edges - including the one that goes back up.
     const fl = block<{
