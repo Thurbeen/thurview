@@ -131,6 +131,7 @@ ${THURVIEW_HOME:-~/.thurview}/
 ├── THURVIEW.md              user guidance (optional)
 ├── server.json              running server, if any
 ├── agents/<id>.json         heartbeat of a running `wait`, removed when it ends
+├── forge/<id>.json          what the forge last said of the change request: head, state, CI, last pass posted
 ├── passes/<id>.json         the submission `forge pass` wrote, for `forge submit`
 └── reviews/<id>/
     ├── review.md            you edit
@@ -144,6 +145,26 @@ ${THURVIEW_HOME:-~/.thurview}/
 
 A failed publish leaves the last sealed revision in place. The reader can
 switch between revisions in the browser.
+
+## The queue
+
+The home page lists every document, grouped by repository and ordered by whose
+turn it is. It is read from the store on every load and never published, so it
+cannot go stale. Whose turn, most urgent first:
+
+| Turn   | When                                                                      |
+| ------ | ------------------------------------------------------------------------- |
+| you    | a decision on a change request that no `forge submit` has posted yet     |
+| you    | `awaiting-review`, pinned at the change request's head, no thread waiting |
+| agent  | the change request's head moved past the pin: `scaffold --update`         |
+| agent  | a thread `needsAgent`, or `awaiting-agent-updates`                        |
+| agent  | `draft`: nothing published yet                                            |
+| nobody | `accepted`, `closed`, dismissed, or the change request merged or closed   |
+
+The forge columns come from `forge/<id>.json`, which `scaffold --pr`, `forge
+status` and `forge submit` write for the document bound to that change request.
+Run `thurview forge status --review <id>` to refresh a row; until something
+has, the row says the forge was not read.
 
 ## wait
 

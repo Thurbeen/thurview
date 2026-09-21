@@ -131,6 +131,16 @@ export function passFile(id: string): string {
 }
 
 /**
+ * What the forge last said about the change request a document is bound to,
+ * written by the commands that already ask it. Outside `reviewDir` for the
+ * same reason as `passFile`, and never part of a sealed revision: it ages on
+ * its own clock, and the queue shows that age rather than hiding it.
+ */
+export function forgeFactsFile(id: string): string {
+  return join(home(), "forge", `${id}.json`);
+}
+
+/**
  * Heartbeat of an agent draining this review's threads. It lives outside
  * `reviewDir` on purpose: the server watches that directory to push changes to
  * the browser, and a file rewritten every few seconds would reload the page
@@ -198,6 +208,7 @@ export async function deleteReview(id: string): Promise<void> {
   await rm(agentFile(id), { force: true });
   // The pass carries the reader's own words, so it goes with the review.
   await rm(passFile(id), { force: true });
+  await rm(forgeFactsFile(id), { force: true });
 }
 
 export async function readThreads(id: string): Promise<ThreadsFile> {

@@ -23,22 +23,19 @@ import { renderCoverage } from "./views/coverage.js";
 
 const app = document.getElementById("app")!;
 
+type Row = Awaited<ReturnType<typeof api.reviews>>[number];
+
+/**
+ * The maintainer's queue. The server sends the rows already in triage order,
+ * so a repository is listed where its most urgent row falls, and each row
+ * carries only what the forge's own list cannot say.
+ */
 async function home(): Promise<void> {
   clear(app);
   const reviews = await api.reviews();
-  const el = h("div", { class: "home" }, h("h2", null, "Reviews, explainers and designs"));
+  const el = h("div", { class: "home" }, h("h2", null, "Queue"));
   const active = reviews.filter((r) => !r.dismissed);
   const dismissed = reviews.filter((r) => r.dismissed);
-  const item = (r: (typeof reviews)[number]) =>
-    h(
-      "div",
-      { class: "item", onclick: () => (location.href = `/review/${r.id}`) },
-      h("span", { class: "t" }, r.title),
-      h("span", { class: `badge ${statusClass(r.status)}` }, r.status),
-      r.openThreads ? h("span", { class: "badge accent" }, `${r.openThreads} open`) : null,
-      h("span", { class: "muted mono", style: { fontSize: "12px" } }, bindingLabel(r)),
-      h("span", { class: "muted", style: { fontSize: "12px" } }, timeAgo(r.updatedAt)),
-    );
   if (!active.length)
     el.appendChild(
       h(
@@ -47,12 +44,90 @@ async function home(): Promise<void> {
         "Nothing published yet. Ask your agent for a review of a change, an explainer of the codebase, or a design of what to build next.",
       ),
     );
-  active.forEach((r) => el.appendChild(item(r)));
+  const groups = new Map<string, Row[]>();
+  for (const r of active) groups.set(r.queue.repo, [...(groups.get(r.queue.repo) ?? []), r]);
+  for (const [repo, rows] of groups) {
+    const yours = rows.filter((r) => r.queue.turn === "you").length;
+    el.appendChild(
+      h(
+        "h3",
+        { class: "repo" },
+        repo,
+        yours ? h("span", { class: "badge accent" }, `${yours} your turn`) : null,
+      ),
+    );
+    rows.forEach((r) => el.appendChild(queueItem(r)));
+  }
   if (dismissed.length) {
     el.appendChild(h("h3", { class: "muted" }, "Dismissed"));
-    dismissed.forEach((r) => el.appendChild(item(r)));
+    dismissed.forEach((r) => el.appendChild(queueItem(r)));
   }
   app.appendChild(el);
+}
+
+const TURN = { you: "your turn", agent: "agent", nobody: "nobody" } as const;
+const DECISION = { approve: "approved", "request-changes": "changes requested", close: "closed" };
+
+function queueItem(r: Row) {
+  const q = r.queue;
+  const cr = q.change;
+  const age = q.factsAt ? `forge read ${timeAgo(q.factsAt)}` : cr ? "forge not read yet" : "";
+  return h(
+    "div",
+    { class: "item", onclick: () => (location.href = `/review/${r.id}`) },
+    h("span", { class: `badge turn ${q.turn === "you" ? "accent" : ""}` }, TURN[q.turn]),
+    h(
+      "span",
+      { class: "t" },
+      r.title,
+      h("span", { class: "why" }, [r.kind ?? "review", q.why, age].filter(Boolean).join(" · ")),
+    ),
+    cr
+      ? h(
+          "a",
+          {
+            class: "mono muted cr",
+            href: cr.url ?? undefined,
+            target: "_blank",
+            rel: "noopener",
+            onclick: (e: Event) => e.stopPropagation(),
+          },
+          `#${cr.number}${cr.state && cr.state !== "open" ? ` ${cr.state}` : ""}`,
+        )
+      : h("span", { class: "mono muted" }, bindingLabel(r)),
+    r.openThreads ? h("span", { class: "badge accent" }, `${r.openThreads} open`) : null,
+    q.pin
+      ? h(
+          "span",
+          { class: `badge ${q.pin === "behind" ? "warn" : "ok"}` },
+          q.pin === "behind" ? "pin behind head" : "at head",
+        )
+      : null,
+    q.decision
+      ? h(
+          "span",
+          {
+            class: `badge ${q.decision.posted === false ? "warn" : ""}`,
+            title:
+              q.decision.posted === null
+                ? null
+                : q.decision.posted
+                  ? "posted to the change request"
+                  : "not posted to the change request yet",
+          },
+          DECISION[q.decision.decision] +
+            (q.decision.posted === null ? "" : q.decision.posted ? " · posted" : " · not posted"),
+        )
+      : null,
+    q.ci
+      ? h(
+          "span",
+          { class: `badge ${q.ci.trustworthy ? "ok" : "warn"}`, title: q.ci.verdict },
+          q.ci.trustworthy ? "CI gates" : "CI not a gate",
+        )
+      : null,
+    h("span", { class: "muted", style: { fontSize: "12px" } }, timeAgo(r.updatedAt)),
+  );
 }
 
 function bindingLabel(r: { binding: { kind: string; name: string } }): string {
