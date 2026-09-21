@@ -173,9 +173,27 @@ finishes is a design nobody decided on. A shape that works:
 code that exists at the pinned commit; a plain fence is a sketch. The reader
 tells them apart at a glance, and that difference is the whole trust model.
 
-Sequence diagrams work for a proposed flow: give a message a `code:` string
-rather than an `anchor:` where the code does not exist yet, and an `anchor:`
-where it does. See the `thurview` skill's Components reference for the shape.
+**Pick the diagram by the reader's question, or draw none.** The `thurview`
+skill's Components reference carries the table under "Choosing a shape" and the
+shape of every fence. Two rows decide most design documents:
+
+- A proposed flow across actors is a `sequence`: give a message a `code:`
+  string where the code does not exist yet, and an `anchor:` where it does.
+- **A choice between two designs is not a diagram.** Drawing the one you picked
+  shows the reader how it works and never why it beat the other. That argument
+  is prose with anchors, under **What was considered and dropped** above.
+
+No component renders two options side by side, and a design has no diff, so a
+`callstack` here must list the same frames in the same order on both sides.
+`publish` refuses most of what differs; the rest it renders as unchanged,
+because the diff runs on the callee anchor alone and a `{ calls: [...] }` hop
+whose parent differs reads as the same frame. Either way the reader never sees
+the base list.
+
+The map is the one before-and-after the vocabulary carries, and it puts today
+against your one proposal rather than one proposal against another: `base` for
+the structure as it stands, `nodes` for the structure proposed (step 5). It
+shows what the design moves, never why that beat the alternative.
 
 ### 5. Map the shape, when there is one
 
@@ -249,6 +267,9 @@ but only on the choice, never dressed up as a fact. Keep the two apart:
 A design with no stated cost and no rejected alternative reads as advocacy, and
 readers approve it without deciding anything — which is the failure this whole
 document kind exists to prevent.
+
+A diagram of the design you picked is not a stated cost. It renders the option
+that won, so it reads as advocacy too, however carefully it is drawn.
 
 ## Completion criteria
 

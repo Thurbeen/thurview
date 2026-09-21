@@ -3,6 +3,53 @@
 `data.yaml` holds typed inputs. `review.md` references them by id. Validation
 is strict: an unknown key fails `publish`.
 
+## Choosing a shape
+
+Pick a component by the question the reader is asking. One shape answers one
+question; used for another it is decoration the reader has to decode.
+
+| The reader is asking                                   | Shape                        |
+| ------------------------------------------------------ | ---------------------------- |
+| in what order, and between whom?                       | `sequence`                   |
+| how did we get here, and what did the change do to it? | `callstack`                  |
+| what shape is the data, and who reads or writes it?    | `database`                   |
+| what does this code actually say?                      | `peek`, or an anchor link    |
+| what parts is this system in, and what moved?          | `map.yaml`, not a fence      |
+| why this way and not the other way?                    | **none** — prose and anchors |
+
+Only the fences in this file render. Anything else in `review.md` is ordinary
+markdown, so a mermaid or ASCII drawing publishes as a plain code block — which
+is how a hand-drawn user flow ends up in a document looking broken.
+
+A journey through states — what a user goes through — has no component. Where
+the interesting part of that journey is the order and who acts, it is a
+`sequence`; where it is not, it is prose. Do not bend one of the others into it.
+
+### A design choice is a comparison
+
+Reach for a diagram of a design and what you draw is the design you picked: the
+happy path, the way it works. That tells the reader what was built and nothing
+about what was rejected or why — which is the question a design document, and a
+review that made a non-obvious call, is there to answer.
+
+The vocabulary compares along two axes and no others:
+
+- **One call path, base against head.** `callstack`, in a review. Every frame
+  it reports as added or removed is checked against the pinned diff, and an
+  explainer and a design have no diff, so there both lists must be the same
+  frames in the same order. `publish` refuses most of what differs; the rest it
+  renders as unchanged, the diff being over the callee anchor alone. Either way
+  only the head list reaches the reader, and nothing contrasts.
+- **Structure, before against after.** `map.yaml`'s `base` beside `nodes` —
+  the system as it stands against the system the change or the design would
+  leave. See [Software map](software-map.md).
+
+**Neither axis is option A against option B.** Both put today against the one
+outcome you shipped or propose, so write the choice instead: a short paragraph
+per option, each anchored to the code it would land in or to the constraint
+that rules it out, and the reason the loser lost. That is the argument. A
+picture of the winner is not.
+
 ## data.yaml
 
 ```yaml
