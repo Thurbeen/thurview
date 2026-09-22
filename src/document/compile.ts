@@ -9,7 +9,7 @@ import {
   type LineChange,
 } from "../git.js";
 import { highlightLines, languageFor } from "../highlight.js";
-import { parseDocument, type RawBlock } from "./parse.js";
+import { parseDocument, FOREIGN_DIAGRAM_FENCES, type RawBlock } from "./parse.js";
 import { withVerdict, sortEntries, type InterfaceDelta } from "../interfaces.js";
 import type { DocumentKind } from "../store.js";
 import {
@@ -17,6 +17,7 @@ import {
   SequenceSchema,
   CallstackSchema,
   DatabaseSchema,
+  FlowSchema,
   PeekBlockSchema,
   MapSchema,
   CrossingListSchema,
@@ -101,6 +102,15 @@ export type Block =
           anchor: string;
         }[];
       }[];
+    }
+  | {
+      id: string;
+      line: number;
+      type: "flow";
+      label: string;
+      /** declaration order; the first is the entry the rest must be reachable from */
+      steps: { id: string; label: string; actor?: string; anchor?: string; decision: boolean }[];
+      edges: { from: string; to: string; case?: string }[];
     };
 
 /**
@@ -632,6 +642,17 @@ interface Ctx {
 function compileComponent(b: RawBlock, ctx: Ctx): Block | null {
   const { err } = ctx;
   const where = `${b.component} block`;
+  // Left unclaimed, this fence is prose: markdown-it renders it as a code
+  // block and the reader gets the diagram's source text with nothing saying
+  // so. thurview draws only what it can anchor, so it says that here.
+  if (FOREIGN_DIAGRAM_FENCES.has(b.component!)) {
+    err(
+      "review.md",
+      `${b.component} is not rendered: thurview draws only what it can anchor at the pinned commit, so a user flow is the \`flow\` component and a message exchange is \`sequence\`. To quote ${b.component} source as code rather than draw it, fence it as \`text\``,
+      b.line,
+    );
+    return null;
+  }
   if (b.yamlError) {
     err("review.md", `${where}: YAML: ${b.yamlError}`, b.line);
     return null;
@@ -840,6 +861,85 @@ function compileComponent(b: RawBlock, ctx: Ctx): Block | null {
       usecases: r.value.usecases,
     };
   }
+  if (b.component === "flow") {
+    const r = parseWith(FlowSchema, b.data);
+    if (!r.ok) {
+      for (const m of r.errors) err("review.md", `${where}: ${m}`, b.line);
+      return null;
+    }
+    const ids = new Set<string>();
+    for (const s of r.value.steps) {
+      if (ids.has(s.id)) err("review.md", `${where}: duplicate step "${s.id}"`, b.line);
+      ids.add(s.id);
+    }
+    const steps = r.value.steps.map((s) => {
+      if (s.anchor) needPeek(s.anchor, `step ${s.id}`);
+      if (s.actor && !ctx.data.actors[s.actor])
+        err("review.md", `${where}: step ${s.id} references unknown actor "${s.actor}"`, b.line);
+      return {
+        id: s.id,
+        label: s.label,
+        ...(s.actor ? { actor: s.actor } : {}),
+        ...(s.anchor ? { anchor: s.anchor } : {}),
+        decision: !!s.when,
+      };
+    });
+    // A flow of people alone is the picture this component exists to stop: the
+    // reader can open none of it, and the anchored diagrams beside it lose by
+    // association. One anchored step is the floor, as it is for an explainer.
+    if (!r.value.steps.some((s) => s.anchor))
+      err(
+        "review.md",
+        `${where}: no step carries an anchor, so nothing in this flow opens code`,
+        b.line,
+      );
+    const edges: { from: string; to: string; case?: string }[] = [];
+    for (const s of r.value.steps) {
+      const targets = s.when ?? (s.next ? [{ to: s.next }] : []);
+      const branched = new Set<string>();
+      for (const t of targets) {
+        if (t.to === s.id) {
+          err("review.md", `${where}: step "${s.id}" follows itself`, b.line);
+        } else if (!ids.has(t.to)) {
+          err("review.md", `${where}: step "${s.id}" continues to unknown step "${t.to}"`, b.line);
+        } else if (branched.has(t.to)) {
+          // Two cases to one step are two arrows on one line with their labels
+          // stacked on each other. One case naming both reads; this does not.
+          err(
+            "review.md",
+            `${where}: step "${s.id}" branches to "${t.to}" twice; give the destination one case naming both`,
+            b.line,
+          );
+        } else {
+          branched.add(t.to);
+          edges.push({ from: s.id, to: t.to, ...("case" in t ? { case: t.case } : {}) });
+        }
+      }
+    }
+    // The first step is the entry, and the layout walks forward from it. A step
+    // nothing reaches would be drawn floating beside the flow, which is drawing
+    // it wrong rather than refusing it.
+    const entry = r.value.steps[0]!.id;
+    const reached = new Set([entry]);
+    const queue = [entry];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      for (const e of edges)
+        if (e.from === cur && !reached.has(e.to)) {
+          reached.add(e.to);
+          queue.push(e.to);
+        }
+    }
+    for (const s of r.value.steps)
+      if (!reached.has(s.id))
+        err(
+          "review.md",
+          `${where}: step "${s.id}" is unreachable from "${entry}", the first step`,
+          b.line,
+        );
+    return { id: b.id, line: b.line, type: "flow", label: r.value.label, steps, edges };
+  }
+
   err("review.md", `unknown component "${b.component}"`, b.line);
   return null;
 }

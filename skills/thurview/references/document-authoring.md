@@ -142,11 +142,14 @@ A claim you cannot anchor is a question, not a fact. Write it as one.
 Use the fenced components for behaviour that prose explains badly:
 
 - `sequence` for temporal behaviour across actors
+- `flow` for a user journey and where it branches
 - `callstack` for call-flow differences between base and head
 - `database` for persisted-state structure and the operations on it
 
-Each message, frame and operation carries an anchor, so the reader can open
-the code behind every arrow. See [Components](components.md).
+Each message, frame, step and operation carries an anchor, so the reader can
+open the code behind every arrow. `mermaid` and the other general diagram
+languages are a publish error rather than a fifth option: thurview draws only
+what it can anchor. See [Components](components.md).
 
 Add a diagram only when it materially helps. A document with one good
 sequence diagram beats one with four.

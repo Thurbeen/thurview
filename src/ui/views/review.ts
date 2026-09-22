@@ -2,7 +2,7 @@ import { h, popover } from "../dom.js";
 import { state, threadsFor, navigate, kind, VIEWS } from "../state.js";
 import { codeTable, openAnchorPeek } from "../code.js";
 import { commentPopover, threadPinRow } from "../threads.js";
-import { sequenceDiagram, callstackDiff, databaseLens } from "../diagrams.js";
+import { sequenceDiagram, callstackDiff, databaseLens, flowDiagram } from "../diagrams.js";
 import type { Block, CompiledSecurity } from "../../document/compile.js";
 import type { InterfaceDelta, InterfaceEntry } from "../../interfaces.js";
 import type { Coverage } from "../../coverage.js";
@@ -499,6 +499,9 @@ function renderBlock(b: Block): HTMLElement {
       break;
     case "database":
       wrap.appendChild(databaseLens(b, doc));
+      break;
+    case "flow":
+      wrap.appendChild(flowDiagram(b, doc));
       break;
   }
   if (threads.length)

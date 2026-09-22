@@ -3,6 +3,7 @@ import { state } from "./state.js";
 import type { Block, CompiledDocument } from "../document/compile.js";
 import { openAnchorPeek } from "./code.js";
 import { popover } from "./dom.js";
+import { boxH, boxW, layoutFlow, type Flow } from "./flow-layout.js";
 
 type Seq = Extract<Block, { type: "sequence" }>;
 type Stack = Extract<Block, { type: "callstack" }>;
@@ -222,4 +223,101 @@ export function databaseLens(b: Db, doc: CompiledDocument): HTMLElement {
     body,
     ops,
   );
+}
+
+/**
+ * A user flow, laid out top to bottom in layers by `layoutFlow`. The geometry
+ * is computed in the browser rather than at compile time for the same reason
+ * `sequence`'s is: the compiler's job is refusing a flow it cannot draw, not
+ * deciding where the boxes go.
+ */
+export function flowDiagram(b: Flow, doc: CompiledDocument): HTMLElement {
+  // The labels are mono at a known size, so a character budget is enough to
+  // keep one inside its box; the whole text stays in the tooltip.
+  const fit = (text: string, room: number, px: number) => {
+    const max = Math.floor(room / (px * 0.605));
+    return text.length > max ? `${text.slice(0, max - 1)}\u2026` : text;
+  };
+  const { width, height, at, edges } = layoutFlow(b);
+
+  const el = svg("svg", { viewBox: `0 0 ${width} ${height}`, class: "flow" });
+  el.appendChild(
+    svg(
+      "defs",
+      {},
+      svg(
+        "marker",
+        {
+          id: "flow-arr",
+          viewBox: "0 0 10 10",
+          refX: "9",
+          refY: "5",
+          markerWidth: "7",
+          markerHeight: "7",
+          orient: "auto",
+        },
+        svg("path", { d: "M0,0 L10,5 L0,10 z", fill: "currentColor" }),
+      ),
+    ),
+  );
+
+  for (const { edge, d, back, label } of edges) {
+    const g = svg("g", { class: back ? "edge back" : "edge" });
+    g.appendChild(svg("path", { d, fill: "none", "marker-end": "url(#flow-arr)" }));
+    if (edge.case)
+      g.appendChild(svg("text", { x: label.x, y: label.y, "text-anchor": label.at }, edge.case));
+    el.appendChild(g);
+  }
+
+  for (const s of b.steps) {
+    const { x, y, cx } = at(s.id);
+    const g = svg("g", {
+      class: `step${s.decision ? " decision" : ""}${s.anchor ? "" : " plain"}`,
+    });
+    // A decision is cut at the sides so it reads as one at a glance while still
+    // holding a sentence; a diamond wide enough for the text would dwarf the row.
+    g.appendChild(
+      s.decision
+        ? svg("path", {
+            d: `M${x + 16},${y} H${x + boxW - 16} L${x + boxW},${y + boxH / 2} L${x + boxW - 16},${y + boxH} H${x + 16} L${x},${y + boxH / 2} Z`,
+          })
+        : svg("rect", { x, y, width: boxW, height: boxH, rx: 6 }),
+    );
+    // A decision is cut in at both ends, so it has less room for text than a step.
+    const room = boxW - (s.decision ? 44 : 20);
+    const actor = s.actor ? (doc.actors[s.actor]?.label ?? s.actor) : null;
+    if (actor)
+      g.appendChild(
+        svg(
+          "text",
+          { class: "who", x: cx, y: y + 17, "text-anchor": "middle" },
+          fit(actor, room, 10.5),
+        ),
+      );
+    g.appendChild(
+      svg(
+        "text",
+        { x: cx, y: actor ? y + 33 : y + boxH / 2 + 4, "text-anchor": "middle" },
+        fit(s.label, room, 12),
+      ),
+    );
+    g.appendChild(svg("title", {}, s.anchor ? `${s.label} — ${s.anchor}` : s.label));
+    if (s.anchor) {
+      // The only way to open code from a flow, so it answers the keyboard as
+      // well as the mouse rather than announcing a button nothing can reach.
+      const open = () => openAnchor(s.anchor!);
+      g.setAttribute("role", "button");
+      g.setAttribute("tabindex", "0");
+      g.addEventListener("click", open);
+      g.addEventListener("keydown", (e) => {
+        const k = (e as KeyboardEvent).key;
+        if (k === "Enter" || k === " ") {
+          e.preventDefault();
+          open();
+        }
+      });
+    }
+    el.appendChild(g);
+  }
+  return h("div", { class: "diagram" }, h("div", { class: "dhead" }, b.label), el);
 }

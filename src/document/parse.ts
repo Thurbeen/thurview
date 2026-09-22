@@ -4,7 +4,22 @@ import { parse as parseYaml } from "yaml";
 
 type Token = ReturnType<InstanceType<typeof MarkdownIt>["parse"]>[number];
 
-export const COMPONENT_FENCES = new Set(["peek", "sequence", "callstack", "database"]);
+export const COMPONENT_FENCES = new Set(["peek", "sequence", "callstack", "database", "flow"]);
+
+/**
+ * Diagram languages thurview does not render. Without this list they are not
+ * fences at all, so a ```mermaid block is prose: it publishes green and reaches
+ * the reader as its own source text. Naming them makes `publish` refuse one and
+ * point at the component that draws what it can anchor.
+ */
+export const FOREIGN_DIAGRAM_FENCES = new Set([
+  "mermaid",
+  "plantuml",
+  "puml",
+  "dot",
+  "graphviz",
+  "d2",
+]);
 
 export interface RawBlock {
   id: string;
@@ -114,18 +129,28 @@ export function parseDocument(src: string): ParsedDocument {
         }
       }
     }
-    if (first.type === "fence" && COMPONENT_FENCES.has(first.info.trim().split(/\s+/)[0] ?? "")) {
-      const component = first.info.trim().split(/\s+/)[0]!;
-      const block: RawBlock = { id: blockId(srcText, seen), line, kind: "component", component };
-      const content = first.content.trim();
-      try {
-        if (component === "peek") {
-          block.data = /^[\w-]+$/.test(content) ? { anchor: content } : parseYaml(content);
-        } else {
-          block.data = parseYaml(content);
+    const info = first.type === "fence" ? (first.info.trim().split(/\s+/)[0] ?? "") : "";
+    if (COMPONENT_FENCES.has(info) || FOREIGN_DIAGRAM_FENCES.has(info)) {
+      const block: RawBlock = {
+        id: blockId(srcText, seen),
+        line,
+        kind: "component",
+        component: info,
+      };
+      // A foreign fence holds a foreign language, so reading it as YAML would
+      // report a syntax error about a file that has none. `compileDocument`
+      // refuses it by name instead.
+      if (!FOREIGN_DIAGRAM_FENCES.has(info)) {
+        const content = first.content.trim();
+        try {
+          if (info === "peek") {
+            block.data = /^[\w-]+$/.test(content) ? { anchor: content } : parseYaml(content);
+          } else {
+            block.data = parseYaml(content);
+          }
+        } catch (e) {
+          block.yamlError = (e as Error).message;
         }
-      } catch (e) {
-        block.yamlError = (e as Error).message;
       }
       blocks.push(block);
       continue;

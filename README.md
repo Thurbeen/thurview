@@ -355,7 +355,7 @@ multi-line comment anchor - are listed in
 The agent writes three files in `~/.thurview/reviews/<id>/`:
 
 - `review.md`: Markdown. `[text](anchor:id)` links prose to code. Fenced
-  blocks `peek`, `sequence`, `callstack` and `database` add components.
+  blocks `peek`, `sequence`, `flow`, `callstack` and `database` add components.
   `## Heading {collapsed}` folds a section by default.
 - `data.yaml`: typed inputs: `actors`, `anchors` (file, from, to, graph),
   `stores`, `interfaces` (a capability line per derived entry, plus the
