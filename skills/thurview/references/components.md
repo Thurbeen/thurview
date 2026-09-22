@@ -189,7 +189,8 @@ A user journey and where it branches - the shape `sequence` cannot hold,
 because a decision is not a message. The first step is the entry; a step
 continues with `next` or branches with `when`, and one with neither ends the
 flow. Cycles are fine: a retry loop is what a journey does, and a step that
-leads back up is drawn down the right-hand lane.
+leads back up is drawn down a lane on the right, one lane per loop so two
+retries never share a vertical run.
 
 Every step is either code or a person: `anchor` is where the code does it and
 the reader opens it by clicking, `actor` is a declared actor doing it outside
