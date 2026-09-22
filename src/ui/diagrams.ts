@@ -3,11 +3,11 @@ import { state } from "./state.js";
 import type { Block, CompiledDocument } from "../document/compile.js";
 import { openAnchorPeek } from "./code.js";
 import { popover } from "./dom.js";
+import { boxH, boxW, layoutFlow, type Flow } from "./flow-layout.js";
 
 type Seq = Extract<Block, { type: "sequence" }>;
 type Stack = Extract<Block, { type: "callstack" }>;
 type Db = Extract<Block, { type: "database" }>;
-type Flow = Extract<Block, { type: "flow" }>;
 
 function openAnchor(id: string): void {
   const a = state.data?.document?.anchors[id];
@@ -226,62 +226,19 @@ export function databaseLens(b: Db, doc: CompiledDocument): HTMLElement {
 }
 
 /**
- * A user flow, laid out top to bottom in layers.
- *
- * Layers come from a walk forward from the first step, so an edge that points
- * back to a layer already placed - a retry loop, which is what a real journey
- * does - is routed down the right-hand lane instead of crossing the boxes. The
- * geometry is computed here rather than at compile time for the same reason
+ * A user flow, laid out top to bottom in layers by `layoutFlow`. The geometry
+ * is computed in the browser rather than at compile time for the same reason
  * `sequence`'s is: the compiler's job is refusing a flow it cannot draw, not
  * deciding where the boxes go.
  */
 export function flowDiagram(b: Flow, doc: CompiledDocument): HTMLElement {
-  const boxW = 210;
-  const boxH = 46;
-  const gapX = 40;
-  const gapY = 58;
-  const pad = 14;
-  // `.diagram svg` stretches to the column, so a narrow viewBox magnifies the
-  // type: a two-wide flow would draw its 12px labels at nearer 17. A floor on
-  // the viewBox keeps a small flow close to 1:1 and centres it in the frame.
-  const minW = 700;
   // The labels are mono at a known size, so a character budget is enough to
   // keep one inside its box; the whole text stays in the tooltip.
   const fit = (text: string, room: number, px: number) => {
     const max = Math.floor(room / (px * 0.605));
     return text.length > max ? `${text.slice(0, max - 1)}\u2026` : text;
   };
-
-  const layer = new Map<string, number>([[b.steps[0]!.id, 0]]);
-  const queue = [b.steps[0]!.id];
-  while (queue.length) {
-    const cur = queue.shift()!;
-    for (const e of b.edges)
-      if (e.from === cur && !layer.has(e.to)) {
-        layer.set(e.to, layer.get(cur)! + 1);
-        queue.push(e.to);
-      }
-  }
-  const rows: string[][] = [];
-  for (const s of b.steps) {
-    const li = layer.get(s.id)!;
-    (rows[li] ??= []).push(s.id);
-  }
-  const lanes = b.edges.some((e) => layer.get(e.to)! <= layer.get(e.from)!);
-  const widest = Math.max(...rows.map((r) => r.length));
-  const lane = lanes ? 34 : 0;
-  // A lane edge turns in the empty bands above and below a row, so the first
-  // and last rows need a band of their own once one exists.
-  const band = lanes ? gapY / 2 : 0;
-  const width = Math.max(minW, pad * 2 + widest * boxW + (widest - 1) * gapX + lane);
-  const height = pad * 2 + band * 2 + rows.length * boxH + (rows.length - 1) * gapY;
-  const at = (id: string) => {
-    const li = layer.get(id)!;
-    const row = rows[li]!;
-    const spanW = row.length * boxW + (row.length - 1) * gapX;
-    const x = pad + (width - lane - pad * 2 - spanW) / 2 + row.indexOf(id) * (boxW + gapX);
-    return { x, y: pad + band + li * (boxH + gapY), cx: x + boxW / 2, li };
-  };
+  const { width, height, at, edges } = layoutFlow(b);
 
   const el = svg("svg", { viewBox: `0 0 ${width} ${height}`, class: "flow" });
   el.appendChild(
@@ -304,31 +261,11 @@ export function flowDiagram(b: Flow, doc: CompiledDocument): HTMLElement {
     ),
   );
 
-  for (const e of b.edges) {
-    const from = at(e.from);
-    const to = at(e.to);
-    // Only an edge that climbs is a loop. One inside a row is still forward,
-    // and dashing it would tell the reader the journey goes back when it does not.
-    const g = svg("g", { class: to.li < from.li ? "edge back" : "edge" });
-    let d: string;
-    let label: { x: number; y: number; at: string };
-    if (to.li > from.li) {
-      const mid = from.y + boxH + (to.y - from.y - boxH) / 2;
-      d = `M${from.cx},${from.y + boxH} V${mid} H${to.cx} V${to.y - 4}`;
-      label = { x: (from.cx + to.cx) / 2 + 6, y: mid - 5, at: "middle" };
-    } else {
-      // Out through the band below this row, up the lane, and back in through
-      // the band above the target. Every horizontal run is then in empty space,
-      // so the edge never crosses a box standing beside either of its ends.
-      const laneX = width - lane / 2;
-      const out = from.y + boxH + gapY / 2;
-      const into = to.y - gapY / 2;
-      d = `M${from.cx},${from.y + boxH} V${out} H${laneX} V${into} H${to.cx} V${to.y - 4}`;
-      label = { x: laneX - 6, y: (out + into) / 2, at: "end" };
-    }
+  for (const { edge, d, back, label } of edges) {
+    const g = svg("g", { class: back ? "edge back" : "edge" });
     g.appendChild(svg("path", { d, fill: "none", "marker-end": "url(#flow-arr)" }));
-    if (e.case)
-      g.appendChild(svg("text", { x: label.x, y: label.y, "text-anchor": label.at }, e.case));
+    if (edge.case)
+      g.appendChild(svg("text", { x: label.x, y: label.y, "text-anchor": label.at }, edge.case));
     el.appendChild(g);
   }
 
