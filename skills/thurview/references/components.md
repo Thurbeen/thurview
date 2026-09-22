@@ -11,19 +11,17 @@ question; used for another it is decoration the reader has to decode.
 | The reader is asking                                   | Shape                        |
 | ------------------------------------------------------ | ---------------------------- |
 | in what order, and between whom?                       | `sequence`                   |
+| where does the journey go, and where does it branch?   | `flow`                       |
 | how did we get here, and what did the change do to it? | `callstack`                  |
 | what shape is the data, and who reads or writes it?    | `database`                   |
 | what does this code actually say?                      | `peek`, or an anchor link    |
 | what parts is this system in, and what moved?          | `map.yaml`, not a fence      |
 | why this way and not the other way?                    | **none** — prose and anchors |
 
-Only the fences in this file render. Anything else in `review.md` is ordinary
-markdown, so a mermaid or ASCII drawing publishes as a plain code block — which
-is how a hand-drawn user flow ends up in a document looking broken.
-
-A journey through states — what a user goes through — has no component. Where
-the interesting part of that journey is the order and who acts, it is a
-`sequence`; where it is not, it is prose. Do not bend one of the others into it.
+Only the fences in this file render. A `mermaid`, `plantuml`, `dot` or `d2`
+fence is a publish error rather than a plain code block (see
+[Fences thurview does not render](#fences-thurview-does-not-render)); to quote
+diagram source as code, fence it as `text`.
 
 ### A design choice is a comparison
 
