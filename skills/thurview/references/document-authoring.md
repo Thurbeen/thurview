@@ -139,17 +139,13 @@ A claim you cannot anchor is a question, not a fact. Write it as one.
 
 ## Diagrams
 
-Use the fenced components for behaviour that prose explains badly:
-
-- `sequence` for temporal behaviour across actors
-- `flow` for a user journey and where it branches
-- `callstack` for call-flow differences between base and head
-- `database` for persisted-state structure and the operations on it
-
-Each message, frame, step and operation carries an anchor, so the reader can
-open the code behind every arrow. `mermaid` and the other general diagram
-languages are a publish error rather than a fifth option: thurview draws only
-what it can anchor. See [Components](components.md).
+Use a fenced component for behaviour that prose explains badly, and pick it by
+the question the reader is asking: [Choosing a shape](components.md#choosing-a-shape)
+holds one row per question, including the ones whose answer is no diagram at
+all. Frames, steps and operations carry an anchor, and a message carries an
+anchor or the code it stands for, so the reader can open what is behind the
+arrow. `mermaid` and the other general diagram languages are a publish error
+rather than another option: thurview draws only what it can anchor.
 
 Add a diagram only when it materially helps. A document with one good
 sequence diagram beats one with four.
