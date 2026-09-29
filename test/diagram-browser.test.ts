@@ -225,7 +225,13 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
   }, 90_000);
 
   afterAll(async () => {
-    browser?.kill();
+    // Chromium keeps writing its profile until it has exited, so the temporary
+    // tree is removed only after that, not as soon as the kill is sent.
+    if (browser && browser.exitCode === null) {
+      const exited = new Promise((r) => browser.once("exit", r));
+      browser.kill();
+      await exited;
+    }
     await server?.close();
     if (tmp) await rm(tmp, { recursive: true, force: true, maxRetries: 5 });
   });
