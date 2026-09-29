@@ -15,13 +15,55 @@ function openAnchor(id: string): void {
 }
 
 export function sequenceDiagram(b: Seq): HTMLElement {
-  const colW = 170;
-  const top = 44;
-  const rowH = 34;
-  const n = b.actors.length;
-  const width = Math.max(colW * n, 320);
-  const height = top + rowH * (b.messages.length + 1) + 10;
+  // Labels are mono at a known size, so their width is a character count. A
+  // long actor name or message wraps rather than widening the drawing past
+  // the column; every box and column then grows to hold what it wraps to.
+  const charW = 12 * 0.605;
+  const lineH = 15;
+  const wrap = (text: string, room: number) => {
+    const max = Math.max(8, Math.floor(room / charW));
+    const lines: string[] = [];
+    for (const word of text.split(" ")) {
+      const last = lines.length - 1;
+      if (last >= 0 && lines[last]!.length + 1 + word.length <= max) lines[last] += ` ${word}`;
+      else lines.push(word);
+    }
+    return lines;
+  };
+  const widest = (lines: string[]) => Math.max(...lines.map((l) => l.length)) * charW;
+  const names = b.actors.map((a) => wrap(a.label, 20 * charW));
+  const nameLines = Math.max(...names.map((l) => l.length));
+  const boxH = 13 + nameLines * lineH;
+  const top = 6 + boxH + 10;
+  const boxes = names.map((l) => Math.max(120, widest(l) + 20));
+  const cols = boxes.map((w) => Math.max(150, w + 16));
+  const centres = cols.map((w, i) => cols.slice(0, i).reduce((s, c) => s + c, 0) + w / 2);
+  const x = (id: string) => centres[b.actors.findIndex((a) => a.id === id)]!;
+  // A label starts just past the arrow's left end, wraps to the arrow's span,
+  // and stacks upwards from it, so it never hangs off the lifeline it leaves.
+  let y = top;
+  const rows = b.messages.map((m, i) => {
+    const x1 = x(m.from);
+    const x2 = x(m.to);
+    const self = x1 === x2;
+    const start = self ? x1 + 36 : Math.min(x1, x2) + 8;
+    const lines = wrap(`${i + 1}. ${m.label}`, Math.max(180, Math.abs(x2 - x1) - 16));
+    y += 20 + lines.length * lineH;
+    return { x1, x2, self, start, lines, y, end: start + widest(lines) };
+  });
+  const width = Math.ceil(
+    Math.max(
+      320,
+      cols.reduce((s, c) => s + c, 0),
+      ...rows.map((r) => r.end + 12),
+    ),
+  );
+  const height = y + 24;
+  // Drawn at its own size, and shrunk only as far as keeps the text readable;
+  // a narrower column scrolls the frame rather than the text going to specks.
   const el = svg("svg", { viewBox: `0 0 ${width} ${height}`, class: "seq" });
+  el.style.maxWidth = `${width}px`;
+  el.style.minWidth = `${Math.ceil(width * 0.9)}px`;
   el.appendChild(
     svg(
       "defs",
@@ -41,21 +83,24 @@ export function sequenceDiagram(b: Seq): HTMLElement {
       ),
     ),
   );
-  const x = (id: string) => b.actors.findIndex((a) => a.id === id) * colW + colW / 2;
-  b.actors.forEach((a, i) => {
-    const cx = i * colW + colW / 2;
+  // One tspan per wrapped line, the last on `baseline` and the rest above it.
+  const tspans = (at: number, baseline: number, text: string[]) =>
+    text.map((l, i) => svg("tspan", { x: at, y: baseline - (text.length - 1 - i) * lineH }, l));
+  b.actors.forEach((_, i) => {
+    const cx = centres[i]!;
+    const w = boxes[i]!;
+    const name = names[i]!;
     const g = svg("g", { class: "actor" });
-    g.appendChild(svg("rect", { x: cx - 70, y: 6, width: 140, height: 28, rx: 6 }));
-    g.appendChild(svg("text", { x: cx, y: 25, "text-anchor": "middle" }, a.label));
-    g.appendChild(svg("line", { class: "life", x1: cx, y1: 34, x2: cx, y2: height - 6 }));
+    g.appendChild(svg("rect", { x: cx - w / 2, y: 6, width: w, height: boxH, rx: 6 }));
+    // Centred in the box however many lines this name wrapped to.
+    const baseline = 6 + (boxH + name.length * lineH) / 2 - 4;
+    g.appendChild(svg("text", { "text-anchor": "middle" }, ...tspans(cx, baseline, name)));
+    g.appendChild(svg("line", { class: "life", x1: cx, y1: 6 + boxH, x2: cx, y2: height - 6 }));
     el.appendChild(g);
   });
   b.messages.forEach((m, i) => {
-    const y = top + rowH * (i + 1);
-    const x1 = x(m.from);
-    const x2 = x(m.to);
+    const { x1, x2, self, start, y } = rows[i]!;
     const g = svg("g", { class: "msg" });
-    const self = x1 === x2;
     if (self) {
       g.appendChild(
         svg("path", {
@@ -68,12 +113,8 @@ export function sequenceDiagram(b: Seq): HTMLElement {
     } else {
       g.appendChild(svg("line", { x1, y1: y, x2: x2 + (x2 > x1 ? -4 : 4), y2: y }));
     }
-    const label = svg(
-      "text",
-      { x: self ? x1 + 36 : (x1 + x2) / 2, y: y - 6, "text-anchor": self ? "start" : "middle" },
-      `${i + 1}. ${m.label}`,
-    );
-    label.addEventListener("click", (e) => {
+    const label = svg("text", {}, ...tspans(start, y - 6, rows[i]!.lines));
+    const open = (at: { x: number; y: number }) => {
       if (m.anchor) openAnchor(m.anchor);
       else if (m.code)
         popover(
@@ -82,13 +123,29 @@ export function sequenceDiagram(b: Seq): HTMLElement {
             { class: "def-popover" },
             h("pre", { style: { margin: "0", border: "none" } }, m.code.text),
           ),
-          { x: e.pageX, y: e.pageY + 8 },
+          at,
         );
+    };
+    label.addEventListener("click", (e) => open({ x: e.pageX, y: e.pageY + 8 }));
+    // Opening code is what a message is for, so it answers the keyboard too.
+    label.setAttribute("role", "button");
+    label.setAttribute("tabindex", "0");
+    label.addEventListener("keydown", (e) => {
+      const k = (e as KeyboardEvent).key;
+      if (k !== "Enter" && k !== " ") return;
+      e.preventDefault();
+      const r = label.getBoundingClientRect();
+      open({ x: r.left + window.scrollX, y: r.bottom + window.scrollY + 8 });
     });
     g.appendChild(label);
     el.appendChild(g);
   });
-  return h("div", { class: "diagram" }, h("div", { class: "dhead" }, b.label), el);
+  return h(
+    "div",
+    { class: "diagram" },
+    h("div", { class: "dhead" }, b.label),
+    h("div", { class: "seq-scroll" }, el),
+  );
 }
 
 export function callstackDiff(b: Stack, doc: CompiledDocument): HTMLElement {

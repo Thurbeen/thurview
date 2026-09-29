@@ -1110,6 +1110,12 @@ kbd {
   width: 100%;
   height: auto;
 }
+.seq-scroll {
+  overflow-x: auto;
+}
+.diagram svg.seq {
+  margin: 0 auto;
+}
 .seq text {
   font: 12px var(--font-mono);
   fill: var(--fg);
@@ -1128,10 +1134,21 @@ kbd {
 }
 .seq .msg text {
   fill: var(--link);
+  /* A label crosses the lifelines between its two ends; a halo in the frame's
+     colour keeps the dashes from striking through the words. */
+  paint-order: stroke;
+  stroke: var(--bg2);
+  stroke-width: 4px;
+  stroke-linejoin: round;
   cursor: pointer;
 }
-.seq .msg text:hover {
+.seq .msg text:hover,
+.seq .msg text:focus-visible {
   text-decoration: underline;
+}
+.seq .msg text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .flow text {
   font: 12px var(--font-mono);
