@@ -294,8 +294,9 @@ nothing: keep `--timeout` under that limit and run `wait` again on `timeout`.
 When the tool can run a command in the background and wake you when it exits,
 run `wait` that way, so the user has the terminal back while they read.
 
-While `wait` runs the reader's page says an agent is listening, and says the
-opposite within seconds of it returning. Do not loop it to look present: a
+While `wait` runs, and while you answer a `question` it returned, the
+reader's page says an agent is listening; it says the opposite within
+seconds of `wait` returning anything else. Do not loop it to look present: a
 question asked with nobody waiting is queued, not lost, and `thurview`
 reports it as `needsAgent` the next time you run any command in the
 worktree.

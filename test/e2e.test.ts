@@ -1434,6 +1434,36 @@ check
       expect(after.agent.attached).toBe(false);
     }, 20_000);
 
+    // The reader's own evidence: the page said nobody was listening while the
+    // agent that `wait` had just handed their question to was answering it.
+    it("keeps an agent listening while it answers the question wait handed it", async () => {
+      const waiting = cli(["wait", "--review", qid, "--timeout", "10"]);
+      let seen = { attached: false };
+      for (let i = 0; i < 40 && !seen.attached; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        seen = await api<{ attached: boolean }>(`/api/reviews/${qid}/presence`);
+      }
+      expect(seen.attached).toBe(true);
+      const th = await ask("How is the memory ceiling defined?");
+      expect((await waiting)["wait"].reason).toBe("question");
+      const answering = await api<{ attached: boolean }>(`/api/reviews/${qid}/presence`);
+      expect(answering.attached).toBe(true);
+      await cli(["threads", "reply", th.id, "--review", qid, "--body", "It is a heap cap."]);
+      const replied = await api<{ attached: boolean }>(`/api/reviews/${qid}/presence`);
+      expect(replied.attached).toBe(true);
+    }, 20_000);
+
+    // A `wait` with something to report returns before its first heartbeat is
+    // written; that write must not land after the removal and outlive it.
+    it("leaves no listener behind a wait that returns at once", async () => {
+      await post(`/api/reviews/${qid}/submit`, { decision: "close", body: "" });
+      expect((await cli(["wait", "--review", qid, "--timeout", "10"]))["wait"].reason).toBe(
+        "closed",
+      );
+      const after = await api<{ attached: boolean }>(`/api/reviews/${qid}/presence`);
+      expect(after.attached).toBe(false);
+    }, 20_000);
+
     // An open tab polls this endpoint instead of relying on the reviewDir SSE
     // watch, which the heartbeat deliberately never fires. It must answer with
     // the live fact, not a value cached from the last full payload fetch.
