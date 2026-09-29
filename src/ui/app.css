@@ -1140,12 +1140,10 @@ kbd {
   stroke: var(--bg2);
   stroke-width: 4px;
   stroke-linejoin: round;
-}
-.seq .msg text[role="button"] {
   cursor: pointer;
 }
-.seq .msg text[role="button"]:hover,
-.seq .msg text[role="button"]:focus-visible {
+.seq .msg text:hover,
+.seq .msg text:focus-visible {
   text-decoration: underline;
 }
 .seq .msg text:focus-visible {

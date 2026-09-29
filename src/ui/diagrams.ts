@@ -61,11 +61,9 @@ export function sequenceDiagram(b: Seq): HTMLElement {
   const height = y + 24;
   // Drawn at its own size, and shrunk only as far as keeps the text readable;
   // a narrower column scrolls the frame rather than the text going to specks.
-  const el = svg("svg", {
-    viewBox: `0 0 ${width} ${height}`,
-    class: "seq",
-    style: `max-width:${width}px;min-width:${Math.ceil(width * 0.9)}px`,
-  });
+  const el = svg("svg", { viewBox: `0 0 ${width} ${height}`, class: "seq" });
+  el.style.maxWidth = `${width}px`;
+  el.style.minWidth = `${Math.ceil(width * 0.9)}px`;
   el.appendChild(
     svg(
       "defs",
@@ -129,18 +127,16 @@ export function sequenceDiagram(b: Seq): HTMLElement {
         );
     };
     label.addEventListener("click", (e) => open({ x: e.pageX, y: e.pageY + 8 }));
-    if (m.anchor || m.code) {
-      // Opening code is what a message is for, so it answers the keyboard too.
-      label.setAttribute("role", "button");
-      label.setAttribute("tabindex", "0");
-      label.addEventListener("keydown", (e) => {
-        const k = (e as KeyboardEvent).key;
-        if (k !== "Enter" && k !== " ") return;
-        e.preventDefault();
-        const r = label.getBoundingClientRect();
-        open({ x: r.left + window.scrollX, y: r.bottom + window.scrollY + 8 });
-      });
-    }
+    // Opening code is what a message is for, so it answers the keyboard too.
+    label.setAttribute("role", "button");
+    label.setAttribute("tabindex", "0");
+    label.addEventListener("keydown", (e) => {
+      const k = (e as KeyboardEvent).key;
+      if (k !== "Enter" && k !== " ") return;
+      e.preventDefault();
+      const r = label.getBoundingClientRect();
+      open({ x: r.left + window.scrollX, y: r.bottom + window.scrollY + 8 });
+    });
     g.appendChild(label);
     el.appendChild(g);
   });
