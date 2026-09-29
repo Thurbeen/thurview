@@ -1422,8 +1422,10 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const deadline = Date.now() + seconds * 1000;
     const id = short(review.id);
     // While this loop runs the reader is told an agent is listening, and told
-    // the opposite the moment it stops.
+    // the opposite the moment it stops - unless it stopped to hand the agent a
+    // question, which the agent is answering before it waits again.
     const listening = attach(review.id);
+    let handedQuestion = false;
     const rows = (ts: Thread[]) =>
       ts.map((t) => ({
         id: t.id,
@@ -1479,7 +1481,8 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
             help: ["Stop the loop; the reader dismissed the review"],
           };
         const asks = t.threads.filter((x) => needsAgent(x) && x.mode === "ask");
-        if (asks.length)
+        if (asks.length) {
+          handedQuestion = true;
           return {
             wait: { reason: "question", id, status: r.status },
             count: asks.length,
@@ -1489,6 +1492,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
               `Run \`thurview wait --review ${id}\` again afterwards`,
             ],
           };
+        }
         await new Promise((res) => setTimeout(res, 700));
       }
       return {
@@ -1498,7 +1502,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         ],
       };
     } finally {
-      await listening.stop();
+      await (handedQuestion ? listening.handOff() : listening.stop());
     }
   },
 

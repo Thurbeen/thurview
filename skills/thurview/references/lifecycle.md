@@ -111,7 +111,9 @@ While `thurview wait` runs it writes a heartbeat to
 it back as one of two sentences: an agent is listening now, or nothing is
 listening and what you send is queued until one checks in. Nothing else
 writes it, so presence is never inferred and never faked. A heartbeat older
-than 15 seconds is a dead `wait`, not an agent.
+than 15 seconds is a dead `wait`, not an agent. When `wait` returns
+`question` it leaves a last heartbeat that holds for ten minutes, since you
+are answering and will wait again; the next `wait` takes over from it.
 
 That is why a question asked while you are away is not lost and does not need
 you to sit in `wait`: it is queued, `thurview` reports it as `needsAgent` the
@@ -130,7 +132,7 @@ thurview threads resolve <threadId> --review <id>
 ${THURVIEW_HOME:-~/.thurview}/
 ├── THURVIEW.md              user guidance (optional)
 ├── server.json              running server, if any
-├── agents/<id>.json         heartbeat of a running `wait`, removed when it ends
+├── agents/<id>.json         heartbeat of a running `wait`, or of an agent answering what it returned
 ├── forge/<id>.json          what the forge last said of the change request: head, state, CI, last pass posted
 ├── passes/<id>.json         the submission `forge pass` wrote, for `forge submit`
 └── reviews/<id>/
@@ -180,7 +182,8 @@ again.
 `thurview threads get <id>` truncates bodies over 1500 characters; pass
 `--full` when the hint says so.
 
-While `wait` runs, the reader's page says an agent is listening; when it
-returns, the page says the opposite within seconds. Do not leave `wait`
+While `wait` runs, and while you answer the question it returned, the
+reader's page says an agent is listening; when it returns anything else, the
+page says the opposite within seconds. Do not leave `wait`
 running to look present when you are not going to answer, and do not loop it
 to keep a queue drained: the queue survives you, and the reader is told so.
