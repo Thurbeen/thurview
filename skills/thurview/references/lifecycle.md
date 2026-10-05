@@ -225,3 +225,10 @@ Keep one store per Worker and back it up: another store cannot reconstruct
 its existing public assets. A stale lock requires verifying the publisher
 has stopped before removing it. Public copies persist independently of local
 review deletion.
+
+## Exporting reader feedback
+
+`thurview export <id> --format md --out feedback.md` exports the reader's
+annotations, answers and verdicts for every document kind. The reader offers
+**Export for agent** with copy and download actions. See
+[Markdown export](agent-export.md) for the format, ordering and revision rules.
