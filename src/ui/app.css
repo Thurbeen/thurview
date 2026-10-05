@@ -2204,3 +2204,17 @@ kbd {
 .cov-link > .muted {
   overflow-wrap: anywhere;
 }
+
+.export-preview {
+  width: 100%;
+  min-width: 0;
+  height: 45vh;
+  resize: vertical;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-bottom: 16px;
+}
+
+.export-actions {
+  flex-wrap: wrap;
+}

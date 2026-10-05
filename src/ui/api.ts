@@ -101,6 +101,10 @@ function post<T>(url: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  export: (id: string, revision: number) =>
+    j<{ markdown: string; filename: string; revision: number; threads: number; open: number }>(
+      `/api/reviews/${id}/export?revision=${revision}`,
+    ),
   reviews: () => j<(ReviewState & { openThreads: number; queue: QueueRow })[]>("/api/reviews"),
   review: (id: string, revision?: number) =>
     j<Payload>(`/api/reviews/${id}${revision ? `?revision=${revision}` : ""}`),

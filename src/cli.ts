@@ -69,6 +69,7 @@ import {
   waitForEvent,
   STOP_LABEL,
 } from "./pr-review/follow.js";
+import { exportMarkdown } from "./export-markdown.js";
 import { VERSION } from "./version.js";
 
 const execFileP = promisify(execFile);
@@ -692,7 +693,10 @@ const SPECS: Record<
   export: {
     description:
       "Write a published document to one self-contained HTML file that opens with no server",
+    args: "[<review>]",
     flags: {
+      format: { kind: "string", help: "export format (html or md)", default: "html" },
+      revision: { kind: "string", help: "sealed revision for Markdown (default: current)" },
       review: {
         kind: "string",
         help: "review id prefix (default: the review for this worktree)",
@@ -1289,6 +1293,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       revision: n,
       at: now(),
       title: doc.document.title,
+      binding: review.binding,
       pins: review.pins,
       kind,
       hasMap: !!map,
@@ -1403,13 +1408,45 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     }
   },
   async export(args) {
-    const p = parseFlags("export", args, spec("export").flags);
+    const p = parseFlags("export", args, spec("export").flags, 1);
+    const format = str(p, "format");
+    if (format === "md") {
+      const review = await resolveReview(str(p, "review") ?? p.positional[0], { terminal: true });
+      let result;
+      try {
+        result = await exportMarkdown(
+          review,
+          str(p, "revision") === undefined ? undefined : Number(str(p, "revision")),
+        );
+      } catch (e) {
+        throw new AxiError((e as Error).message, "VALIDATION_ERROR", [
+          "Publish the document first, then run `thurview export --review <id>`",
+        ]);
+      }
+      const output = str(p, "out");
+      if (output) await writeText(resolve(output), result.markdown);
+      return {
+        export: {
+          revision: result.revision,
+          threads: result.threads,
+          open: result.open,
+          ...(output ? { file: output } : {}),
+        },
+        ...(!output ? { markdown: result.markdown } : {}),
+        help: [
+          'Act on the unresolved checklist, then run `thurview threads reply <threadId> --review <id> --body "<answer>"`',
+          "Run `thurview threads list --review <id>` to look up thread ids",
+        ],
+      };
+    }
+    if (format !== "html")
+      throw new AxiError("export format must be md or html", "VALIDATION_ERROR", []);
     const out = str(p, "out");
     if (!out)
       throw new AxiError("--out is required", "VALIDATION_ERROR", [
         "Run `thurview export --out review.html`, or `--out <folder>` for <folder>/index.html",
       ]);
-    const review = await resolveReview(str(p, "review"), { terminal: true });
+    const review = await resolveReview(str(p, "review") ?? p.positional[0], { terminal: true });
     if (!review.revision)
       throw new AxiError(`review ${short(review.id)} is not published yet`, "VALIDATION_ERROR", [
         `Run \`thurview publish --review ${short(review.id)}\` first`,
@@ -1829,7 +1866,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       // or a review the reader finished last week shadows the one in hand.
       const review = await resolveReview(str(p, "review")).catch((e) => {
         if (e instanceof AxiError && e.code === "NOT_FOUND")
-          return resolveReview(str(p, "review"), { terminal: true });
+          return resolveReview(str(p, "review") ?? p.positional[0], { terminal: true });
         throw e;
       });
       const t = await readThreads(review.id);
