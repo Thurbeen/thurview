@@ -266,4 +266,63 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
     expect((await seen()).theme).toBe("light");
     p.close();
   }, 30_000);
+  for (const width of [1280, 320])
+    it(`exports matching Markdown through the reader controls (${width}px)`, async () => {
+      const p = await page(width, 800);
+      try {
+        const result = await p.evaluate<{
+          preview: boolean;
+          clipboard: boolean;
+          download: boolean;
+          fallback: boolean;
+          fits: boolean;
+        }>(`(async () => {
+          [...document.querySelectorAll("button")].find(b => b.textContent === "Export for agent").click();
+          await new Promise((ok, no) => {
+            const start = Date.now();
+            (function wait() {
+              if (document.querySelector(".export-preview")) return ok();
+              if (Date.now() - start > 5000) return no(new Error("export dialog did not load"));
+              setTimeout(wait, 50);
+            })();
+          });
+          const preview = document.querySelector(".export-preview");
+          const exported = await fetch("/api/reviews/${reviewId}/export").then(r => r.json());
+          let copied;
+          Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+            writeText: async text => { copied = text; },
+          } });
+          const buttons = [...document.querySelector(".dialog").querySelectorAll("button")];
+          const copy = buttons.find(b => b.textContent === "Copy to clipboard");
+          copy.click();
+          await new Promise(r => setTimeout(r, 10));
+          let download;
+          const original = HTMLAnchorElement.prototype.click;
+          HTMLAnchorElement.prototype.click = function() { download = { url: this.href, name: this.download }; };
+          try { buttons.find(b => b.textContent === "Download .md").click(); }
+          finally { HTMLAnchorElement.prototype.click = original; }
+          const downloaded = await fetch(download.url).then(r => r.text());
+          navigator.clipboard.writeText = async () => { throw new Error("denied"); };
+          copy.click();
+          await new Promise(r => setTimeout(r, 10));
+          const rect = document.querySelector(".dialog").getBoundingClientRect();
+          return {
+            preview: preview.value === exported.markdown && preview.value.includes("## What to do"),
+            clipboard: copied === exported.markdown,
+            download: downloaded === exported.markdown && download.name.endsWith(".md"),
+            fallback: preview.selectionStart === 0 && preview.selectionEnd === preview.value.length,
+            fits: buttons.every(b => { const box = b.getBoundingClientRect(); return box.left >= rect.left && box.right <= rect.right; }),
+          };
+        })()`);
+        expect(result).toEqual({
+          preview: true,
+          clipboard: true,
+          download: true,
+          fallback: true,
+          fits: true,
+        });
+      } finally {
+        p.close();
+      }
+    }, 30_000);
 });
