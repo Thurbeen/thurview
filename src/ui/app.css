@@ -817,42 +817,117 @@ kbd {
   height: 100%;
 }
 .file-list {
-  width: 300px;
-  min-width: 200px;
-  border-right: 1px solid var(--line);
+  width: var(--tree-width);
+  flex: 0 0 var(--tree-width);
+  min-width: 0;
   overflow: auto;
   background: var(--bg2);
-  font-size: 12.5px;
+  font-size: 12px;
 }
-.file-list .item {
-  padding: 6px 10px;
-  cursor: pointer;
+.tree-toolbar {
   display: flex;
-  gap: 8px;
-  align-items: baseline;
+  gap: 4px;
+  align-items: center;
+  padding: 8px;
+}
+.tree-toolbar strong {
+  flex: 1;
+}
+.file-list input {
+  width: calc(100% - 16px);
+  margin: 0 8px 8px;
+  min-width: 0;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  cursor: pointer;
   border-left: 2px solid transparent;
 }
-.file-list .item:hover {
+.tree-row:hover,
+.tree-row.active {
   background: var(--bg3);
 }
-.file-list .item.active {
+.tree-row.active {
   border-left-color: var(--accent);
-  background: var(--bg3);
 }
-.file-list .item .name {
+.file-tree [role="treeitem"]:focus {
+  outline: none;
+}
+.file-tree [role="treeitem"]:focus > .tree-row {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.tree-row .name {
   font-family: var(--font-mono);
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  direction: rtl;
-  text-align: left;
+}
+.tree-origin {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.tree-icon {
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.tree-marker {
+  color: var(--accent);
 }
 .file-list .stat {
   font-family: var(--font-mono);
   font-size: 11px;
   white-space: nowrap;
+}
+.tree-resizer {
+  width: 6px;
+  flex-shrink: 0;
+  background: var(--line);
+  cursor: col-resize;
+  touch-action: none;
+}
+.tree-resizer:hover,
+.tree-resizer:focus {
+  background: var(--accent);
+}
+.tree-show {
+  display: none;
+  align-self: flex-start;
+  margin: 8px;
+}
+.tree-hidden > .file-list,
+.tree-hidden > .tree-resizer {
+  display: none;
+}
+.tree-hidden > .tree-show {
+  display: block;
+}
+.file-view::after {
+  content: "";
+  display: block;
+  height: calc(100% - 60px);
+}
+.file-section {
+  min-height: 180px;
+  border-bottom: 1px solid var(--line);
+}
+.files-layout {
+  position: relative;
+  min-width: 0;
+}
+.files-layout > .commits,
+.files-layout > .coverage-view {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
 }
 .stat .a {
   color: var(--ok);
@@ -1807,16 +1882,30 @@ kbd {
     font-size: 14px;
   }
 
-  /* Files: the list becomes a strip above the diff. */
+  /* A drawer leaves the diff the full narrow viewport. */
   .files-layout {
-    flex-direction: column;
+    flex-direction: row;
   }
   .file-list {
-    width: 100%;
-    min-width: 0;
-    max-height: 30vh;
-    border-right: none;
-    border-bottom: 1px solid var(--line);
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: min(360px, 90%);
+    max-width: 90%;
+    z-index: 15;
+    box-shadow: var(--shadow-lg);
+  }
+  .tree-resizer {
+    display: none;
+  }
+  .tree-show {
+    display: block;
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    z-index: 10;
+  }
+  .tree-row {
+    min-height: 44px;
   }
   .file-view .file-head {
     flex-wrap: wrap;

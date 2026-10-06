@@ -345,7 +345,22 @@ function moreMenu(e: MouseEvent): void {
   import("./dom.js").then(({ popover }) => popover(box, { x: e.pageX - 200, y: e.pageY + 10 }));
 }
 
+let disposeCenter: (() => void) | undefined;
 function renderCenter(): void {
+  const oldView = center.querySelector<HTMLElement>(".file-view");
+  const path = oldView?.dataset.path;
+  const section = [...(oldView?.querySelectorAll<HTMLElement>(".file-section") ?? [])].find(
+    (e) => e.dataset.path === path,
+  );
+  const position =
+    oldView && section && path === state.params.get("path") && !state.params.has("line")
+      ? {
+          path: path!,
+          offset: oldView.getBoundingClientRect().top - section.getBoundingClientRect().top,
+        }
+      : undefined;
+  disposeCenter?.();
+  disposeCenter = undefined;
   const scroll = center.scrollTop;
   clear(center);
   switch (view()) {
@@ -353,7 +368,7 @@ function renderCenter(): void {
       renderReview(center);
       break;
     case "files":
-      renderFiles(center);
+      disposeCenter = renderFiles(center, position);
       break;
     case "commits":
       void renderCommits(center);

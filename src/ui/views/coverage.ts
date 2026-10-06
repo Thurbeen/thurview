@@ -8,6 +8,7 @@
  * commit - its anchors, its map's globs, and the searches it recorded, re-run
  * there - as counts and lists of named things, nothing graded.
  */
+import { fileLayout, coverageFiles } from "../file-tree.js";
 import { h, append } from "../dom.js";
 import { state, navigate } from "../state.js";
 import { openAnchorPeek } from "../code.js";
@@ -35,7 +36,17 @@ export function renderCoverage(root: HTMLElement): void {
     ]);
     return;
   }
-  append(root, [intro(cov), searches(cov), clusters(cov), owners(cov)]);
+  const content = h(
+    "div",
+    { class: "coverage-view" },
+    intro(cov),
+    searches(cov),
+    clusters(cov),
+    owners(cov),
+  );
+  root.appendChild(
+    fileLayout(coverageFiles(cov), content, (path) => navigate("files", { path })).element,
+  );
 }
 
 /** A revision sealed before searches were counted has no such state. */

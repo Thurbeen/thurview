@@ -1,59 +1,120 @@
 import { api } from "../api.js";
 import { h } from "../dom.js";
-import { state, navigate, isNarrow, canWrite } from "../state.js";
+import { state, isNarrow, canWrite } from "../state.js";
 import { attachDefinitions, startLineComment, lineClick, codeSelectionHandler } from "../code.js";
+import { fileLayout, coverageFiles, type TreeFile } from "../file-tree.js";
 import { threadPinRow } from "../threads.js";
 import type { FileDiff, DiffRow } from "../../diff.js";
 import type { Thread } from "../../store.js";
 
-export function renderFiles(root: HTMLElement): void {
-  const changes = state.data?.changes ?? [];
-  const path = state.params.get("path") ?? changes[0]?.path ?? "";
-  const list = h("div", { class: "file-list" });
-  for (const c of changes) {
-    const n = (state.data?.threads ?? []).filter(
-      (t) => t.target.type === "file" && t.target.path === c.path && t.status === "open",
-    ).length;
-    list.appendChild(
-      h(
-        "div",
-        {
-          class: `item ${c.path === path ? "active" : ""}`,
-          onclick: () => navigate("files", { path: c.path }),
-        },
-        h(
-          "span",
-          {
-            class: `badge ${c.status === "A" ? "ok" : c.status === "D" ? "del" : ""}`,
-            style: { minWidth: "20px", textAlign: "center" },
-          },
-          c.status,
-        ),
-        h("span", { class: "name", title: c.path }, c.path),
-        n ? h("span", { class: "badge accent" }, String(n)) : null,
-        h(
-          "span",
-          { class: "stat" },
-          h("span", { class: "a" }, `+${c.additions}`),
-          " ",
-          h("span", { class: "d" }, `−${c.deletions}`),
-        ),
-      ),
-    );
+export function renderFiles(
+  root: HTMLElement,
+  position?: { path: string; offset: number },
+): () => void {
+  const files: TreeFile[] = [
+    ...(state.data?.changes ?? []),
+    ...coverageFiles(state.data?.coverage),
+  ];
+  for (const anchor of Object.values(state.data?.document?.anchors ?? {})) {
+    if (anchor.peek && !files.some((f) => f.path === anchor.peek!.file))
+      files.push({ path: anchor.peek.file });
   }
-  if (!changes.length)
-    list.appendChild(
+  const selected = state.params.get("path") ?? files[0]?.path ?? "";
+  if (selected && !files.some((f) => f.path === selected)) files.push({ path: selected });
+  const view = h("div", { class: "file-view" });
+  const sections = new Map<string, HTMLElement>();
+  const loading = new Map<string, Promise<void>>();
+  let opening = false;
+  let openRequest = 0;
+  const load = (path: string) => {
+    let promise = loading.get(path);
+    if (!promise) {
+      promise = renderDiff(sections.get(path)!, path, path === selected);
+      loading.set(path, promise);
+    }
+    return promise;
+  };
+  const current = (path: string) => {
+    tree.setActive(path);
+    view.dataset.path = path;
+    if (state.params.get("path") !== path) state.params.delete("line");
+    state.params.set("path", path);
+    history.replaceState(null, "", `#/files?${state.params}`);
+  };
+  const open = async (path: string, initial = false) => {
+    const request = ++openRequest;
+    const lineJump = initial && state.params.has("line");
+    opening = true;
+    await load(path);
+    if (request !== openRequest || !view.isConnected) return;
+    const section = sections.get(path)!;
+    if (!lineJump)
+      view.scrollTop +=
+        section.getBoundingClientRect().top -
+        view.getBoundingClientRect().top +
+        (initial && position?.path === path ? position.offset : 0);
+    current(path);
+    opening = false;
+  };
+  const tree = fileLayout(files, view, (path) => void open(path), selected);
+  for (const file of files) {
+    const section = h(
+      "section",
+      { class: "file-section", "data-path": file.path },
+      h("div", { class: "file-head" }, file.path),
+    );
+    sections.set(file.path, section);
+    view.appendChild(section);
+  }
+  root.appendChild(tree.element);
+  if (!files.length)
+    view.appendChild(
       h("div", { class: "empty-state" }, "No changed files: base and head are the same commit."),
     );
-  const view = h("div", { class: "file-view", "data-path": path });
-  root.appendChild(h("div", { class: "files-layout" }, list, view));
-  if (path) void renderDiff(view, path);
+  // The surrounding scroll container owns this observer; a removed view no longer loads diffs.
+  const observer = new IntersectionObserver(
+    (entries) => {
+      if (!view.isConnected) {
+        observer.disconnect();
+        return;
+      }
+      for (const entry of entries)
+        if (entry.isIntersecting) {
+          observer.unobserve(entry.target);
+          void load((entry.target as HTMLElement).dataset.path!);
+        }
+    },
+    { root: view, rootMargin: "200px" },
+  );
+  for (const section of sections.values()) observer.observe(section);
+  view.addEventListener("scroll", () => {
+    if (opening) return;
+    const top = view.getBoundingClientRect().top;
+    let path = files[0]?.path;
+    for (const [candidate, section] of sections) {
+      if (section.getBoundingClientRect().top <= top + 32) path = candidate;
+      else break;
+    }
+    if (path) current(path);
+  });
+  if (selected) void open(selected, true);
+  return () => {
+    observer.disconnect();
+    openRequest++;
+  };
 }
 
-async function renderDiff(view: HTMLElement, path: string): Promise<void> {
+async function renderDiff(view: HTMLElement, path: string, focusLine = true): Promise<void> {
   const inChanges = state.data?.changes.some((c) => c.path === path);
-  const line = Number(state.params.get("line") ?? 0);
-  const side = state.params.get("side") === "base" ? "base" : "head";
+  const line = focusLine ? Number(state.params.get("line") ?? 0) : 0;
+  const anchor = Object.values(state.data?.document?.anchors ?? {}).find(
+    (a) => a.peek?.file === path,
+  );
+  const side =
+    (focusLine && state.params.get("side") === "base") ||
+    (!inChanges && anchor?.peek?.graph === "base")
+      ? "base"
+      : "head";
   view.appendChild(h("div", { class: "muted", style: { padding: "12px" } }, "Loading…"));
   let d: FileDiff;
   try {
@@ -87,6 +148,7 @@ async function renderDiff(view: HTMLElement, path: string): Promise<void> {
     view.appendChild(h("div", { class: "empty-state" }, (e as Error).message));
     return;
   }
+  if (!view.isConnected) return;
   view.innerHTML = "";
   // Split needs two code columns; below the breakpoint there is room for one.
   const split = state.splitDiff && inChanges && !isNarrow();
@@ -98,7 +160,7 @@ async function renderDiff(view: HTMLElement, path: string): Promise<void> {
         state.splitDiff = !state.splitDiff;
         localStorage.setItem("thurview.split", state.splitDiff ? "1" : "0");
         view.innerHTML = "";
-        void renderDiff(view, path);
+        void renderDiff(view, path, focusLine);
       },
     },
     state.splitDiff ? "Unified" : "Split",
