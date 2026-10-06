@@ -340,6 +340,10 @@ It refuses a document with no published revision, and a copy does not update:
 export again after each publish. Committing or uploading the file is the
 user's step - name where it was written and leave it there unless asked.
 
+To put the copy in the user's own cloud - an Azure Storage container, an S3
+bucket, a Cloud Storage bucket or a Cloudflare Pages project - at a stable
+path with a link that expires, follow the `thurview-publish` skill.
+
 ## Explaining a codebase rather than a change
 
 Do not pin the same commit as base and head to fake it. That leaves a review

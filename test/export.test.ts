@@ -182,6 +182,13 @@ describe("thurview export", () => {
     expect(html.indexOf(boot)).toBeLessThan(html.indexOf("<style>"));
   });
 
+  // An uploaded copy can end up on a public URL; it must never be indexed.
+  it("asks search engines not to index or follow the copy", async () => {
+    const html = await readFile(withThreads, "utf8");
+    const head = html.slice(0, html.indexOf("</head>"));
+    expect(head).toContain(`<meta name="robots" content="noindex, nofollow" />`);
+  });
+
   it("writes a folder target as its index.html, and leaves threads out when asked", async () => {
     const bare = await readFile(join(withoutThreads, "index.html"), "utf8");
     expect(bare).not.toContain(THREAD);
