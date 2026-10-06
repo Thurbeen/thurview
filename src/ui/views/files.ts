@@ -1,6 +1,6 @@
 import { api } from "../api.js";
 import { h } from "../dom.js";
-import { state, navigate, isNarrow } from "../state.js";
+import { state, navigate, isNarrow, canWrite } from "../state.js";
 import { attachDefinitions, startLineComment, lineClick, codeSelectionHandler } from "../code.js";
 import { threadPinRow } from "../threads.js";
 import type { FileDiff, DiffRow } from "../../diff.js";
@@ -116,12 +116,14 @@ async function renderDiff(view: HTMLElement, path: string): Promise<void> {
         { class: "muted" },
         `${d.hunks.reduce((n, hk) => n + hk.rows.filter((r) => r.type === "add").length, 0)} added · ${d.hunks.reduce((n, hk) => n + hk.rows.filter((r) => r.type === "del").length, 0)} deleted`,
       ),
-      h(
-        "span",
-        { class: "muted hint" },
-        "click a line number to comment · shift-click or select text for a range",
-      ),
-      state.viewingRevision === null
+      canWrite()
+        ? h(
+            "span",
+            { class: "muted hint" },
+            "click a line number to comment · shift-click or select text for a range",
+          )
+        : null,
+      canWrite()
         ? h(
             "button",
             {

@@ -33,7 +33,58 @@ export interface FileLines {
   lines: string[];
 }
 
+/**
+ * A page written by `thurview export` carries its data in place of a server:
+ * the document, commits, diffs and the whole of every file it shows. Null when
+ * the page is served, which is every other time.
+ */
+export interface Snapshot {
+  payload: Payload;
+  commits: Commit[];
+  diffs: Record<string, FileDiff>;
+  /** keyed `head:<path>` or `base:<path>`, every line of the file */
+  files: Record<string, FileLines>;
+}
+
+export const published: Snapshot | null = (() => {
+  const el = document.getElementById("thurview-snapshot");
+  return el?.textContent ? (JSON.parse(el.textContent) as Snapshot) : null;
+})();
+
+/** What a published page answers for `url`, or throws: it has no server to ask. */
+function offline<T>(url: string): T {
+  const snap = published!;
+  const u = new URL(url, "http://published.invalid");
+  const sub = u.pathname.split("/").filter(Boolean)[3];
+  const path = u.searchParams.get("path") ?? "";
+  const answer =
+    sub === undefined
+      ? snap.payload
+      : sub === "commits"
+        ? snap.commits
+        : sub === "presence"
+          ? snap.payload.agent
+          : sub === "diff"
+            ? snap.diffs[path]
+            : sub === "file"
+              ? sliceLines(snap.files[`${u.searchParams.get("graph")}:${path}`], u.searchParams)
+              : undefined;
+  if (answer === undefined) throw new Error("not in this published copy");
+  return answer as T;
+}
+
+function sliceLines(f: FileLines | undefined, q: URLSearchParams): FileLines | undefined {
+  if (!f) return undefined;
+  const from = Math.max(1, Number(q.get("from") ?? 1));
+  const to = Math.min(f.total, Number(q.get("to") ?? f.total));
+  return { ...f, from, to, lines: f.lines.slice(from - 1, to) };
+}
+
 async function j<T>(url: string, init?: RequestInit): Promise<T> {
+  if (published) {
+    if (init?.method && init.method !== "GET") throw new Error("a published copy is read only");
+    return offline<T>(url);
+  }
   const r = await fetch(url, init);
   const body = (await r.json()) as T & { error?: string };
   if (!r.ok) throw new Error(body.error ?? r.statusText);

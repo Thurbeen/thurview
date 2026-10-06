@@ -219,6 +219,9 @@ the code" - not a finding.
 7. `thurview open --review <id>`, then `thurview wait --review <id>`. The loop,
    the statuses and the thread rules are identical to a review; see
    **Lifecycle**.
+8. To share it beyond the browser, `thurview export --review <id> --out <path>`
+   writes a static, read-only copy - see the `thurview` skill's **Sharing a
+   copy that needs no server**.
 
 ## Hand over
 

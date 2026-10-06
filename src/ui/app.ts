@@ -1,4 +1,4 @@
-import { api } from "./api.js";
+import { api, published } from "./api.js";
 import { h, append, clear, dialog, timeAgo } from "./dom.js";
 import {
   state,
@@ -6,7 +6,7 @@ import {
   emit,
   readHash,
   navigate,
-  isTerminal,
+  readOnly,
   kind,
   view,
   VIEWS,
@@ -218,10 +218,14 @@ function renderTopbar(): void {
   // Two rows, so a long title can never push the tabs or the decision button
   // off the bar: the identity row truncates, the actions row does not.
   const identity = h("div", { class: "bar-row bar-identity" }, [
-    h("a", { href: "/", class: "brand", title: "All reviews" }, "thurview"),
+    published
+      ? h("span", { class: "brand" }, "thurview")
+      : h("a", { href: "/", class: "brand", title: "All reviews" }, "thurview"),
     h("span", { class: "title", title: r.title }, r.title),
     h("span", { class: `badge ${statusClass(r.status)}` }, r.status),
-    r.revision > 1 ? revSel : h("span", { class: "badge bar-rev" }, `rev ${r.revision}`),
+    r.revision > 1 && !published
+      ? revSel
+      : h("span", { class: "badge bar-rev" }, `rev ${r.revision}`),
     h(
       "span",
       {
@@ -252,18 +256,20 @@ function renderTopbar(): void {
       },
       `Threads${open ? ` · ${open}` : ""}`,
     ),
-    isTerminal() || state.viewingRevision !== null
+    readOnly()
       ? null
       : h(
           "button",
           { class: pending ? "primary" : "ok", onclick: () => submitDialog() },
           pending ? `Submit${pending ? ` (${pending})` : ""}` : "Decide",
         ),
-    h(
-      "button",
-      { class: "ghost bar-more", title: "More", onclick: (e: MouseEvent) => moreMenu(e) },
-      "⋯",
-    ),
+    published
+      ? null
+      : h(
+          "button",
+          { class: "ghost bar-more", title: "More", onclick: (e: MouseEvent) => moreMenu(e) },
+          "⋯",
+        ),
   ]);
   append(topbar, [identity, actions]);
 }
@@ -372,7 +378,12 @@ function renderBanner(): void {
   banner.hidden = true;
   clear(banner);
   const d = state.data!;
-  if (state.viewingRevision !== null) {
+  if (published) {
+    banner.hidden = false;
+    banner.append(
+      `Published copy of revision ${d.review.revision}, ${d.review.status}. Read only: nothing here reaches the agent.`,
+    );
+  } else if (state.viewingRevision !== null) {
     banner.hidden = false;
     banner.append(
       `Viewing revision ${state.viewingRevision} of ${d.review.revision}. Read only.`,
@@ -505,10 +516,16 @@ async function reviewPage(id: string): Promise<void> {
   });
   window.matchMedia(NARROW).addEventListener("change", () => emit("view"));
   emit("data");
+  if (published) {
+    // nothing here starts a thread, so the controls that would are not drawn
+    document.documentElement.classList.add("published");
+    return;
+  }
   connectEvents();
   pollPresence();
 }
 
 const m = /^\/review\/([^/]+)/.exec(location.pathname);
-if (m) void reviewPage(m[1]!);
+if (published) void reviewPage(published.payload.review.id);
+else if (m) void reviewPage(m[1]!);
 else void home();

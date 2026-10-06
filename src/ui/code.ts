@@ -1,6 +1,6 @@
-import { api } from "./api.js";
+import { api, published } from "./api.js";
 import { h, popover, closePopover } from "./dom.js";
-import { state, emit, threadsFor, navigate, kind, VIEWS } from "./state.js";
+import { state, emit, threadsFor, navigate, kind, VIEWS, canWrite } from "./state.js";
 import type { Thread, ThreadTarget } from "../store.js";
 import type { CompiledAnchor } from "../document/compile.js";
 import { commentPopover, threadPinRow } from "./threads.js";
@@ -56,7 +56,7 @@ function textOf(html: string): string {
 }
 
 export function startLineComment(e: MouseEvent, target: ThreadTarget, quote?: string): void {
-  if (state.viewingRevision !== null) return;
+  if (!canWrite()) return;
   const el = commentPopover(target, quote?.trim() ? quote.trim() : undefined);
   popover(el, { x: e.pageX + 8, y: e.pageY + 8 });
 }
@@ -76,7 +76,7 @@ export function lineClick(
   line: number,
   table: HTMLTableElement,
 ): void {
-  if (state.viewingRevision !== null) return;
+  if (!canWrite()) return;
   if (e.shiftKey && rangeStart && rangeStart.path === path && rangeStart.side === side) {
     const from = Math.min(rangeStart.line, line);
     const to = Math.max(rangeStart.line, line);
@@ -129,8 +129,7 @@ export function codeSelectionHandler(root: HTMLElement): void {
       ) as HTMLElement | null;
     const a = rowOf(range.startContainer);
     const b = rowOf(range.endContainer);
-    if (!a || !b || !root.contains(a) || !root.contains(b) || state.viewingRevision !== null)
-      return remove();
+    if (!a || !b || !root.contains(a) || !root.contains(b) || !canWrite()) return remove();
     const table = a.closest("table");
     if (!table || table !== b.closest("table")) return remove();
     const path = (root.closest("[data-path]") as HTMLElement | null)?.dataset["path"] ?? "";
@@ -175,7 +174,8 @@ export function attachDefinitions(root: HTMLElement, graph: "head" | "base"): vo
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
     const word = wordAt(e);
-    if (!word) return;
+    // a published copy carries no symbol index to look the word up in
+    if (!word || published) return;
     const defs = await api.symbols(state.id, word, graph);
     if (e.ctrlKey || e.metaKey) {
       const d = defs[0];
