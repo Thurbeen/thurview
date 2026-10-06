@@ -161,7 +161,7 @@ describe("thurview export", () => {
     expect(html).toMatch(/^<!doctype html>/);
     // The bundled app still holds the paths it asks a server for, never taken
     // here; what must be absent is any server's address and this review's own
-    // endpoints, which a theme's fonts would otherwise be loaded from.
+    // endpoints.
     for (const server of ["localhost", "127.0.0.1", `/api/reviews/${reviewId}`])
       expect(html).not.toContain(server);
     expect(html).not.toMatch(/(src|href)="\/(?!\/)/);

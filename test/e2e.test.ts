@@ -152,6 +152,9 @@ describe("thurview end to end", () => {
     expect(r.base).toBe(base.trim());
     expect(ev["change"].files).toBe(2);
     expect(ev["help"].length).toBeGreaterThan(0);
+    // one theme: nothing for the agent to restyle, so no theme.yaml to fill in
+    expect(ev["files"]?.theme).toBeUndefined();
+    await expect(readFile(join(reviewDir, "theme.yaml"), "utf8")).rejects.toThrow(/ENOENT/);
     const home = await cli([]);
     expect(home["reviews"]).toHaveLength(1);
     expect(home["reviews"][0].status).toBe("draft");
@@ -512,30 +515,25 @@ check
       ),
     ).toBe(true);
     await writeFile(join(reviewDir, "data.yaml"), data);
+    // a theme.yaml left by an older thurview is ignored, and publish says so
     await writeFile(
       join(reviewDir, "theme.yaml"),
-      `name: demo-light\nsource: test\nmode: light\ncolors: { bg: "#ffffff", fg: "#111827", accent: "#2563eb" }\nshape: { radius: 6px }\ncode: { keyword: "#123456" }\nfonts: { files: [{ family: Missing, path: fonts/nope.woff2 }] }\n`,
-    );
-    const badFont = await cli(["publish", "--review", reviewId], { expectCode: 1 });
-    expect(
-      badFont["diagnostics"].some((d: Out) => String(d["message"]).includes("fonts/nope.woff2")),
-    ).toBe(true);
-    await writeFile(
-      join(reviewDir, "theme.yaml"),
-      `name: demo-light\nsource: test\nmode: light\ncolors: { bg: "#ffffff", fg: "#111827", accent: "#2563eb" }\nshape: { radius: 6px, scanlines: true }\ncode: { keyword: "#123456" }\n`,
+      `name: demo-light\nmode: light\ncolors: { bg: "#000000" }\n`,
     );
     const out = await cli(["publish", "--review", reviewId]);
     expect(out["published"].rev).toBe(1);
     expect(out["published"].map).toBe(true);
-    expect(out["published"].theme).toBe("demo-light");
+    expect(out["published"].theme).toBeUndefined();
     expect(out["published"].interfaces).toBe("2 added.");
-    expect(out["diagnostics"]).toBeUndefined();
+    expect(out["diagnostics"]).toHaveLength(1);
+    expect(out["diagnostics"][0].level).toBe("warning");
+    expect(out["diagnostics"][0].message).toContain("thurview has one theme");
   }, 20_000);
 
   it("serves the compiled document, diffs, files, symbols and map", async () => {
     const p = await api<{
       review: { status: string; title: string };
-      theme: { name: string; css: string };
+      theme?: unknown;
       document: {
         blocks: { type: string }[];
         anchors: Record<string, { peek?: { lines: string[] } }>;
@@ -556,12 +554,7 @@ check
     expect(ifaces.entries[1]!.anchor).toBe("auditCall");
     expect(ifaces.verdict).toBe("2 added.");
     expect(p.review.status).toBe("awaiting-review");
-    expect(p.theme.name).toBe("demo-light");
-    expect(p.theme.css).toContain("--accent: #2563eb");
-    expect(p.theme.css).toContain("--radius: 6px");
-    expect(p.theme.css).toContain("color-scheme: light;");
-    expect(p.theme.css).toContain("body::after");
-    expect(p.document.anchors["login"]!.peek!.lines.join("")).toMatch(/#123456/i);
+    expect(p.theme).toBeUndefined();
     expect(p.review.title).toBe("Audit every login");
     const types = p.document.blocks.map((b) => b.type);
     expect(types).toEqual(
@@ -642,7 +635,7 @@ check
       `/api/reviews/${reviewId}/diff?path=src/auth.ts`,
     );
     expect(d.hunks[0]!.rows.filter((r) => r.type === "add")).toHaveLength(3);
-    expect(d.hunks[0]!.rows.map((r) => r.html).join("")).toMatch(/#123456/i);
+    expect(d.hunks[0]!.rows.map((r) => r.html).join("")).toMatch(/color:#cf222e/i);
     const f = await api<{ total: number; lines: string[] }>(
       `/api/reviews/${reviewId}/file?path=src/auth.ts&graph=base&from=1&to=3`,
     );

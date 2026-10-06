@@ -139,7 +139,6 @@ ${THURVIEW_HOME:-~/.thurview}/
     ├── review.md            you edit
     ├── data.yaml            you edit
     ├── map.yaml             you edit
-    ├── theme.yaml           you edit (project look; empty = default skin)
     ├── review.json          binding, pins, status, presented revision
     ├── threads.json         threads and decisions (use the CLI)
     └── revisions/<n>/       sealed copies plus compiled document.json, map.json

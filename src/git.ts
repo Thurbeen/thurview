@@ -89,15 +89,6 @@ export async function showFile(cwd: string, commit: string, path: string): Promi
   }
 }
 
-export async function fileExists(cwd: string, commit: string, path: string): Promise<boolean> {
-  try {
-    await git(cwd, ["cat-file", "-e", `${commit}:${path}`]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export async function listFiles(cwd: string, commit: string): Promise<string[]> {
   const out = await git(cwd, ["ls-tree", "-r", "--name-only", "-z", commit]);
   return out.split("\0").filter(Boolean);

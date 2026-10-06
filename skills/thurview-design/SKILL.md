@@ -75,11 +75,11 @@ Read the guidance files that exist, in this order; the second wins on conflict.
 `thurview design` lists the ones it found under `guidance`.
 
 The `thurview` skill ships the references this one shares — components,
-software map, theme, lifecycle. `thurview skill` prints the path of every
+software map, lifecycle. `thurview skill` prints the path of every
 bundled SKILL.md; the references sit beside each one. Read **Components**
 before you edit `data.yaml`, **Software map** before you author `map.yaml`,
-**Theme** before you write `theme.yaml`, and **Lifecycle** for statuses,
-storage and thread rules — they are identical for all three kinds.
+and **Lifecycle** for statuses, storage and thread rules — they are identical
+for all three kinds.
 
 ## Workflow
 
@@ -213,10 +213,7 @@ The Map tab is where a design shows structure. Put the structure it
 A design that changes one part in place does not raise the question: leave
 `nodes: []` and say so in the handover.
 
-### 6. Theme, then publish
-
-Write `theme.yaml` per the `thurview` skill's Theme reference, or leave it
-empty for the default skin. Then:
+### 6. Publish
 
 ```sh
 thurview publish --review <id>

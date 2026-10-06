@@ -8,8 +8,6 @@ import { buildFileDiff, type FileDiff } from "../diff.js";
 import { highlightLines, languageFor } from "../highlight.js";
 import { changedFiles, log, showFile, git, type ChangedFile } from "../git.js";
 import { symbolIndex } from "../symbols.js";
-import { registerTheme } from "../highlight.js";
-import type { CompiledTheme } from "../theme.js";
 import {
   listReviews,
   readReview,
@@ -84,13 +82,12 @@ async function findReview(idOrPrefix: string) {
 
 export async function revisionData(id: string, n: number) {
   const dir = revisionDir(id, n);
-  const [document, map, changes, coverage, meta, theme] = await Promise.all([
+  const [document, map, changes, coverage, meta] = await Promise.all([
     readJson<unknown>(join(dir, "document.json")),
     readJson<unknown>(join(dir, "map.json")),
     readJson<ChangedFile[]>(join(dir, "changes.json")),
     readJson<unknown>(join(dir, "coverage.json")),
     readJson<unknown>(join(dir, "meta.json")),
-    readJson<CompiledTheme>(join(dir, "theme.json")),
   ]);
   return {
     // A revision is read back exactly as it was sealed, so one from before a
@@ -105,18 +102,10 @@ export async function revisionData(id: string, n: number) {
     changes: changes ?? [],
     coverage,
     meta,
-    theme: theme ? { name: theme.name, source: theme.source, css: theme.css } : null,
   };
 }
 
-/** Highlighter theme name for a review's presented revision (default skin when none). */
-export async function themeFor(id: string, revision: number): Promise<string | undefined> {
-  if (!revision) return undefined;
-  const t = await readJson<CompiledTheme>(join(revisionDir(id, revision), "theme.json"));
-  return t ? registerTheme(t.shiki) : undefined;
-}
-
-/** One changed file's diff between the review's pins, highlighted in its theme. */
+/** One changed file's diff between the review's pins, highlighted. */
 export async function fileDiff(review: ReviewState, path: string): Promise<FileDiff> {
   const changes = await changedFiles(review.worktree, review.pins.base, review.pins.head);
   const entry = changes.find((c) => c.path === path);
@@ -135,7 +124,6 @@ export async function fileDiff(review: ReviewState, path: string): Promise<FileD
     newText,
     { old: `${review.pins.base}:${oldPath}`, new: `${review.pins.head}:${path}` },
     entry?.oldPath,
-    await themeFor(review.id, review.revision),
   );
 }
 
@@ -155,27 +143,9 @@ export async function fileLines(
   const text = await showFile(review.worktree, commit, path);
   if (text === null) return null;
   const lang = languageFor(path);
-  const lines = await highlightLines(
-    text,
-    lang,
-    `${commit}:${path}`,
-    await themeFor(review.id, review.revision),
-  );
+  const lines = await highlightLines(text, lang, `${commit}:${path}`);
   return { path, graph, lang, total: lines.length, lines };
 }
-
-export const BLOB_TYPES: Record<string, string> = {
-  woff2: "font/woff2",
-  woff: "font/woff",
-  ttf: "font/ttf",
-  otf: "font/otf",
-  svg: "image/svg+xml",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  webp: "image/webp",
-  css: "text/css",
-};
 
 export function tailscaleAddresses(): string[] {
   const out: string[] = [];
@@ -371,23 +341,6 @@ export async function startServer(
           subscribe(review.id, res);
           const ping = setInterval(() => res.write(": ping\n\n"), 25000);
           res.on("close", () => clearInterval(ping));
-          return;
-        }
-        if (parts[1] === "reviews" && parts[3] === "blob" && parts[2]) {
-          // raw file at the head commit, for theme fonts and images the reviewed project ships
-          const review = await findReview(parts[2]);
-          const path = url.searchParams.get("path") ?? "";
-          const ext = path.split(".").pop()?.toLowerCase() ?? "";
-          const type = BLOB_TYPES[ext];
-          if (!path || !type) throw new HttpError(400, "path must name a font, image or css file");
-          const text = await git(review.worktree, ["show", `${review.pins.head}:${path}`], {
-            encoding: "buffer",
-          });
-          res.writeHead(200, {
-            "content-type": type,
-            "cache-control": "public, max-age=31536000, immutable",
-          });
-          res.end(text);
           return;
         }
         const body = await api(req, url);

@@ -62,12 +62,12 @@ Read the guidance files that exist, in this order; the second wins on conflict.
 `thurview explain` lists the ones it found under `guidance`.
 
 The `thurview` skill ships the references this one shares - document authoring,
-components, software map, searching the code, theme, lifecycle. `thurview skill` prints the path of
+components, software map, searching the code, lifecycle. `thurview skill` prints the path of
 every bundled SKILL.md; the references sit beside each one. Read **Document
 authoring** before you write `review.md`, **Components** before you edit
 `data.yaml`, **Software map** before you author `map.yaml`, **Searching the
-code** before you look for callers, tests or importers, **Theme** before you
-write `theme.yaml`, and **Lifecycle** for statuses, storage and thread rules -
+code** before you look for callers, tests or importers, and **Lifecycle** for
+statuses, storage and thread rules -
 they are identical for all three kinds.
 
 Run the CLI as `thurview`; `npx -y thurview` runs the published package with
@@ -212,14 +212,13 @@ the code" - not a finding.
    `interfaces` in `data.yaml` is an error. So is `security`, which is what a
    change carries input across and an explainer has no change. So is
    `graph: base` on an anchor - there is one commit.
-5. `theme.yaml` as usual - see **Theme**.
-6. `thurview publish --review <id>`. Read `coverage` and `notExamined`. If the
+5. `thurview publish --review <id>`. Read `coverage` and `notExamined`. If the
    split is not the one you meant, anchor, place or search more and publish
    again.
-7. `thurview open --review <id>`, then `thurview wait --review <id>`. The loop,
+6. `thurview open --review <id>`, then `thurview wait --review <id>`. The loop,
    the statuses and the thread rules are identical to a review; see
    **Lifecycle**.
-8. To share it beyond the browser, `thurview export --review <id> --out <path>`
+7. To share it beyond the browser, `thurview export --review <id> --out <path>`
    writes a static, read-only copy - see the `thurview` skill's **Sharing a
    copy that needs no server**.
 

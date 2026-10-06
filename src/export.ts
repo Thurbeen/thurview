@@ -2,10 +2,10 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { log, git, showFile } from "./git.js";
+import { log, showFile } from "./git.js";
 import { readThreads, type ReviewState } from "./store.js";
 import { NOBODY } from "./presence.js";
-import { revisionData, fileDiff, fileLines, BLOB_TYPES } from "./server/server.js";
+import { revisionData, fileDiff, fileLines } from "./server/server.js";
 
 const UI_DIR = join(dirname(fileURLToPath(import.meta.url)), "ui");
 
@@ -100,23 +100,6 @@ function dataUri(type: string, bytes: Buffer): string {
   return `data:${type};base64,${bytes.toString("base64")}`;
 }
 
-/** The review's theme with its fonts inlined and every remote stylesheet dropped. */
-async function offlineThemeCss(review: ReviewState, css: string): Promise<string> {
-  const out: string[] = [];
-  for (const line of css.split("\n")) if (!/^@import url\(/.test(line)) out.push(line);
-  let text = out.join("\n");
-  const blob = /url\("\/api\/reviews\/[^/"]+\/blob\?path=([^"]+)"\)/g;
-  for (const m of [...text.matchAll(blob)]) {
-    const path = decodeURIComponent(m[1]!);
-    const type = BLOB_TYPES[path.split(".").pop()?.toLowerCase() ?? ""] ?? "";
-    const bytes = (await git(review.worktree, ["show", `${review.pins.head}:${path}`], {
-      encoding: "buffer",
-    })) as unknown as Buffer;
-    text = text.replace(m[0], `url("${dataUri(type, bytes)}")`);
-  }
-  return text;
-}
-
 async function appCss(): Promise<string> {
   let css = await readFile(join(UI_DIR, "app.css"), "utf8");
   for (const m of [...css.matchAll(/url\("\/(assets\/[^"]+\.woff2)"\)/g)])
@@ -143,11 +126,6 @@ export async function exportReview(
   if (!existsSync(join(UI_DIR, "app.js")))
     throw new Error(`the bundled UI is missing at ${UI_DIR}; run \`pnpm build\``);
   const snap = await snapshot(review, opts.threads);
-  if (snap.payload.theme)
-    snap.payload.theme = {
-      ...snap.payload.theme,
-      css: await offlineThemeCss(review, snap.payload.theme.css),
-    };
   const js = (await readFile(join(UI_DIR, "app.js"), "utf8"))
     .replace(/\n\/\/# sourceMappingURL=.*\s*$/, "\n")
     .replace(/<\/script/gi, "<\\/script");

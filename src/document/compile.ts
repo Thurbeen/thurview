@@ -149,8 +149,6 @@ export interface CompileInput {
   dataYaml: string;
   /** review (a change), explainer (a codebase at one commit) or design (a proposal); default review */
   kind?: DocumentKind;
-  /** registered highlighter theme name (default skin when omitted) */
-  themeName?: string;
 }
 
 /** The kind, as a message names it, so one sentence serves every kind that needs it. */
@@ -271,7 +269,7 @@ export async function compileDocument(input: CompileInput): Promise<{
       } else {
         const lang = languageFor(a.peek.file);
         const commit = a.peek.graph === "head" ? input.pins.head : input.pins.base;
-        const all = await highlightLines(text, lang, `${commit}:${a.peek.file}`, input.themeName);
+        const all = await highlightLines(text, lang, `${commit}:${a.peek.file}`);
         if (a.peek.to > all.length) {
           err(
             "data.yaml",

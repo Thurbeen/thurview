@@ -28,7 +28,7 @@ locally.
 
 - `src/cli.ts`: the AXI command surface; `src/flags.ts` the flag parser.
 - `src/document/`: schema, parser and compiler for `review.md` and
-  `data.yaml`; `src/theme.ts` for `theme.yaml`.
+  `data.yaml`.
 - `src/forge/`: the forge seam - one interface, a GitHub adapter driving `gh`
   and a GitLab adapter driving `glab`, plus the CI reading `forge status`
   reports.
@@ -37,8 +37,8 @@ locally.
   data, answered in advance, written as one HTML file that needs no server.
 - `src/ui/`: the browser app, vanilla TypeScript bundled by esbuild.
 - `skills/thurview/`: the agent skill for a review, and the references the
-  other skills draw on - the document, `data.yaml`, `map.yaml` and
-  `theme.yaml` shapes, the search recipes, and the lifecycle.
+  other skills draw on - the document, `data.yaml` and `map.yaml` shapes, the
+  search recipes, and the lifecycle.
 - `skills/thurview-explain/` and `skills/thurview-design/`: one skill per other
   document kind, each keeping a reference of its own only for what is its
   alone - `thurview-design/references/anchors-and-proposals.md` is the only

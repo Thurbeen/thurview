@@ -1,9 +1,4 @@
-import {
-  createHighlighter,
-  bundledLanguages,
-  type Highlighter,
-  type ThemeRegistration,
-} from "shiki";
+import { createHighlighter, bundledLanguages, type Highlighter } from "shiki";
 import { theme } from "./highlight-theme.js";
 
 const EXT: Record<string, string> = {
@@ -92,21 +87,10 @@ export function languageFor(path: string): string {
 }
 
 let hl: Promise<Highlighter> | null = null;
-const registered = new Set<string>(["thurview"]);
 
 async function highlighter(): Promise<Highlighter> {
   if (!hl) hl = createHighlighter({ themes: [theme], langs: [] });
   return hl;
-}
-
-/** Register a per-review highlighter theme; repeated registrations are no-ops. */
-export async function registerTheme(reg: ThemeRegistration): Promise<string> {
-  const name = reg.name ?? "thurview";
-  if (!registered.has(name)) {
-    await (await highlighter()).loadTheme(reg);
-    registered.add(name);
-  }
-  return name;
 }
 
 function escapeHtml(s: string): string {
@@ -124,9 +108,7 @@ export async function highlightLines(
   code: string,
   lang: string,
   cacheKey?: string,
-  themeName = "thurview",
 ): Promise<string[]> {
-  if (cacheKey) cacheKey = `${themeName}|${cacheKey}`;
   if (cacheKey && cache.has(cacheKey)) return cache.get(cacheKey)!;
   const lines = code.endsWith("\n") ? code.slice(0, -1).split("\n") : code.split("\n");
   let out: string[];
@@ -142,7 +124,7 @@ export async function highlightLines(
         return remember(cacheKey, out);
       }
     }
-    const result = h.codeToTokens(code, { lang: lang as never, theme: themeName });
+    const result = h.codeToTokens(code, { lang: lang as never, theme: "thurview" });
     out = result.tokens.map((toks) =>
       toks
         .map((t) => {

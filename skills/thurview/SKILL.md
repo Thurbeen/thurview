@@ -85,8 +85,7 @@ Read [Document authoring](references/document-authoring.md) before you write.
 Read [Components](references/components.md) before you edit `data.yaml` or add
 a fenced component. Read [Lifecycle](references/lifecycle.md) for statuses,
 storage and thread rules. Read [Software map](references/software-map.md)
-before you author `map.yaml`. Read [Theme](references/theme.md) before you
-write `theme.yaml`.
+before you author `map.yaml`.
 
 ## Workflow
 
@@ -110,7 +109,7 @@ head), when you need to choose between several.
 
 Record from the output: `review.id` (the short id, accepted everywhere),
 `review.dir`, `review.base`, `review.head`, `files.document`, `files.data`,
-`files.map`, `files.theme`, `change` (files, additions, deletions) and
+`files.map`, `change` (files, additions, deletions) and
 `guidance`.
 
 Resolve refs before passing them. Pass commit ids or plain ref names; do not
@@ -237,14 +236,7 @@ not, and publishes as "not assessed". See
 [Document authoring](references/document-authoring.md) and
 [Components](references/components.md).
 
-### 6. Theme the review after the project
-
-Read [Theme](references/theme.md). Decide the look in its order: what the
-user asked for, then the reviewed project's own design system read from its
-files at head, then the default skin. Write `theme.yaml` in the review
-directory when steps 1 or 2 yield tokens; leave it empty otherwise.
-
-### 7. Publish
+### 6. Publish
 
 ```sh
 thurview publish --review <id>
@@ -252,7 +244,7 @@ thurview publish --review <id>
 
 Read every row of `diagnostics`. Fix each `error` and publish again. A
 `warning` does not block. `publish` refuses (code `THREADS_OPEN`) when a
-submitted comment thread is still open (see step 10). On success `published`
+submitted comment thread is still open (see step 9). On success `published`
 carries `rev` and `url`; the status becomes `awaiting-review`.
 
 Then open it for the reader, unless step 2 already did:
@@ -261,7 +253,7 @@ Then open it for the reader, unless step 2 already did:
 thurview open --review <id>            # prints url; --view files|commits|map
 ```
 
-### 8. Hand over
+### 7. Hand over
 
 Tell the user, in a few lines and nothing more:
 
@@ -271,8 +263,6 @@ Tell the user, in a few lines and nothing more:
 - the interface delta `verdict`, in its own words
 - the `security` verdict, in one clause: what the change crosses, or that it
   crosses nothing
-- which theme source you used: the user's request, the project's design
-  system (name the files), or the default skin
 - when the review has no map, why not, in one clause
 - that you are now waiting for their questions and their decision, and that
   a question asked after you stop waiting is queued rather than lost - the
@@ -280,7 +270,7 @@ Tell the user, in a few lines and nothing more:
 
 The page explains its own controls; do not describe them.
 
-### 9. Wait for the reader
+### 8. Wait for the reader
 
 ```sh
 thurview wait --review <id> --timeout <seconds>
@@ -307,14 +297,14 @@ worktree.
   not change the document for a question. Wait again.
 - `awaiting-agent-updates`: the reader submitted with "Request changes".
   `threads` lists what to address and `wait.decision` the summary. Go to
-  step 10.
+  step 9.
 - `accepted`: approved. Report and stop.
 - `closed`: the reader ended the review without approving it. Report and stop.
 - `review-dismissed` or `review-deleted`: stop.
 - `timeout`: nothing happened. Wait again, or tell the user the reader has not
   responded and stop.
 
-### 10. Address requested changes
+### 9. Address requested changes
 
 For each thread in `thurview threads list --review <id> --open`:
 
@@ -327,8 +317,8 @@ For each thread in `thurview threads list --review <id> --open`:
 - `thurview threads resolve <threadId> --review <id>` once the requested
   change is present. Do not resolve a thread you did not address.
 
-Then publish again (step 7), tell the user what changed since the previous
-revision in a line or two, and wait again (step 9). A republish requires zero
+Then publish again (step 6), tell the user what changed since the previous
+revision in a line or two, and wait again (step 8). A republish requires zero
 open submitted comment threads; questions do not block.
 
 ## Sharing a copy that needs no server

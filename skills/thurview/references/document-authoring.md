@@ -148,7 +148,6 @@ sequence diagram beats one with four.
 
 ## Files you edit
 
-Only `review.md`, `data.yaml`, `map.yaml` and `theme.yaml` in the review
-directory. Never
+Only `review.md`, `data.yaml` and `map.yaml` in the review directory. Never
 edit `review.json`, `threads.json` or `revisions/`. Threads change only
 through `thurview threads`.

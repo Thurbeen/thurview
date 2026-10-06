@@ -1,5 +1,8 @@
-/* thurview default skin: neutral dark, one calm blue accent, quiet chrome.
-   Bars, buttons and panels stay out of the way; body copy and code carry the page. */
+/* thurview's one theme: light and neutral, one calm blue accent, quiet chrome.
+   Light because a review is long reading and is printed: dark text on a white
+   ground reads best for hours and prints as it looks. Every text colour holds
+   WCAG AA on every ground (test/one-theme.test.ts). Bars, buttons and panels
+   stay out of the way; body copy and code carry the page. */
 
 @font-face {
   font-family: Inter;
@@ -17,35 +20,34 @@
 }
 
 :root {
-  color-scheme: dark;
-  --bg: #0f1114;
-  --bg2: #161920;
-  --bg3: #1e222a;
-  --bg-code: #0b0d10;
-  --fg: #e6e8eb;
-  --fg2: #a9afb8;
-  --muted: #737a85;
-  --line: #272c35;
-  --line2: #1e232b;
-  --accent: #6ea8fe;
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg2: #f6f7f9;
+  --bg3: #eceef2;
+  --bg-code: #f6f8fa;
+  --fg: #1f2328;
+  --fg2: #4b5563;
+  --muted: #5f6773;
+  --line: #d5dae1;
+  --line2: #e4e7ec;
+  --accent: #1d4ed8;
   --link: var(--accent);
-  --ok: #4cc38a;
-  --warn: #e5b454;
-  --del: #f06a6a;
-  --add-bg: rgb(76 195 138 / 0.1);
-  --del-bg: rgb(240 106 106 / 0.12);
-  --sel: rgb(229 180 84 / 0.14);
-  --accent-bg: rgb(110 168 254 / 0.14);
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.45);
-  /* text glow on the brand, headings and the active tab; none unless a theme opts in */
-  --glow: none;
+  --ok: #16723a;
+  --warn: #a14a07;
+  --del: #b42318;
+  /* text on a filled accent, ok or del ground */
+  --on-fill: #ffffff;
+  --add-bg: rgb(22 114 58 / 0.09);
+  --del-bg: rgb(180 35 24 / 0.08);
+  --sel: rgb(161 74 7 / 0.12);
+  --accent-bg: rgb(29 78 216 / 0.08);
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.06);
+  --shadow-lg: 0 12px 32px rgb(16 24 40 / 0.14);
   --font-display: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
   --font-body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --transition: 150ms ease;
   --radius: 6px;
-  --heading-transform: none;
 }
 * {
   box-sizing: border-box;
@@ -71,7 +73,7 @@ a:hover {
   text-decoration: underline;
 }
 ::selection {
-  background: rgb(110 168 254 / 0.3);
+  background: rgb(29 78 216 / 0.18);
 }
 
 button {
@@ -97,7 +99,7 @@ button:hover {
 }
 button.primary {
   background: var(--accent);
-  color: #0b1220;
+  color: var(--on-fill);
   border-color: var(--accent);
 }
 button.primary:hover {
@@ -105,7 +107,7 @@ button.primary:hover {
 }
 button.ok {
   background: var(--ok);
-  color: #06140d;
+  color: var(--on-fill);
   border-color: var(--ok);
 }
 button.ok:hover {
@@ -263,9 +265,7 @@ kbd {
   font-family: var(--font-display);
   font-size: 15px;
   font-weight: 600;
-  text-transform: var(--heading-transform);
   color: var(--accent);
-  text-shadow: var(--glow);
   letter-spacing: -0.01em;
   white-space: nowrap;
   flex: none;
@@ -303,7 +303,6 @@ kbd {
 .tabs button.active {
   color: var(--accent);
   background: var(--accent-bg);
-  text-shadow: var(--glow);
 }
 .topbar .spacer {
   flex: 1;
@@ -411,10 +410,8 @@ kbd {
 .doc h1 {
   font-family: var(--font-display);
   font-weight: 600;
-  text-transform: var(--heading-transform);
   letter-spacing: -0.02em;
   color: var(--fg);
-  text-shadow: var(--glow);
   font-size: clamp(1.4rem, 2.4vw, 1.8rem);
   line-height: 1.3;
   margin: 0 0 14px;
@@ -422,10 +419,8 @@ kbd {
 .doc h2 {
   font-family: var(--font-display);
   font-weight: 600;
-  text-transform: var(--heading-transform);
   letter-spacing: -0.01em;
   color: var(--fg);
-  text-shadow: var(--glow);
   font-size: 1.2rem;
   line-height: 1.4;
   margin: 36px 0 10px;
@@ -493,7 +488,7 @@ kbd {
 }
 .block-actions button.count {
   background: var(--accent);
-  color: #0b1220;
+  color: var(--on-fill);
   border-color: var(--accent);
   font-size: 11px;
 }
@@ -683,7 +678,7 @@ kbd {
   text-align: center;
   font-size: 12px;
   font-weight: 700;
-  color: #0b1220;
+  color: var(--on-fill);
   background: var(--accent);
   border-radius: 3px;
 }
@@ -982,7 +977,7 @@ kbd {
 }
 .map-node:hover {
   border-color: var(--accent);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  box-shadow: var(--shadow-lg);
 }
 .map-node.selected {
   outline: 2px solid var(--accent);
@@ -1419,7 +1414,7 @@ kbd {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgb(0 0 0 / 0.55);
+  background: rgb(16 24 40 / 0.4);
   z-index: 50;
   display: flex;
   align-items: center;
@@ -1439,7 +1434,6 @@ kbd {
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 1.05rem;
-  text-transform: var(--heading-transform);
   color: var(--fg);
 }
 .dialog .row {
@@ -1490,9 +1484,7 @@ kbd {
   font-weight: 600;
   font-size: 1.35rem;
   letter-spacing: -0.02em;
-  text-transform: var(--heading-transform);
   color: var(--fg);
-  text-shadow: var(--glow);
 }
 .home h3 {
   font-family: var(--font-display);
@@ -1593,7 +1585,6 @@ kbd {
 .ifd-head .t {
   font-family: var(--font-display);
   font-weight: 600;
-  text-transform: var(--heading-transform);
   color: var(--fg);
 }
 .ifd-head .spacer {

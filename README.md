@@ -263,9 +263,10 @@ repository's Pages folder.
   claims a reader is there when none is: a question asked with no agent
   attached is queued, not lost, and reaches the agent the next time it checks.
 - **Revisions**: every publish is sealed; switch back to earlier ones.
-- **Theme**: the agent reads the project's design tokens and fonts and
-  publishes them with the review, so each review looks like the code it
-  explains. The default skin applies when the project has none.
+- **One theme**: light, chosen for hours of reading and for printing, with
+  every text colour at WCAG AA contrast. Every review looks the same, so the
+  reader learns one page; it does not follow the project or the system's
+  dark mode.
 
 Everything runs locally against your checkout. The server listens on
 loopback and, when present, your Tailscale address, so a phone or another
@@ -373,8 +374,6 @@ The agent writes three files in `~/.thurview/reviews/<id>/`:
 - `map.yaml`: the software map at head, optionally at base. In an explainer it
   carries the breadth the prose has no room for, and a node's `files` globs are
   what let a file count as placed rather than not examined.
-- `theme.yaml`: the look, derived from the reviewed project's own design
-  system (tokens, fonts, shape, code palette). Empty means the default skin.
 
 `security` is a review's own dimension, shown to the reader under the interface
 delta rather than left to a section the agent might not write. It is

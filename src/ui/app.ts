@@ -171,16 +171,6 @@ function shell(): void {
   app.append(topbar, banner, h("div", { class: "main" }, center, resizer, side));
 }
 
-function applyTheme(): void {
-  let style = document.getElementById("review-theme") as HTMLStyleElement | null;
-  if (!style) {
-    style = document.createElement("style");
-    style.id = "review-theme";
-    document.head.appendChild(style);
-  }
-  style.textContent = state.data?.theme?.css ?? "";
-}
-
 function renderTopbar(): void {
   clear(topbar);
   const d = state.data!;
@@ -313,7 +303,7 @@ function moreMenu(e: MouseEvent): void {
                 h(
                   "button",
                   {
-                    style: { background: "var(--del)", color: "#fff" },
+                    style: { background: "var(--del)", color: "var(--on-fill)" },
                     onclick: async () => {
                       await api.remove(state.id);
                       location.href = "/";
@@ -334,11 +324,6 @@ function moreMenu(e: MouseEvent): void {
       kind() === "review"
         ? `base ${r.pins.base.slice(0, 12)} · head ${r.pins.head.slice(0, 12)}`
         : `commit ${r.pins.head.slice(0, 12)}`,
-    ),
-    h(
-      "div",
-      { class: "item muted" },
-      `theme: ${state.data!.theme?.name ?? "default"}${state.data!.theme?.source ? ` (${state.data!.theme.source})` : ""}`,
     ),
   );
   import("./dom.js").then(({ popover }) => popover(box, { x: e.pageX - 200, y: e.pageY + 10 }));
@@ -490,7 +475,6 @@ async function reviewPage(id: string): Promise<void> {
   document.title = `${state.data.review.title} · thurview`;
   if (state.params.get("side") === "threads") state.side = { kind: "threads" };
   on("data", () => {
-    applyTheme();
     renderTopbar();
     renderBanner();
     renderCenter();

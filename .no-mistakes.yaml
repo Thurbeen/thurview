@@ -45,7 +45,7 @@ document:
     the contracts: references/document-authoring.md the document rules,
     references/components.md every data.yaml shape and fenced component,
     references/lifecycle.md statuses, storage and threads,
-    references/software-map.md map.yaml, references/theme.md theme.yaml.
+    references/software-map.md map.yaml.
     CONTRIBUTING.md owns the contribution process (commit conventions, the
     prek hooks, the no-mistakes gate, squash merge) and the configuration of
     external tooling such as .no-mistakes.yaml. A code change that adds or
@@ -82,10 +82,10 @@ review:
         git show, never from the working tree, so a moved checkout changes
         nothing. Publish is the validation boundary: an anchor whose file or
         lines do not exist at its commit, a call stack claim the diff does
-        not support, a storage operation on an unknown field, a map edge to
-        an unknown node, or a theme font missing at head must fail there,
-        with a diagnostic naming the file and line, and never reach a sealed
-        revision. A failed publish keeps the last sealed revision.
+        not support, a storage operation on an unknown field, or a map edge
+        to an unknown node must fail there, with a diagnostic naming the file
+        and line, and never reach a sealed revision. A failed publish keeps
+        the last sealed revision.
         Threads and decisions change only through src/threads.ts, from the
         HTTP API and the CLI alike, so the two never disagree on what
         "needs the agent" means.
@@ -103,10 +103,11 @@ review:
         and side events. Every surface the reader can point at - a document
         block, a diff line or range, a map node - must offer a comment with an
         "Add to review" or "Ask now" choice, and pins must stay attached to
-        their target across re-renders. Styling goes through the CSS custom
-        properties in app.css so a review's theme.yaml can override it; a
-        hard-coded color or font in a rule is a theme bug. The page must
-        render correctly in the default skin and under a light project theme.
+        their target across re-renders. There is one theme, light, defined
+        once as the custom properties in app.css's :root: a rule takes its
+        colours and fonts from them, never a literal, and nothing follows
+        prefers-color-scheme. test/one-theme.test.ts holds every text colour
+        to WCAG AA on every ground.
         Verify async views with scripts/browser-check.mjs rather than
         Chromium's one-shot --screenshot, which fires before fetches resolve.
     - path: "skills/**"
