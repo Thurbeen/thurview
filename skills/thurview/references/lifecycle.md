@@ -191,8 +191,14 @@ to keep a queue drained: the queue survives you, and the reader is told so.
 
 `publish-static <id> --out <directory>` renders the current sealed revision
 as `index.html` with the Markdown feedback exporter alongside as `feedback.md`.
+Both withhold unsubmitted review-mode drafts. Sent threads from revision 0
+remain visible, labelled as unpublished draft context without invented code
+evidence.
 `publish-static <id> --to cloudflare` renders and deploys the complete retained
-archive with Wrangler. The HTML remains read only, with no server requests.
+archive with Wrangler. The first deploy requires `--initialize-archive`,
+only for a Worker with no existing snapshots. Missing archives otherwise
+refuse deployment, even for a review that has never been deployed. Stored
+URLs prevent reinitializing a known publication. The HTML remains read only, with no server requests.
 Its banner identifies the revision and head commit.
 
 The target is `THURVIEW_HOME/cloudflare.json`, overridable with `--config`:
@@ -202,12 +208,16 @@ Credentials come only from Wrangler's login or `CLOUDFLARE_API_TOKEN`.
 Enabling the live link exposes the current live server's hostname.
 
 The command returns `snapshot.url`, `revision` and the retained `snapshots`
-count. After a successful deploy, `review.json` records
-`staticSnapshot: { url, revision }`. A random path is allocated once per review
+count. After a successful deploy, the review's separate `static.json`
+records `{ url, revision, target }`. Store reads expose it as `staticSnapshot`
+without the publisher rewriting `review.json`, so concurrent revision writes
+cannot be undone. A random path is allocated once per review
 and target; republishing replaces that review's copy at the same URL.
 `info --fields staticSnapshot` returns that record, or null before a deploy.
 
-`THURVIEW_HOME/static/<target>/index.json` records paths; `assets/` holds all
+`THURVIEW_HOME/static/<worker-name-hash>/index.json` records paths and the
+configured account; changing `publicUrl` preserves the archive and paths,
+while changing the account is refused. `assets/` holds all
 published HTML and Markdown, and `wrangler.json` is generated from the target.
 Only `assets/` is uploaded. A directory lock serializes deployments from this
 store, and an unreadable index or incomplete archive blocks the upload.

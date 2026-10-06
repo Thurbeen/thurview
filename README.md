@@ -381,21 +381,29 @@ configuration; credentials never go in it.
 
 ```sh
 thurview publish-static <id> --out snapshot
-thurview publish-static <id> --to cloudflare
+thurview publish-static <id> --to cloudflare --initialize-archive
 ```
+
+Use `--initialize-archive` once, only for a Worker with no existing snapshots.
+Later runs omit it. A lost archive must be restored; the command refuses to
+initialize when stored review URLs identify an existing publication.
 
 The HTML uses the same read-only UI as `export`, with walkthrough, diff,
 code peeks, Map and sent reader threads. `feedback.md` contains the Markdown
-exporter from PR #49. The banner names the sealed revision and commit.
+exporter from PR #49, filtering unsubmitted drafts from public downloads.
+Shared threads from before the first publish are labelled as unpublished
+draft context. The banner names the sealed revision and commit.
 The live review link is omitted unless `allowLiveLink` is true.
 
-The command prints `snapshot.url` and records `staticSnapshot` on the review.
+The command prints `snapshot.url` and records `staticSnapshot` in the review's
+separate `static.json`, so recording a URL never rewrites revision state.
 Repeating it updates the same random path. Read the recorded URL with
 `thurview info --fields staticSnapshot`. Back up `~/.thurview/static/`:
 each deployment uploads its complete retained asset archive through
 `wrangler deploy`. Keep one publishing store per Worker; do not deploy from
 a different machine or delete that archive. A local lock serializes deploys;
-an incomplete archive refuses deployment. Restore the archive after a lost
+a missing or incomplete archive refuses deployment. Changing the public
+hostname keeps the same archive and paths. Restore the archive after a lost
 store, and remove `deploy.lock` only after verifying its publisher has stopped.
 This uses Workers static assets, without another service or runtime Worker.
 
