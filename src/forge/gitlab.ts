@@ -1,11 +1,13 @@
 import { AxiError } from "axi-sdk-js";
-import { runJson, ok } from "./run.js";
+import { run, runJson, ok } from "./run.js";
 import { parseRemote } from "./github.js";
 import type {
   Check,
   CheckState,
   ChangeRequest,
   Forge,
+  InlineComment,
+  Note,
   PriorPass,
   PriorThread,
   RepoId,
@@ -60,6 +62,7 @@ interface RestMr {
   work_in_progress?: boolean;
   state: string;
   author: { username: string } | null;
+  labels?: string[];
   sha: string;
   source_branch: string;
   target_branch: string;
@@ -96,6 +99,27 @@ interface Discussion {
       head_sha?: string;
     } | null;
   }[];
+}
+
+interface RestNote {
+  id: number;
+  body: string;
+  system?: boolean;
+  type?: string | null;
+  position?: unknown;
+  author: { username: string } | null;
+}
+
+function noteOf(n: RestNote): Note {
+  return { id: String(n.id), author: n.author?.username ?? "unknown", body: n.body };
+}
+
+/** One JSON value per line; a line holding an array is a page of them. */
+function ndjson<T>(out: string): T[] {
+  return out
+    .split("\n")
+    .filter((l) => l.trim())
+    .flatMap((l) => JSON.parse(l) as T | T[]);
 }
 
 function iidOf(ref: string): string {
@@ -152,6 +176,7 @@ export class GitLabForge implements Forge {
       fromFork: mr.source_project_id !== mr.target_project_id,
       draft: Boolean(mr.draft ?? mr.work_in_progress),
       body: mr.description ?? "",
+      labels: mr.labels ?? [],
     };
   }
 
@@ -197,13 +222,17 @@ export class GitLabForge implements Forge {
     repo: RepoId,
     cr: ChangeRequest,
   ): Promise<{ passes: PriorPass[]; threads: PriorThread[] }> {
-    const discussions = await runJson<Discussion[]>(
+    // Every page: each system event is a discussion of its own, so a busy
+    // merge request passes one page long before its threads run out.
+    const out = await run(
       "glab",
       this.api(
         repo,
         `projects/${this.project(repo)}/merge_requests/${cr.number}/discussions?per_page=100`,
+        ["--paginate", "--output", "ndjson"],
       ),
     );
+    const discussions = ndjson<Discussion>(out);
     const threads: PriorThread[] = [];
     const passes: PriorPass[] = [];
     for (const d of discussions) {
@@ -267,31 +296,7 @@ export class GitLabForge implements Forge {
     for (const c of s.comments) {
       if (c.startLine && c.startLine < c.line)
         notes.push(`${c.path}:${c.startLine}-${c.line} anchored at line ${c.line}`);
-      // The position is a nested object, and glab sends `--raw-field` names
-      // literally: a bracketed name reaches a JSON body as the key
-      // `position[position_type]`, which the API rejects. Post the document on
-      // stdin instead, with the content type glab does not set for `--input`.
-      const position = {
-        position_type: "text",
-        base_sha: refs!.base_sha,
-        start_sha: refs!.start_sha,
-        head_sha: refs!.head_sha,
-        new_path: c.path,
-        old_path: c.path,
-        ...(c.side === "base" ? { old_line: c.line } : { new_line: c.line }),
-      };
-      await runJson<unknown>(
-        "glab",
-        this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/discussions`, [
-          "--method",
-          "POST",
-          "--header",
-          "Content-Type: application/json",
-          "--input",
-          "-",
-        ]),
-        { input: JSON.stringify({ body: c.body, position }) },
-      );
+      await this.discussion(repo, cr, refs!, c);
       posted++;
     }
     if (s.verdict === "approve") {
@@ -324,6 +329,105 @@ export class GitLabForge implements Forge {
       ]),
     );
     return { verdict: s.verdict, posted, url: cr.url, notes };
+  }
+
+  /**
+   * One diff discussion. The position is a nested object, and glab sends
+   * `--raw-field` names literally: a bracketed name reaches a JSON body as the
+   * key `position[position_type]`, which the API rejects. Post the document on
+   * stdin instead, with the content type glab does not set for `--input`.
+   */
+  private async discussion(
+    repo: RepoId,
+    cr: ChangeRequest,
+    refs: NonNullable<RestMr["diff_refs"]>,
+    c: InlineComment,
+  ): Promise<void> {
+    const position = {
+      position_type: "text",
+      base_sha: refs.base_sha,
+      start_sha: refs.start_sha,
+      head_sha: refs.head_sha,
+      new_path: c.path,
+      old_path: c.path,
+      ...(c.side === "base" ? { old_line: c.line } : { new_line: c.line }),
+    };
+    await runJson<unknown>(
+      "glab",
+      this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/discussions`, [
+        "--method",
+        "POST",
+        "--header",
+        "Content-Type: application/json",
+        "--input",
+        "-",
+      ]),
+      { input: JSON.stringify({ body: c.body, position }) },
+    );
+  }
+
+  /** A diff comment anchors at one line here; a range is anchored at its last. */
+  async comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<void> {
+    const mr = await runJson<RestMr>(
+      "glab",
+      this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}`),
+    );
+    if (!mr.diff_refs)
+      throw new AxiError("this merge request reports no diff refs", "FORGE_ERROR", [
+        "Retry once the merge request has a diff",
+      ]);
+    await this.discussion(repo, cr, mr.diff_refs, c);
+  }
+
+  /**
+   * Top-level notes only: a diff note belongs to a thread, and a system note
+   * is GitLab narrating. Every page, as newline-delimited JSON, so a stop
+   * command posted after the hundredth note still counts.
+   */
+  async notes(repo: RepoId, cr: ChangeRequest): Promise<Note[]> {
+    const out = await run(
+      "glab",
+      this.api(
+        repo,
+        `projects/${this.project(repo)}/merge_requests/${cr.number}/notes?per_page=100&sort=asc&order_by=created_at`,
+        ["--paginate", "--output", "ndjson"],
+      ),
+    );
+    return (
+      out
+        .split("\n")
+        .filter((l) => l.trim())
+        .map((l) => JSON.parse(l) as RestNote)
+        // A reply to a note turns it into a DiscussionNote, and it is still a
+        // top-level note: only a note on a diff line is left out.
+        .filter((n) => !n.system && n.type !== "DiffNote" && !n.position)
+        .map(noteOf)
+    );
+  }
+
+  async postNote(repo: RepoId, cr: ChangeRequest, body: string): Promise<Note> {
+    const n = await runJson<RestNote>(
+      "glab",
+      this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/notes`, [
+        "--method",
+        "POST",
+        "--raw-field",
+        `body=${body}`,
+      ]),
+    );
+    return noteOf(n);
+  }
+
+  async editNote(repo: RepoId, cr: ChangeRequest, id: string, body: string): Promise<void> {
+    await runJson<unknown>(
+      "glab",
+      this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/notes/${id}`, [
+        "--method",
+        "PUT",
+        "--raw-field",
+        `body=${body}`,
+      ]),
+    );
   }
 
   async reply(

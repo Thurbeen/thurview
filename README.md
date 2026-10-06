@@ -74,6 +74,8 @@ Three kinds of document, and one companion that writes none:
 - **`thurview-fix`** - no browser and no reader. It reviews, fixes what it is
   sure of behind the repository's own tests and lint, and reports the rest -
   optionally as inline comments on the change request.
+- **`thurview-pr-review`** - reviews a change request on the forge and follows
+  it to merge: one summary edited in place, one resolvable thread per finding.
 
 <details>
 <summary><b>Other ways to install</b> - one skill at a time, pin to a release,
