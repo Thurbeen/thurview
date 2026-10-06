@@ -7,8 +7,10 @@
 // scheme, user, password, port or .git - and matched against the globs, where
 // `*` stays inside one path segment and `**` crosses them, ignoring case.
 // A deny match on any URL refuses; with an allow list, so does any URL that
-// matches none of it. Exit 0 allowed, 1 refused, 2 nothing to decide by (no
-// scope, no remote, not a repository) so the user must be asked, 64 misuse.
+// matches none of it. An ssh alias is also judged by the host `ssh -G` says
+// it names. Exit 0 allowed, 1 refused, 2 nothing to decide by (no scope, no
+// remote, not a repository, a local-path remote) so the user must be asked,
+// 64 misuse.
 import { execFileSync } from "node:child_process";
 
 const USAGE = "usage: check-scope.mjs --repo <dir> [--allow <glob>]... [--deny <glob>]...";
@@ -27,16 +29,65 @@ function parse(argv) {
   return opts;
 }
 
-/** host/path of a remote URL, with nothing that could carry a credential. */
-function normalize(url) {
-  let host = "";
-  let path = url;
-  const scheme = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]*@)?([^/:]*)(?::\d+)?\/?(.*)$/i.exec(url);
-  const scp = /^(?:[^@/]+@)?([^/:]+):(?!\/)(.*)$/.exec(url);
-  if (scheme) [, host, path] = scheme;
-  else if (scp) [, host, path] = scp;
-  path = path.replace(/\/+$/, "").replace(/\.git$/, "");
-  return (host ? `${host}/${path}` : path).toLowerCase();
+/**
+ * Where a remote URL points, as git reads it: a URL with a scheme, the scp
+ * form when a `:` comes before any `/`, or else a local path. Lowercased, with
+ * the user, password, port, query, fragment, `.git` and stray slashes gone.
+ */
+function parseRemote(url) {
+  const u = url.trim().toLowerCase();
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\/([^/]*)(.*)$/.exec(u);
+  const scp = /^(?:[^/]*@)?(\[[^\]/]*\]|[^/:[\]]+):(.*)$/.exec(u);
+  let host;
+  let path;
+  let ssh = true;
+  if (scheme) {
+    if (scheme[1] === "file") return { local: true, where: tidy(scheme[2] + scheme[3]) };
+    const authority = scheme[2].slice(scheme[2].lastIndexOf("@") + 1);
+    host = /^(\[[^\]]*\]|[^:]*)/.exec(authority)[1];
+    path = scheme[3];
+    ssh = scheme[1].includes("ssh");
+  } else if (scp) [, host, path] = scp;
+  else return { local: true, where: tidy(u) };
+  return {
+    local: false,
+    host: host.replace(/[?#].*$/, "").replace(/\.$/, ""),
+    path: tidy(path),
+    ssh,
+  };
+}
+
+function tidy(path) {
+  return path
+    .replace(/[?#].*$/, "")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/, "")
+    .replace(/\/{2,}/g, "/")
+    .replace(/^\/+|\/+$/g, "");
+}
+
+/** The host an ssh alias stands for, as `ssh -G` resolves it without connecting. */
+function sshHostname(alias) {
+  try {
+    const out = execFileSync("ssh", ["-G", alias], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5000,
+    });
+    return /^hostname (.+)$/m.exec(out)?.[1]?.trim().toLowerCase().replace(/\.$/, "") ?? alias;
+  } catch {
+    return alias;
+  }
+}
+
+/** Every host/path a remote URL can be judged by: an ssh alias and what it names. */
+function forms(url) {
+  const r = parseRemote(url);
+  if (r.local) return { local: true, names: [r.where] };
+  const names = [`${r.host}/${r.path}`];
+  const real = r.ssh ? sshHostname(r.host) : r.host;
+  if (real !== r.host) names.push(`${real}/${r.path}`);
+  return { local: false, names };
 }
 
 function globToRegExp(glob) {
@@ -65,8 +116,10 @@ function remoteUrls(repo) {
     for (const url of [
       ...git(repo, "remote", "get-url", "--all", name),
       ...git(repo, "remote", "get-url", "--push", "--all", name),
-    ])
-      urls.set(`${name} ${normalize(url)}`, { name, where: normalize(url) });
+    ]) {
+      const f = forms(url);
+      urls.set(`${name} ${f.names.join(" ")}`, { name, ...f });
+    }
   return [...urls.values()];
 }
 
@@ -90,12 +143,19 @@ if (remotes.length === 0) {
 const deny = opts.deny.map((g) => [g, globToRegExp(g)]);
 const allow = opts.allow.map((g) => [g, globToRegExp(g)]);
 let refused = false;
-for (const { name, where } of remotes) {
-  const denied = deny.find(([, re]) => re.test(where));
-  const allowed = allow.length === 0 || allow.some(([, re]) => re.test(where));
-  if (denied) console.log(`refused: ${name} ${where} matches deny_remotes ${denied[0]}`);
-  else if (!allowed) console.log(`refused: ${name} ${where} matches no allow_remotes pattern`);
-  else console.log(`allowed: ${name} ${where}`);
-  refused ||= Boolean(denied) || !allowed;
+let unjudged = false;
+for (const { name, names, local } of remotes) {
+  // a malformed URL can leave a password fragment in the path; never print it
+  const masked = names.map((n) => n.replace(/[^/]*@/g, "…@"));
+  const shown = masked.length > 1 ? `${masked[0]} (${masked[1]})` : masked[0];
+  const denied = deny.find(([, re]) => names.some((n) => re.test(n)));
+  const allowed = allow.length === 0 || allow.some(([, re]) => names.some((n) => re.test(n)));
+  if (denied) console.log(`refused: ${name} ${shown} matches deny_remotes ${denied[0]}`);
+  else if (local)
+    console.log(`unjudged: ${name} ${shown} is a local path, not a host - ask the user`);
+  else if (!allowed) console.log(`refused: ${name} ${shown} matches no allow_remotes pattern`);
+  else console.log(`allowed: ${name} ${shown}`);
+  refused ||= Boolean(denied) || (!local && !allowed);
+  unjudged ||= local && !denied;
 }
-process.exit(refused ? 1 : 0);
+process.exit(refused ? 1 : unjudged ? 2 : 0);

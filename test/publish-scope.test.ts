@@ -3,7 +3,7 @@
 // repository's remotes and holds them to the target's allow and deny globs
 // before anything is exported; these drive it over real git repositories.
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -30,8 +30,21 @@ function repo(remotes: Record<string, string>, push: Record<string, string> = {}
   return dir;
 }
 
+// An ssh that knows one alias, the way a ~/.ssh/config `Host work-gh` with
+// `HostName github.com` answers `ssh -G work-gh`.
+const sshBin = mkdtempSync(join(tmpdir(), "thurview-ssh-"));
+made.push(sshBin);
+writeFileSync(
+  join(sshBin, "ssh"),
+  '#!/bin/sh\n[ "$1" = -G ] || exit 255\ncase "$2" in work-gh) echo "hostname github.com" ;; *) echo "hostname $2" ;; esac\n',
+);
+chmodSync(join(sshBin, "ssh"), 0o755);
+
 function check(dir: string, ...scope: string[]) {
-  const r = spawnSync(process.execPath, [SCRIPT, "--repo", dir, ...scope], { encoding: "utf8" });
+  const r = spawnSync(process.execPath, [SCRIPT, "--repo", dir, ...scope], {
+    encoding: "utf8",
+    env: { ...process.env, PATH: `${sshBin}:${process.env["PATH"]}` },
+  });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 
@@ -107,6 +120,64 @@ describe("thurview-publish scope check", () => {
     expect(code).toBe(1);
     expect(out).not.toContain("s3cr3t-token");
     expect(out).not.toContain("oauth2");
+  });
+
+  it("sees through an ssh host alias to the host it names", () => {
+    const dir = repo({ origin: "git@work-gh:example-corp/app.git" });
+    expect(check(dir, "--deny", "github.com/example-corp/**").code).toBe(1);
+    expect(
+      check(
+        repo({ origin: "ssh://git@work-gh/example-corp/app" }),
+        "--deny",
+        "github.com/example-corp/**",
+      ).code,
+    ).toBe(1);
+  });
+
+  it.each([
+    "git@github.com:/example-corp/app.git",
+    "https://github.com:/example-corp/app",
+    "https://github.com./example-corp/app",
+    "https://github.com//example-corp/app",
+    "https://GitHub.com/Example-Corp/App.GIT",
+    "https://github.com/example-corp/app?ref=main#top",
+    "https://github.com/example-corp/app/.git",
+    "https://user:pa#ss@github.com/example-corp/app",
+    "https://user:p?ss@github.com/example-corp/app",
+  ])("reads %s as github.com/example-corp/app", (url) => {
+    expect(check(repo({ origin: url }), "--deny", "github.com/example-corp/app").code).toBe(1);
+  });
+
+  it.each([
+    "https://a@b:tok3n@github.com/example-corp/app",
+    "https://u:p/tok3n@github.com/example-corp/app",
+    "https://github.com/example-corp/app?token=tok3n",
+    "https://user:tok3n#x@github.com/example-corp/app",
+  ])("prints nothing of the credential in %s", (url) => {
+    const { out } = check(repo({ origin: url }), "--deny", "github.com/example-corp/**");
+    expect(out).not.toContain("tok3n");
+  });
+
+  it("keeps an @ in a path as part of the path, as git does", () => {
+    const dir = repo({ origin: "https://github.com/example-corp/app@main" });
+    expect(check(dir, "--deny", "github.com/example-corp/**").code).toBe(1);
+  });
+
+  it("reads a bracketed host in scp syntax", () => {
+    const dir = repo({ origin: "git@[2001:db8::1]:example-corp/app.git" });
+    expect(check(dir, "--deny", "[2001:db8::1]/example-corp/**").code).toBe(1);
+  });
+
+  it("asks the user about a remote that is a local path, which no host glob can judge", () => {
+    const local = repo({ origin: "/srv/clones/corp-app" });
+    expect(check(local, "--deny", WORK).code).toBe(2);
+    expect(check(repo({ origin: "file:///srv/clones/corp-app" }), "--deny", WORK).code).toBe(2);
+    // a refusal still wins over a remote nobody can judge
+    const both = repo({
+      origin: "/srv/clones/corp-app",
+      work: "git@gitlab.example.com:team/app.git",
+    });
+    expect(check(both, "--deny", WORK).code).toBe(1);
   });
 
   it("asks the user when the target has no scope", () => {

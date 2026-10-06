@@ -72,7 +72,8 @@ ask the user for their target and its scope, write it, and show it to them.
 
 A user can have several targets - a personal one, a work one - each with its
 own provider and its own scope. This one keeps a personal Cloudflare project
-away from a company's code and a work Azure account for that code only:
+for the user's own repositories, never a company's, and a work Azure account
+for the company's code only. A deny always wins over an allow:
 
 ```yaml
 default: personal # the target used when the user names none
@@ -82,7 +83,9 @@ targets:
   personal:
     provider: cloudflare
     project: my-reviews
-    deny_remotes: # personal only: never the company's code
+    allow_remotes: # only my own repositories...
+      - github.com/example-user/**
+    deny_remotes: # ...and never the company's code, even under a name I own
       - gitlab.example.com/**
       - github.com/example-corp/**
   work:
@@ -113,15 +116,15 @@ one path: it maps each review id to the target and slug its copy lives
 under. Write it after every upload, re-sign and unpublish, and update or
 unpublish a copy only on the target it records.
 
-Every block below reads the config through these shell variables. Run each
-operation - publish (steps 1 to 4), re-sign, unpublish - as **one** script
+Every block from step 1 on reads the config through these shell variables.
+Run each operation - publish (steps 1 to 4), re-sign, unpublish - as **one** script
 file run with `bash`, never typed into an interactive shell, that starts by
 setting them, so no block runs in a shell where they are empty, and stops at
 the first command that fails:
 
 ```sh
 set -euo pipefail
-REVIEW="<review id>" REPO="<the review's worktree>" SKILL_DIR="<this skill's directory>"
+REVIEW="<review id>"
 PROVIDER="<target.provider>" PREFIX="<prefix>" EXPIRY_DAYS="<expiry_days>"
 SLUG="<published.<review id>.slug, or empty for a first upload>"
 ACCOUNT="<target.account>" CONTAINER="<target.container>"
@@ -136,27 +139,34 @@ For a public Azure copy, `CONTAINER` is `'$web'` instead - see
 
 ### 0. Check the target may take this repository
 
-Before exporting or uploading anything - and again before an update, since
-a repository's remotes can change - hold the review's repository to the
-target's scope. The repository is the review's worktree:
-`thurview info --all --fields worktree` lists it beside the review's id.
-Pass each `allow_remotes` entry as `--allow` and each `deny_remotes` entry as
-`--deny`; the script sits in this skill's own directory:
+Before exporting or uploading anything - and again before every update,
+since a repository's remotes can change - hold the review's repository to
+the target's scope. Run it **on its own, before the publish script**, not
+inside it, so its answer decides whether that script runs at all. The
+repository is the review's worktree: `thurview info --all --fields worktree`
+lists it beside the review's id. The script sits in this skill's own
+directory; pass one `--deny` per `deny_remotes` entry and one `--allow` per
+`allow_remotes` entry of the chosen target:
 
 ```sh
-node "$SKILL_DIR/scripts/check-scope.mjs" --repo "$REPO" \
-  --deny 'gitlab.example.com/**' --deny 'github.com/example-corp/**'
+node "<this skill's directory>/scripts/check-scope.mjs" --repo "<the review's worktree>" \
+  --deny '<a deny_remotes entry>' --allow '<an allow_remotes entry>'
 ```
 
 It checks every fetch and push URL of every remote, reduced to host and
-path, and prints one line per URL saying which pattern decided it. Its exit
-code decides what happens next:
+path, and an ssh alias also by the host `ssh -G` says it names. It prints one
+line per URL saying what decided it. Its exit code decides what happens
+next:
 
-| Exit | Meaning                                                       | Do                                                                                                                                                                                  |
-| ---- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | allowed: no remote denied, and all allowed when a list is set | go on to step 1                                                                                                                                                                     |
-| 1    | refused: a remote is denied, or matches no allow pattern      | stop. Tell the user the remote and the pattern it printed, and that this target is not for this repository. Do not offer a way round it; the user changes the config if it is wrong |
-| 2    | nothing to decide by: no scope set, no remote, no repository  | ask the user whether this target is right for this repository, naming its remotes; go on only on a yes, and suggest adding a scope so the question does not come back               |
+| Exit | Meaning                                                                           | Do                                                                                                                                                                                     |
+| ---- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | allowed: no remote denied, and every one allowed when a list is set               | run the publish script                                                                                                                                                                 |
+| 1    | refused: a remote is denied, or matches no allow pattern                          | stop. Tell the user the remote and the pattern it printed, and that this target is not for this repository. Do not offer a way round it; the user changes the config if it is wrong    |
+| 2    | nothing to decide by: no scope set, no remote, no repository, a local-path remote | ask the user whether this target is right for this repository, naming its remotes; run the publish script only on a yes, and suggest adding a scope so the question does not come back |
+
+A deny list only refuses the hosts and paths it names. For a personal target,
+an `allow_remotes` list of the user's own namespaces is the stronger guard:
+work code under a name nobody thought to deny is refused too.
 
 ### 1. Export the page
 
