@@ -23,6 +23,10 @@
  *   reply     answer one thread, and resolve it when its point is verified
  *   permalink a file and line range at a pinned commit, as a URL the author
  *             can open
+ *   notes     the change request's top-level comments, to find the one
+ *             summary a follow loop keeps and the stop command a reader posts
+ *   postNote  post one top-level comment; editNote rewrites one in place
+ *   comment   one inline comment, which opens one resolvable thread
  *
  * WHAT IS NOT HERE, deliberately: merge, close, push. A review comments; the
  * maintainer merges. A seam with no merge method cannot be talked into one.
@@ -74,6 +78,15 @@ export interface ChangeRequest {
   /** True when the head lives in another repository, which is what strips CI. */
   fromFork: boolean;
   draft: boolean;
+  body: string;
+  labels: string[];
+}
+
+/** A top-level comment on a change request, outside any review thread. */
+export interface Note {
+  /** Numeric on both forges, and increasing, so a later note has a larger id. */
+  id: string;
+  author: string;
   body: string;
 }
 
@@ -157,4 +170,8 @@ export interface Forge {
     resolve: boolean,
   ): Promise<{ replied: boolean; resolved: boolean; notes: string[] }>;
   permalink(repo: RepoId, sha: string, path: string, from?: number, to?: number): string;
+  notes(repo: RepoId, cr: ChangeRequest): Promise<Note[]>;
+  postNote(repo: RepoId, cr: ChangeRequest, body: string): Promise<Note>;
+  editNote(repo: RepoId, cr: ChangeRequest, id: string, body: string): Promise<void>;
+  comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<void>;
 }

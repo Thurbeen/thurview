@@ -46,6 +46,10 @@ locally.
 - `skills/thurview-fix/`: the skill that reviews a change by searching what it
   reaches, commits the fixes that pass, and can post the rest through
   `thurview forge`.
+- `src/pr-review/`: `thurview pr-review` - the summary and finding markers,
+  the closed category set, and the follow loop, all on the forge seam.
+- `skills/thurview-pr-review/`: the skill that reviews a change request on
+  the forge and follows it until it merges or closes.
 - `test/e2e.test.ts`: the suite, driving the CLI and the server end to end.
 - `test/forge.test.ts`: the same, with a fake `gh` and `glab` on PATH, so both
   forge adapters are driven rather than asserted.
@@ -63,9 +67,11 @@ nothing outside a temporary directory. Re-record it when the UI changes.
 
 ## The skills and the command
 
-`skills/` holds four skills - `thurview`, `thurview-explain` and
-`thurview-design` author and publish one document kind each, and
-`thurview-fix` reviews a change and commits the fixes that pass. Each is
+`skills/` holds five skills - `thurview`, `thurview-explain` and
+`thurview-design` author and publish one document kind each,
+`thurview-fix` reviews a change and commits the fixes that pass, and
+`thurview-pr-review` reviews a change request on the forge and follows it
+until it merges. Each is
 installed three ways, and only one of them keeps the
 skill and the command in step:
 

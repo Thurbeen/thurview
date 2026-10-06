@@ -58,6 +58,16 @@ import {
 } from "./forge/index.js";
 import { parseSubmission, longComments, buildPass } from "./forge/submission.js";
 import { recordForgeFacts, ciFacts } from "./queue.js";
+import { parsePass } from "./pr-review/format.js";
+import { CATEGORIES, CONFIDENCE } from "./pr-review/categories.js";
+import {
+  readState,
+  startReview,
+  stopReview,
+  sync,
+  waitForEvent,
+  STOP_LABEL,
+} from "./pr-review/follow.js";
 import { VERSION } from "./version.js";
 
 const execFileP = promisify(execFile);
@@ -751,6 +761,34 @@ const SPECS: Record<
       "thurview forge pass --review <id>",
       "thurview forge submit --file pass.json --dry-run",
       'thurview forge reply <threadId> --body "<answer>" --resolve --at <sha>',
+    ],
+  },
+  "pr-review": {
+    description:
+      "Follow a pull or merge request until it merges: one summary edited in place, one resolvable thread per finding",
+    args: "status|sync --file <pass.json>|wait|stop|start",
+    flags: {
+      change: { kind: "string", help: "change request number or URL" },
+      review: { kind: "string", help: "review id prefix; its binding names the change request" },
+      forge: {
+        kind: "string",
+        help: "github or gitlab, when the host is not one of the two known ones",
+      },
+      repo: { kind: "string", help: "host/path, when `origin` is not the repository to post to" },
+      file: { kind: "string", help: "sync: the JSON pass to post" },
+      "dry-run": { kind: "boolean", help: "sync: validate and render, post nothing" },
+      interval: { kind: "string", help: "wait: seconds between polls", default: "120" },
+      timeout: {
+        kind: "string",
+        help: "wait: seconds before answering `none`, so one call fits a tool limit",
+        default: "540",
+      },
+    },
+    examples: [
+      "thurview pr-review status --change 123",
+      "thurview pr-review sync --change 123 --file pass.json --dry-run",
+      "thurview pr-review wait --change 123",
+      "thurview pr-review stop --change 123",
     ],
   },
   delete: {
@@ -2040,6 +2078,129 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       skill,
       help: ["Run `thurview setup hooks` or `thurview setup skill` to install what is missing"],
     };
+  },
+
+  async "pr-review"(args) {
+    const sub = args[0];
+    const subs = ["status", "sync", "wait", "stop", "start"];
+    if (!sub || !subs.includes(sub))
+      throw new AxiError(
+        `unknown pr-review command${sub ? ` ${sub}` : ""}`,
+        "VALIDATION_ERROR",
+        subs.map((x) => `thurview pr-review ${x} --change <ref>`),
+      );
+    const s = spec("pr-review").flags;
+    const p = parseFlags(`pr-review ${sub}`, args.slice(1), s);
+    const ctx = await forgeContext(p);
+    const where = `${ctx.repo.path}#${ctx.cr.number}`;
+    const again = `thurview pr-review wait --change ${ctx.cr.number}`;
+
+    if (sub === "status") {
+      const st = await readState(ctx);
+      const open = st.findings.filter((f) => f.open);
+      return {
+        change: {
+          url: ctx.cr.url,
+          state: ctx.cr.state,
+          author: ctx.cr.author,
+          head: ctx.cr.head,
+          base: ctx.cr.base,
+          baseBranch: ctx.cr.baseBranch,
+        },
+        review: st.summary
+          ? {
+              state: st.summary.marker.state,
+              reviewedHead: st.summary.marker.head,
+              pushedSince: st.summary.marker.head !== ctx.cr.head,
+            }
+          : "none yet (the first pass reviews the whole change)",
+        ...(st.stop ? { stopRequested: st.stop } : {}),
+        open: open.length
+          ? open.map((f) => ({
+              id: f.id,
+              category: f.category,
+              severity: f.severity,
+              at: f.path ? `${f.path}:${f.line ?? ""}` : "",
+              title: f.title,
+            }))
+          : "0 (no open finding)",
+        categories: Object.fromEntries(
+          Object.entries(CATEGORIES).map(([k, v]) => [k, v.definition]),
+        ),
+        confidence: CONFIDENCE,
+        help: [
+          st.summary && st.summary.marker.head !== ctx.cr.head
+            ? `Review only \`git diff ${st.summary.marker.head.slice(0, 12)} ${ctx.cr.head.slice(0, 12)}\`, then decide each open finding: still valid, or fixed`
+            : `Review \`git diff ${ctx.cr.base.slice(0, 12)} ${ctx.cr.head.slice(0, 12)}\``,
+          `Write the pass file and run \`thurview pr-review sync --change ${ctx.cr.number} --file <pass.json> --dry-run\``,
+        ],
+      };
+    }
+
+    if (sub === "sync") {
+      const file = str(p, "file");
+      if (!file)
+        throw new AxiError("--file is required", "VALIDATION_ERROR", [
+          "thurview pr-review sync --change <ref> --file <pass.json>",
+        ]);
+      const text = await readText(resolve(process.cwd(), file));
+      if (text === null) throw new AxiError(`${file} not found`, "NOT_FOUND", []);
+      const dry = bool(p, "dry-run");
+      const r = await sync(ctx, parsePass(text, file), { dryRun: dry });
+      return {
+        pass: {
+          change: where,
+          head: r.head,
+          summary: r.summary,
+          open: r.open,
+          blocking: r.blocking,
+        },
+        posted: r.posted.length ? r.posted : "0 (no new finding)",
+        resolved: r.resolved.length ? r.resolved : "0 (no finding fixed)",
+        duplicates: r.duplicates.length
+          ? r.duplicates
+          : "0 (no finding already open was found again)",
+        ...(dry ? { body: r.body } : {}),
+        help: dry
+          ? ["Nothing was posted; re-run without --dry-run to post it"]
+          : [
+              `Run \`${again}\` to block until the next push, merge or stop`,
+              "Never approve, merge or push to the change request; the verdict is the summary",
+            ],
+      };
+    }
+
+    if (sub === "wait") {
+      const interval = Number(str(p, "interval"));
+      const timeout = Number(str(p, "timeout"));
+      if (!(interval > 0) || !(timeout > 0))
+        throw new AxiError("--interval and --timeout take seconds", "VALIDATION_ERROR", []);
+      const ev = await waitForEvent(ctx.forge, ctx.repo, ctx.cr.number, { interval, timeout });
+      const help =
+        ev.event === "push"
+          ? [
+              ev.since
+                ? `Review only \`git diff ${ev.since.slice(0, 12)} ${ev.head.slice(0, 12)}\`, then sync`
+                : "Nothing posted yet: review the whole change, then sync",
+            ]
+          : ev.event === "none"
+            ? [`Nothing new; run \`${again}\` again`]
+            : ["The follow loop ends here; the summary says why"];
+      return { event: { ...ev, change: where }, help };
+    }
+
+    if (sub === "stop") {
+      await stopReview(ctx);
+      return {
+        stopped: where,
+        help: [
+          `Resume with \`thurview pr-review start --change ${ctx.cr.number}\`; a reader stops with the ${STOP_LABEL} label or a /thurview stop comment`,
+        ],
+      };
+    }
+
+    await startReview(ctx);
+    return { started: where, help: [`Run \`${again}\``] };
   },
 
   async skill(args) {

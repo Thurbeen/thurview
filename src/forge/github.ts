@@ -6,6 +6,7 @@ import type {
   ChangeRequest,
   Forge,
   InlineComment,
+  Note,
   PriorPass,
   PriorThread,
   RepoId,
@@ -52,6 +53,7 @@ interface RestPull {
   state: string;
   merged: boolean;
   user: { login: string } | null;
+  labels?: { name: string }[];
   head: { sha: string; ref: string; repo: { full_name: string } | null };
   base: { sha: string; ref: string; repo: { full_name: string } | null };
 }
@@ -162,6 +164,7 @@ export class GitHubForge implements Forge {
       fromFork: (pr.head.repo?.full_name ?? repo.path) !== (pr.base.repo?.full_name ?? repo.path),
       draft: pr.draft,
       body: pr.body ?? "",
+      labels: (pr.labels ?? []).map((l) => l.name),
     };
   }
 
@@ -329,11 +332,77 @@ export class GitHubForge implements Forge {
     return { replied: body !== undefined, resolved: resolve, notes: [] };
   }
 
+  /** Every page: a stop command posted after the hundredth comment still counts. */
+  async notes(repo: RepoId, cr: ChangeRequest): Promise<Note[]> {
+    const pages = await runJson<IssueComment[][]>(
+      "gh",
+      this.api(repo, [
+        `repos/${repo.path}/issues/${cr.number}/comments?per_page=100`,
+        "--paginate",
+        "--slurp",
+      ]),
+    );
+    return pages.flat().map(noteOf);
+  }
+
+  async postNote(repo: RepoId, cr: ChangeRequest, body: string): Promise<Note> {
+    const c = await runJson<IssueComment>(
+      "gh",
+      this.api(repo, [
+        `repos/${repo.path}/issues/${cr.number}/comments`,
+        "--method",
+        "POST",
+        "--input",
+        "-",
+      ]),
+      { input: JSON.stringify({ body }) },
+    );
+    return noteOf(c);
+  }
+
+  async editNote(repo: RepoId, _cr: ChangeRequest, id: string, body: string): Promise<void> {
+    await run(
+      "gh",
+      this.api(repo, [
+        `repos/${repo.path}/issues/comments/${id}`,
+        "--method",
+        "PATCH",
+        "--input",
+        "-",
+      ]),
+      { input: JSON.stringify({ body }) },
+    );
+  }
+
+  async comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<void> {
+    await run(
+      "gh",
+      this.api(repo, [
+        `repos/${repo.path}/pulls/${cr.number}/comments`,
+        "--method",
+        "POST",
+        "--input",
+        "-",
+      ]),
+      { input: JSON.stringify({ commit_id: cr.head, ...inline(c) }) },
+    );
+  }
+
   permalink(repo: RepoId, sha: string, path: string, from?: number, to?: number): string {
     const base = `https://${repo.host}/${repo.path}/blob/${sha}/${path}`;
     if (!from) return base;
     return to && to > from ? `${base}#L${from}-L${to}` : `${base}#L${from}`;
   }
+}
+
+interface IssueComment {
+  id: number;
+  user: { login: string } | null;
+  body: string | null;
+}
+
+function noteOf(c: IssueComment): Note {
+  return { id: String(c.id), author: c.user?.login ?? "unknown", body: c.body ?? "" };
 }
 
 function verdictWord(state: string): string {
