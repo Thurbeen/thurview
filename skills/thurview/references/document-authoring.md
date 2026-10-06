@@ -66,33 +66,28 @@ Progressive disclosure: every `##` heading is a section the reader can fold.
 ## Interface delta
 
 The reader's first question is what the change lets them do that they could
-not before, and what it cost. thurview answers it from the code graph rather
-than from your prose: every symbol the diff touched that is visible outside
-its own file, as added, changed or removed, above your document. Read it with
-`thurview graph interfaces` before you write, and let it shape the document:
+not before, and what it cost. You answer it in `data.yaml` under `interfaces`
+(see [Components](components.md)), one entry per interface the change added,
+changed or removed - an exported function, a CLI subcommand or flag, an HTTP
+route, an event kind, a config key, a file format - and the browser lists them
+above your document. Each entry carries an anchor on the lines the diff moved;
+publish refuses one that sits on none, so the list cannot claim what the change
+did not do. Let it shape the document:
 
 - **A removed entry is the change's most review-worthy fact.** Say what
-  depended on it (`thurview graph callers <name> --graph base`) and what
-  replaces it. Never let a removal read as a rearrangement.
-- **`No interface moved` is a finding, not an empty result.** The change is
-  internal. Write about why it was worth making - the bug it fixes, the
-  duplication it folds - and do not dress it up as a capability.
-- **Do not restate the entries in prose.** The panel lists them, with the
-  declaration and a link into the file. Your sentences are for what it cannot
-  derive: why the surface has this shape, what a consumer does with it, what
-  a removal breaks.
+  depended on it - search for its callers at the base pin, as
+  [Searching the code](searching.md) shows - and what replaces it. Never let a
+  removal read as a rearrangement.
+- **No entry is a finding, not an empty result.** The change is internal.
+  Write about why it was worth making - the bug it fixes, the duplication it
+  folds - and do not dress it up as a capability.
+- **Do not restate the entries in prose.** The panel lists them, with a link
+  into the file. Your sentences are for what it cannot hold: why the surface
+  has this shape, what a consumer does with it, what a removal breaks.
 
-Add an `interfaces` entry in `data.yaml` (see [Components](components.md))
-only when one of these holds:
-
-1. A derived entry's declaration does not tell a consumer what it is for. The
-   `capability` line says what they can now do, in their words.
-2. The change moves an interface the graph cannot see - a CLI subcommand or
-   flag, an HTTP route, an event kind, a config key, a file format. Declare
-   it, with an anchor on the line the diff moved.
-
-Anything else is noise: the entry is already there, or there is nothing to
-add. An interface the change did not deliver is never an entry.
+What earns an entry is a surface something outside the change reaches. A
+private helper is not one, however much it moved, and an interface the change
+did not deliver is never an entry.
 
 ## Trust boundaries
 
@@ -101,7 +96,8 @@ Every review answers where the change lets input cross a trust boundary, in
 it under the interface delta, one line per place with the anchor the reader
 opens.
 
-Answer it after you have read the diff and the graph, and answer it either way.
+Answer it after you have read the diff and searched what it reaches, and answer
+it either way.
 `security: none` is the whole answer for a change that crosses none, and writing
 it is what makes the panel worth reading on the review where it is not none. A
 review that leaves the key out publishes as "not assessed", which is honest for

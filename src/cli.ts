@@ -41,15 +41,7 @@ import {
   type Thread,
 } from "./store.js";
 import { compileDocument, compileMap, globToRegExp, type Diagnostic } from "./document/compile.js";
-import {
-  computeCoverage,
-  scopeGlob,
-  scopeGraph,
-  scopeTruncated,
-  type Coverage,
-} from "./coverage.js";
-import type { CodeGraph } from "./graph.js";
-import type { InterfaceDelta } from "./interfaces.js";
+import { computeCoverage, scopeGlob, type Coverage } from "./coverage.js";
 import { parseTheme, compileTheme, type CompiledTheme } from "./theme.js";
 import { registerTheme } from "./highlight.js";
 import { replyThread, setThreadStatus, needsAgent } from "./threads.js";
@@ -265,17 +257,6 @@ async function ensureServer(): Promise<{ port: number; hosts: string[] }> {
 function reviewUrl(base: string, id: string, view?: string): string {
   return `${base}/review/${id}${view ? `#/${view}` : ""}`;
 }
-/** Two commits in a worktree, and the directory their graphs are cached under. */
-interface Pinned {
-  worktree: string;
-  pins: { base: string; head: string };
-  dir: string;
-}
-
-function pinnedOf(review: ReviewState): Pinned {
-  return { worktree: review.worktree, pins: review.pins, dir: reviewDir(review.id) };
-}
-
 /**
  * Base and head as `--base` and `--head` name them. Head defaults to HEAD and
  * base to where head forked from trunk, so a branch is diffed against what it
@@ -286,7 +267,7 @@ async function pinRange(
   base: string | undefined,
   head: string | undefined,
   usage: string,
-): Promise<Pinned["pins"]> {
+): Promise<{ base: string; head: string }> {
   try {
     const h = await g.revParse(worktree, head ?? "HEAD");
     const b = base
@@ -298,29 +279,6 @@ async function pinRange(
       `Pass resolvable refs: \`${usage}\``,
     ]);
   }
-}
-
-/**
- * The interface delta at two pinned commits. The graphs are cached per commit
- * under `at.dir`, so publish and `graph interfaces` build them once between
- * them; both modules load lazily to keep tree-sitter off every other command's path.
- */
-async function deltaFor(at: Pinned, base?: CodeGraph, head?: CodeGraph): Promise<InterfaceDelta> {
-  const graph = await import("./graph.js");
-  const { interfaceDelta } = await import("./interfaces.js");
-  const b = base ?? (await graph.graphAt(at.worktree, at.pins.base, at.dir));
-  const h = head ?? (await graph.graphAt(at.worktree, at.pins.head, at.dir));
-  const changes = await g.lineChanges(at.worktree, at.pins.base, at.pins.head);
-  const changed = await g.changedFiles(at.worktree, at.pins.base, at.pins.head);
-  return interfaceDelta({
-    cwd: at.worktree,
-    pins: at.pins,
-    base: b,
-    head: h,
-    impact: graph.impact(b, h, changes, 1),
-    changes,
-    changed,
-  });
 }
 
 async function guidanceFiles(repoRoot: string): Promise<string[]> {
@@ -347,8 +305,13 @@ const TEMPLATE_DATA = `# Typed inputs for review.md: actors, anchors and stores.
 #     title: PTY spawn site
 #     peek: { file: src/pty.ts, from: 214, to: 223 }   # add graph: base for the old side
 #
-# interfaces holds one capability line per interface the change moved. thurview
-# derives the list itself; run \`thurview graph interfaces\` for the ids.
+# interfaces holds one entry per interface the change added, changed or removed:
+# a CLI flag, an exported function, an HTTP route, a config key. Name it, say what
+# it lets a consumer do, and anchor it on the lines that moved it (a base-side
+# anchor for a removed one). Find what depends on it with git grep at the pins.
+#
+# interfaces:
+#   shellFlag: { name: --shell, change: added, capability: Runs in the named shell., anchor: spawn }
 #
 # security says where this change lets input cross a trust boundary. Leave it
 # out (or write \`security: pending\`) until you have looked and the document says
@@ -400,14 +363,23 @@ const TEMPLATE_EXPLAIN_DATA = `# Typed inputs for the explainer: actors, anchors
 #   dispatch:
 #     title: where a request picks its handler
 #     peek: { file: src/server/router.ts, from: 41, to: 58 }
+#
+# searches records the searches you ran to find callers, tests and importers.
+# publish re-runs each one with \`git grep -E\` at the pinned commit, and the
+# Coverage tab counts the files it matches as searched. A search that matched
+# nothing is stated too.
+#
+# searches:
+#   dispatchCallers: { pattern: '\\bdispatch\\(', paths: ["src/**"], why: who routes a request }
 actors: {}
 anchors: {}
 stores: {}
+searches: {}
 `;
 const TEMPLATE_EXPLAIN_MAP = `# The structure of the code at the pinned commit: systems, containers,
 # components, code. The map carries breadth so the prose can carry depth, and a
 # node's \`files\` globs are what tell the Coverage tab a file was at least placed.
-# Seed it from \`thurview graph architecture\`.
+# Seed it from the directories: \`git ls-tree -d -r --name-only <commit>\`.
 nodes: []
 edges: []
 `;
@@ -452,7 +424,7 @@ const TEMPLATE_DESIGN_MAP = `# The structure the design proposes, with the struc
 # \`base\`, so the Map tab shows what it adds, changes and removes. A node under
 # \`nodes\` may own files that do not exist yet - that is a proposed part. A node
 # under \`base\` may not: it is a claim about today, and publish warns.
-# Seed base from \`thurview graph architecture\`.
+# Seed base from the directories: \`git ls-tree -d -r --name-only <commit>\`.
 nodes: []
 edges: []
 `;
@@ -738,29 +710,6 @@ const SPECS: Record<
       "thurview threads resolve <threadId>",
     ],
   },
-  graph: {
-    description:
-      "Ask the code graph at the pinned commits: the interface delta, what the change reaches, callers, tests, architecture",
-    args: "interfaces|impact|callers <name>|tests-for <name>|architecture",
-    flags: {
-      review: { kind: "string", help: "review id prefix" },
-      base: {
-        kind: "string",
-        help: "instead of --review: base revision (default: trunk fork point)",
-      },
-      head: { kind: "string", help: "instead of --review: head revision (default: HEAD)" },
-      graph: { kind: "string", help: "callers, tests-for: head or base", default: "head" },
-      depth: { kind: "string", help: "how many caller hops to follow", default: "2" },
-    },
-    examples: [
-      "thurview graph interfaces",
-      "thurview graph impact",
-      "thurview graph impact --base main --head HEAD",
-      "thurview graph callers login",
-      "thurview graph tests-for login --graph base",
-      "thurview graph architecture",
-    ],
-  },
   forge: {
     description: "Read a pull or merge request through its forge, and post the review back to it",
     args: 'status|prior|pass|submit --file <path>|reply <threadId> --body "<text>"',
@@ -1017,7 +966,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       guidance: await guidanceFiles(worktree),
       help: [
         `Edit ${join(dir, "review.md")} and data.yaml, then run \`thurview publish --review ${short(review.id)}\``,
-        `Run \`thurview graph impact --review ${short(review.id)}\` to see what the change reaches`,
+        `Run \`git grep -n -w <symbol> ${head.slice(0, 12)} --\` in ${worktree} for who reaches a symbol the change moved`,
         stat.additions + stat.deletions < 300
           ? `Small change: run \`thurview publish --review ${short(review.id)} --view files --open\` now, then write the document`
           : `Run \`git diff ${base.slice(0, 12)} ${head.slice(0, 12)}\` in ${worktree} to study the change`,
@@ -1053,7 +1002,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       scale: { filesInScope: pinned.inScope.length },
       guidance: await guidanceFiles(worktree),
       help: [
-        `Run \`thurview graph architecture --review ${short(review.id)}\` for the clusters, their hubs and the links between them`,
+        `Run \`git ls-tree -d -r --name-only ${commit.slice(0, 12)}\` in ${worktree} for the directories in scope`,
         `Author ${join(dir, "map.yaml")} first: it carries the breadth the prose cannot`,
         `Edit ${join(dir, "review.md")} and data.yaml, then run \`thurview publish --review ${short(review.id)}\``,
       ],
@@ -1088,7 +1037,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       scale: { filesInScope: pinned.inScope.length },
       guidance: await guidanceFiles(worktree),
       help: [
-        `Run \`thurview graph architecture --review ${short(review.id)}\` for the structure the design has to fit`,
+        `Run \`git grep -n -w <symbol> ${commit.slice(0, 12)} --\` in ${worktree} for who depends on what the design changes`,
         `Declare in ${join(dir, "data.yaml")} what the design would add, change or remove, each anchored to the code it lands in today`,
         `Edit ${join(dir, "review.md")}, then run \`thurview publish --review ${short(review.id)}\``,
       ],
@@ -1176,20 +1125,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     }
     const themeName = theme ? await registerTheme(theme.shiki) : undefined;
     const kind = kindOf(review);
-    // An explainer has one pinned commit, so there is no delta to derive: the
-    // panel above its document states coverage instead.
-    let interfaces: InterfaceDelta | null = null;
-    if (kind === "review") {
-      try {
-        interfaces = await deltaFor(pinnedOf(review));
-      } catch (e) {
-        diags.push({
-          level: "warning",
-          file: "review.md",
-          message: `the interface delta is unavailable: ${(e as Error).message}`,
-        });
-      }
-    }
     const doc = await compileDocument({
       cwd: review.worktree,
       pins: review.pins,
@@ -1197,7 +1132,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       dataYaml: dataYaml ?? "",
       kind,
       ...(themeName ? { themeName } : {}),
-      interfaces,
     });
     diags.push(...doc.diagnostics);
     let map = null;
@@ -1235,13 +1169,11 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     let coverage: Coverage | null = null;
     if (kind === "explainer") {
       try {
-        const graph = await import("./graph.js");
-        const g0 = await graph.graphAt(review.worktree, review.pins.head, dir);
         coverage = computeCoverage({
           commit: review.pins.head,
           scope: review.binding.name,
           allFiles: await g.listFiles(review.worktree, review.pins.head),
-          graph: g0,
+          searches: doc.searches,
           anchored: Object.values(doc.document.anchors)
             .map((a) => a.peek?.file)
             .filter((f): f is string => !!f),
@@ -1504,158 +1436,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     } finally {
       await (handedQuestion ? listening.handOff() : listening.stop());
     }
-  },
-
-  async graph(args) {
-    const sub = args[0];
-    const rest = args.slice(1);
-    const s = spec("graph").flags;
-    const help = [
-      "thurview graph interfaces",
-      "thurview graph impact",
-      "thurview graph callers <name> [--graph base]",
-      "thurview graph tests-for <name> [--graph base]",
-      "thurview graph architecture",
-    ];
-    if (!sub || !["interfaces", "impact", "callers", "tests-for", "architecture"].includes(sub))
-      throw new AxiError(`unknown graph command${sub ? ` ${sub}` : ""}`, "VALIDATION_ERROR", help);
-    const named = sub === "callers" || sub === "tests-for";
-    const p = parseFlags(`graph ${sub}`, rest, s, named ? 1 : 0);
-    const name = p.positional[0];
-    if (named && !name)
-      throw new AxiError(`graph ${sub} needs a symbol name`, "VALIDATION_ERROR", help);
-    const depth = Number(str(p, "depth") ?? "2");
-    if (!Number.isInteger(depth) || depth < 1)
-      throw new AxiError("--depth must be a positive integer", "VALIDATION_ERROR", help);
-    const side = str(p, "graph") ?? "head";
-    if (side !== "head" && side !== "base")
-      throw new AxiError("--graph must be head or base", "VALIDATION_ERROR", help);
-    const baseRef = str(p, "base");
-    const headRef = str(p, "head");
-    const commits = baseRef !== undefined || headRef !== undefined;
-    if (commits && str(p, "review"))
-      throw new AxiError("pass --review or --base/--head, not both", "VALIDATION_ERROR", help);
-    const graph = await import("./graph.js");
-    const review = commits ? null : await resolveReview(str(p, "review"));
-    let t: Pinned;
-    if (review) t = pinnedOf(review);
-    else {
-      const worktree = await worktreeOf(process.cwd());
-      if (!worktree)
-        throw new AxiError("not inside a git repository", "VALIDATION_ERROR", [
-          "Run inside the source worktree, or pass --review <id>",
-        ]);
-      // No review directory owns these graphs, and a commit's graph is the same
-      // whoever asks, so they share one cache under the thurview home.
-      const pins = await pinRange(worktree, baseRef, headRef, "thurview graph impact --base <ref>");
-      t = { worktree, pins, dir: home() };
-    }
-    // A next step has to name the same commits, or it answers about another change.
-    const again = review ? "" : ` --base ${short(t.pins.base)} --head ${short(t.pins.head)}`;
-    if (review && kindOf(review) !== "review" && (sub === "interfaces" || sub === "impact"))
-      throw new AxiError(
-        `graph ${sub} compares two commits; ${kindOf(review) === "design" ? "a design" : "an explainer"} is pinned to one`,
-        "VALIDATION_ERROR",
-        [
-          `Run \`thurview graph architecture --review ${short(review.id)}\` for the structure at that commit`,
-          `Run \`thurview graph callers <name> --review ${short(review.id)}\` to follow one symbol`,
-        ],
-      );
-    const at = (commit: string) => graph.graphAt(t.worktree, commit, t.dir);
-    if (sub === "callers" || sub === "tests-for") {
-      const g = await at(side === "base" ? t.pins.base : t.pins.head);
-      const pins = {
-        graph: side,
-        commit: short(g.commit),
-        languages: graph.LANGUAGES.join(","),
-        truncated: g.truncated,
-      };
-      if (sub === "callers")
-        return {
-          ...pins,
-          symbol: name,
-          callers: graph.callers(g, name!),
-          help: [`Run \`thurview graph tests-for ${name}${again}\` to see what exercises it`],
-        };
-      return {
-        ...pins,
-        symbol: name,
-        depth,
-        tests: graph.testsFor(g, name!, depth),
-        help: [`Run \`thurview graph callers ${name}${again}\` for every reference`],
-      };
-    }
-    const base = await at(t.pins.base);
-    const head = await at(t.pins.head);
-    const pins = {
-      base: short(base.commit),
-      head: short(head.commit),
-      languages: graph.LANGUAGES.join(","),
-    };
-    if (sub === "interfaces") {
-      const delta = await deltaFor(t, base, head);
-      return {
-        ...pins,
-        verdict: delta.verdict,
-        interfaces: delta.entries.map((e) => ({
-          id: e.id,
-          change: e.change,
-          name: e.name,
-          was: e.was,
-          kind: e.kind,
-          file: e.file,
-          line: e.line,
-          graph: e.graph,
-        })),
-        internal: delta.internal,
-        unreadable: delta.unreadable,
-        truncated: delta.truncated,
-        help: [
-          ...(review
-            ? ["Write one capability line per entry in data.yaml under `interfaces`, keyed by id"]
-            : []),
-          `Run \`thurview graph callers <name>${again}\` to see who a removed or changed interface reached`,
-        ],
-      };
-    }
-    if (sub === "impact") {
-      const changes = await g.lineChanges(t.worktree, t.pins.base, t.pins.head);
-      return {
-        ...pins,
-        depth,
-        ...graph.impact(base, head, changes, depth),
-        help: [
-          `Run \`thurview graph callers <name>${again}\` to follow one symbol`,
-          `Run \`thurview graph architecture${again}\` for the module structure and its diff`,
-        ],
-      };
-    }
-    // An explainer and a design are both scoped to a path and pinned to one
-    // commit, so the structure they get back is that path's, not the
-    // repository's: for an explainer, the same bound the Coverage tab accounts
-    // for; for a design, the structure it has to fit.
-    if (review && kindOf(review) !== "review") {
-      const scope = review.binding.name;
-      const g0 = scopeGraph(head, scope);
-      const allFiles = await g.listFiles(t.worktree, t.pins.head);
-      const { diff: _diff, truncated: _truncated, ...rest } = graph.architecture(g0, g0);
-      return {
-        commit: short(head.commit),
-        scope,
-        languages: pins.languages,
-        truncated: scopeTruncated(allFiles, head, scope),
-        ...rest,
-        help: [
-          "Seed map.yaml nodes from communities, their `files` from a community's files, and edges from edges",
-          "A file in no community is outside the languages the graph reads; `thurview publish` counts those",
-        ],
-      };
-    }
-    return {
-      ...pins,
-      ...graph.architecture(base, head),
-      help: ["Seed map.yaml nodes from communities and edges from diff.added"],
-    };
   },
 
   async threads(args) {

@@ -23,12 +23,12 @@ to nothing would put that question on every other anchor in the document.
 
 ## What this buys, concretely
 
-| The design says                                | How it is carried                                    | What the reader can do                        |
-| ---------------------------------------------- | ---------------------------------------------------- | --------------------------------------------- |
-| "today the router picks a handler in a switch" | anchor with a `peek`                                 | open the switch                               |
-| "we would add `Router.register`"               | proposal, `change: added`, anchored at the switch    | open the code it replaces                     |
-| "it would look roughly like this"              | plain fenced code block in `review.md`               | read it as a sketch, because it is not a peek |
-| "these fourteen callers move"                  | anchor per caller, or the count from `graph callers` | check the count                               |
+| The design says                                | How it is carried                                            | What the reader can do                        |
+| ---------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------- |
+| "today the router picks a handler in a switch" | anchor with a `peek`                                         | open the switch                               |
+| "we would add `Router.register`"               | proposal, `change: added`, anchored at the switch            | open the code it replaces                     |
+| "it would look roughly like this"              | plain fenced code block in `review.md`                       | read it as a sketch, because it is not a peek |
+| "these fourteen callers move"                  | anchor per caller, or the count and the `git grep` behind it | run the search and check the count            |
 
 ## The refusals, and why each one is there
 
@@ -37,9 +37,11 @@ why; these are the reasons behind them.
 
 - **`graph: base` on an anchor.** A design has one pinned commit. A base-graph
   anchor would resolve against a commit the document never named.
-- **A `symbol:` interface entry.** That shape annotates a row the code graph
-  derived from a diff. A design has no diff, so there is no derived row, and an
-  annotation with nothing under it is an assertion wearing a badge.
+- **A `symbol:` interface entry.** That shape annotated a row derived from a
+  diff. A design has no diff, and an annotation with nothing under it is an
+  assertion wearing a badge; a proposal names its own interface.
+- **`searches` in `data.yaml`.** Those feed an explainer's Coverage tab, which a
+  design has none of. Give the search in the prose, beside the count it backs.
 - **A design that proposes nothing.** A document with no `interfaces` entry is
   prose about the code as it stands. That is an explainer, and it should be one
   — the reader of a design is being asked to approve something.

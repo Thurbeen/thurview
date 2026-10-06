@@ -62,10 +62,11 @@ Read the guidance files that exist, in this order; the second wins on conflict.
 `thurview explain` lists the ones it found under `guidance`.
 
 The `thurview` skill ships the references this one shares - document authoring,
-components, software map, theme, lifecycle. `thurview skill` prints the path of
+components, software map, searching the code, theme, lifecycle. `thurview skill` prints the path of
 every bundled SKILL.md; the references sit beside each one. Read **Document
 authoring** before you write `review.md`, **Components** before you edit
-`data.yaml`, **Software map** before you author `map.yaml`, **Theme** before you
+`data.yaml`, **Software map** before you author `map.yaml`, **Searching the
+code** before you look for callers, tests or importers, **Theme** before you
 write `theme.yaml`, and **Lifecycle** for statuses, storage and thread rules -
 they are identical for all three kinds.
 
@@ -86,8 +87,7 @@ thurview explain --commit v1.2.0 # a released commit rather than HEAD
 
 The positional argument is a path or a glob; a bare path means that directory
 and everything under it. It is the **scope**, and everything else obeys it:
-`graph architecture` reports the clusters inside it, and coverage accounts for
-every file inside it. A scope that matches no file at that commit is refused.
+your searches stay inside it, and coverage accounts for every file inside it. A scope that matches no file at that commit is refused.
 
 Record `explainer.id`, `explainer.dir`, `explainer.commit`, `explainer.scope`
 and `scale.filesInScope` from the output. Everywhere else the id is passed as
@@ -103,10 +103,12 @@ misleading about architecture, which is the one thing an explainer must not be.
 So work in three layers, and let each carry what it is good at.
 
 1. **System — the map carries breadth.** Author `map.yaml` first, seeded from
-   `thurview graph architecture --review <id>`: communities become nodes, their
-   files become the node's `files` globs, and the edges between communities
-   become edges. Every part of the scope should appear here, including the parts
-   the prose will not reach. See the `thurview` skill's Software map
+   the code: the directories in scope become candidate nodes and their files
+   the node's `files` globs, and what imports what between them becomes the
+   edges. `git ls-tree -d -r --name-only <commit> -- <scope>` lists the
+   directories; the `thurview` skill's Searching the code reference has the
+   import recipes. Every part of the scope should appear here, including the
+   parts the prose will not reach. See the `thurview` skill's Software map
    reference for the shape.
 2. **Subsystem — the prose carries depth.** Pick the parts that carry the most
    structure and the most traffic, and explain those. Three to six sections.
@@ -114,27 +116,37 @@ So work in three layers, and let each carry what it is good at.
 3. **File and symbol — anchors carry the proof.** Every claim gets an anchor.
    The reader opens code where they want it and nowhere else.
 
-**Select by structure, not by taste, and say what you selected on.** The graph
-gives you the basis: cluster size in files and symbols, the hub symbols of each
-cluster (most referenced), and the reference counts on the edges between
-clusters. Say in the document which parts you took and why they were the ones -
-"the two clusters with the most traffic between them" is a reason a reader can
-check. "The interesting bits" is not.
+**Select by structure, not by taste, and say what you selected on.** Your
+searches give you the basis: how many files a part holds, which of its names
+the rest of the scope references most, and how many places one part imports
+another. Say in the document which parts you took and why they were the ones -
+"the two parts that import each other most" is a reason a reader can check,
+with the searches that counted it in `searches`. "The interesting bits" is not.
 
 ## Coverage is derived, not claimed
 
 `thurview publish` accounts for every file in scope at the pinned commit and
-puts one of three states on it:
+puts one of four states on it, from what you did that it can check:
 
 - **explained** - an anchor in the document points into the file.
 - **placed** - a map node's `files` globs match it, and no anchor does. The
   reader is told where it sits, not what it does.
-- **not examined** - neither.
+- **searched** - a search you recorded under `searches` in `data.yaml` matched
+  it, and nothing above did. You saw lines of it; the document says nothing
+  about it.
+- **not examined** - none of the above.
+
+Record the searches you ran - for callers, tests, importers - under `searches`,
+each with its `pattern`, optional `paths` and a `why`. `publish` re-runs every
+one with `git grep -E` at the pinned commit, so what it counts is what the
+commit holds, not what you remember, and a search that matched nothing is shown
+as the zero it is. The shape is in the `thurview` skill's Components reference,
+the recipes in its Searching the code reference.
 
 The counts go above the document and onto the Coverage tab, and `publish`
 prints them with the files it did not examine. You cannot forget to state
 coverage, and you cannot overstate it: to move a file out of _not examined_ you
-have to actually anchor it or actually place it on the map.
+have to actually anchor it, place it on the map, or search it.
 
 Two consequences worth planning for:
 
@@ -145,12 +157,9 @@ Two consequences worth planning for:
   globs it owns and how many files they match, so `**/*` on one node inflates
   nothing quietly.
 
-Coverage also states what the code graph could not read: files in languages it
-does not parse (`thurview graph` covers TypeScript, JavaScript, Python, Go,
-Rust, Java and Elixir), and whether its file list was capped. Those files are absent
-from the structure, not empty. If a large part of the scope is outside the
-graph, say so in the document rather than letting the map imply the system is
-smaller than it is.
+Coverage is the same for every language: it counts files at the commit, so a
+config file, a stylesheet or a language nothing parses is accounted for like
+any other.
 
 ## Surface structure; do not grade it
 
@@ -160,7 +169,8 @@ the reader can **detect** design problems. That is only consistent with the
 thesis if you surface structure and leave the conclusion to them.
 
 The test: **every fact in an explainer is a count, or a list of named things,
-at the pinned commit, that the reader could re-derive with `thurview graph`.**
+at the pinned commit, that the reader could re-derive with `git grep` or
+`git ls-tree`.**
 
 Observation - write these:
 
@@ -169,7 +179,8 @@ Observation - write these:
 - "The API layer reaches the database layer in 14 places and the model layer in
   2; the model layer reaches the API layer in 6."
 - "Nothing in the scope references `legacy/` at this commit."
-- "No test file reaches this cluster." (a count of zero, stated as one)
+- "No test file names anything in `src/store`." (a count of zero, stated as
+  one, with the search that found it)
 
 Judgement - never write these:
 
@@ -188,11 +199,12 @@ the code" - not a finding.
 ## Workflow
 
 1. `thurview explain [<scope>]`. Note the id, the commit and the scope.
-2. `thurview graph architecture --review <id>`. This is the structure at the
-   pinned commit; do not re-derive it by reading directories.
-   `thurview graph callers <name>` and `tests-for <name>` answer the follow-ups.
-   `graph interfaces` and `graph impact` compare two commits and are refused.
-3. Author `map.yaml` from the architecture output, covering the whole scope.
+2. Survey the scope at the pinned commit: its directories and files
+   (`git ls-tree`), then what imports what between them and who calls the
+   names that recur, with the `git grep` recipes in the `thurview` skill's
+   Searching the code reference. Record each search that shapes what you write
+   under `searches` in `data.yaml`.
+3. Author `map.yaml` from that survey, covering the whole scope.
    Dispatch a sub-agent for it if you have one, exactly as the `thurview`
    skill's review does.
 4. Author `review.md` and `data.yaml` per **Document authoring**, minus the
@@ -202,7 +214,8 @@ the code" - not a finding.
    `graph: base` on an anchor - there is one commit.
 5. `theme.yaml` as usual - see **Theme**.
 6. `thurview publish --review <id>`. Read `coverage` and `notExamined`. If the
-   split is not the one you meant, anchor or place more and publish again.
+   split is not the one you meant, anchor, place or search more and publish
+   again.
 7. `thurview open --review <id>`, then `thurview wait --review <id>`. The loop,
    the statuses and the thread rules are identical to a review; see
    **Lifecycle**.

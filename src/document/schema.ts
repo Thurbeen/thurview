@@ -47,29 +47,41 @@ export const StoreSchema = z
   });
 
 /**
- * One line of the interface delta the graph cannot derive: a CLI flag, an HTTP
- * route, a config key, a file format. `symbol` instead annotates a derived
- * entry with what it lets a consumer do; publish rejects a symbol the change
- * did not move, so an annotation cannot outlive the entry it explains.
+ * One line of the interface delta: an exported function, a CLI flag, an HTTP
+ * route, a config key, a file format. The agent names it, says what it lets a
+ * consumer do, and anchors it on the lines that moved it; publish checks the
+ * anchor against the pinned diff. `symbol` is read only to refuse it: it
+ * annotated a row thurview used to derive, and there is none to annotate now.
  */
 export const InterfaceSchema = z
   .object({
-    symbol: z.string().min(1).optional(),
+    symbol: z.string().optional(),
     name: z.string().min(1).optional(),
     change: z.enum(["added", "changed", "removed"]).optional(),
     capability: z.string().min(1),
     anchor: id.optional(),
   })
   .strict()
-  .refine((e) => !e.symbol !== !e.name, {
-    message: "an entry annotates a symbol or names its own interface, not both",
-  })
-  .refine((e) => !e.name || (e.change && e.anchor), {
-    message: "an entry that names its own interface needs change and anchor",
-  })
-  .refine((e) => !e.symbol || !(e.change || e.anchor), {
-    message: "change and anchor come from the graph for a symbol entry",
+  .refine((e) => e.symbol !== undefined || (e.name && e.change && e.anchor), {
+    message: "an interface entry needs name, change and anchor",
   });
+
+/**
+ * One search the agent ran while reading the code: the callers of a symbol, the
+ * tests touching a file, the importers of a module. Publish re-runs it with
+ * `git grep -E` at the pinned commit, so the files it reports are the commit's
+ * and not the worktree's, and the reader can run the same line to check it.
+ */
+export const SearchSchema = z
+  .object({
+    /** a POSIX extended regular expression, as `git grep -E` reads it */
+    pattern: z.string().min(1),
+    /** globs to search under; the whole commit when left out, though coverage counts only files in scope */
+    paths: z.array(z.string().min(1)).optional(),
+    /** the question the search answered, in the agent's words */
+    why: z.string().min(1).optional(),
+  })
+  .strict();
 
 /**
  * One place this change lets input cross a trust boundary, with the anchor that
@@ -111,6 +123,7 @@ export const DataSchema = z
     anchors: z.record(id, AnchorSchema).default({}),
     stores: z.record(id, StoreSchema).default({}),
     interfaces: z.record(id, InterfaceSchema).default({}),
+    searches: z.record(id, SearchSchema).default({}),
     /** read by hand, not here: see Security above for why a union cannot sit on this object */
     security: z.unknown().optional(),
   })

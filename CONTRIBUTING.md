@@ -36,13 +36,14 @@ locally.
 - `src/ui/`: the browser app, vanilla TypeScript bundled by esbuild.
 - `skills/thurview/`: the agent skill for a review, and the references the
   other skills draw on - the document, `data.yaml`, `map.yaml` and
-  `theme.yaml` shapes, and the lifecycle.
+  `theme.yaml` shapes, the search recipes, and the lifecycle.
 - `skills/thurview-explain/` and `skills/thurview-design/`: one skill per other
   document kind, each keeping a reference of its own only for what is its
   alone - `thurview-design/references/anchors-and-proposals.md` is the only
   one today.
-- `skills/thurview-fix/`: the skill that reviews a change with the code graph,
-  commits the fixes that pass, and can post the rest through `thurview forge`.
+- `skills/thurview-fix/`: the skill that reviews a change by searching what it
+  reaches, commits the fixes that pass, and can post the rest through
+  `thurview forge`.
 - `test/e2e.test.ts`: the suite, driving the CLI and the server end to end.
 - `test/forge.test.ts`: the same, with a fake `gh` and `glab` on PATH, so both
   forge adapters are driven rather than asserted.

@@ -23,13 +23,14 @@ _The reader's half of it; the agent is working off camera._
   agent — at once if one is listening, queued if not — and the answer lands
   in the same thread; a comment waits for your decision. Then you approve the
   change or send it back with the comments attached.
-- **A code graph answers what the diff cannot.** Who calls the symbol that
-  moved, which tests reach it, where the change landed in the system and what
-  sits next to it. thurview builds the graph itself with tree-sitter from the
-  pinned commits, for TypeScript, JavaScript, Python, Go, Rust, Java and Elixir.
+- **The agent searches what the diff cannot show.** Who calls the symbol that
+  moved, which tests reach it, what imports the module it touched: the skills
+  give the agent `git grep` recipes run at the pinned commits, in any language,
+  and every claim that rests on a search carries the search, so you can run it
+  again.
 - **The evidence is checked, not taken on trust.** An anchor whose lines
   do not exist at the pinned commit, a call stack frame asserting a call the
-  diff does not show, an interface annotation for a symbol the change never
+  diff does not show, an interface entry anchored on lines the change never
   moved, a trust boundary crossing that resolves to nothing — publishing
   rejects each one rather than rendering it.
 
@@ -115,9 +116,8 @@ Install the command itself, rather than leaving the skills to reach it through
 npm install -g thurview     # or: pnpm add -g thurview
 ```
 
-Nothing else needs installing: the code graph is built from the pinned commits
-with tree-sitter. `thurview graph` answers which interfaces the change moved,
-what it reaches, who calls a symbol, what tests cover it and how files cluster.
+Nothing else needs installing beyond `git`: callers, tests and importers are
+found by the agent's own search at the pinned commits.
 
 To run from a checkout instead:
 
@@ -228,9 +228,9 @@ changes](./media/review-decision.png)
 
 - **Interface delta**: above the document, what the change added to, changed
   in or removed from the surfaces other code can reach - exported functions
-  and types, plus the CLI flags, routes, config keys and formats the agent
-  declares. Derived from the code graph at both pinned commits, so a change
-  that moved no surface says exactly that instead of inventing a feature.
+  and types, CLI flags, routes, config keys and formats. The agent declares
+  each one, and publish holds it to an anchor on lines the diff really moved,
+  so an entry cannot invent a feature the change did not deliver.
 - **Review**: the document with a table of contents. Anchor links open the
   exact code beside the text; peeks show it inline. Sequence diagrams, call
   stack diffs and storage views are clickable down to the line.
@@ -240,11 +240,11 @@ changes](./media/review-decision.png)
   jumps there.
 - **Commits**: the commits between base and head.
 - **Coverage** (explainers): every file in scope at the pinned commit, in one
-  of three states - anchored in the document, placed on the map only, or not
-  examined - with the parts of the system they belong to, the references that
-  cross between those parts, and the names defined in more than one of them.
-  Derived at publish, so what the explainer skipped is a stated fact rather
-  than something the reader has to infer.
+  of four states - anchored in the document, placed on the map only, matched
+  by a search the agent recorded, or not examined - grouped by directory, with
+  each search and what it matched. Derived at publish, which re-runs every
+  recorded search with `git grep` at the pinned commit, so what the explainer
+  skipped is a stated fact rather than something the reader has to infer.
 - **Map**: systems, containers, components and code, with what the change
   added, removed or touched, linked to files and code.
 - **Threads**: _Send to the agent_ delivers a question at once and the answer
@@ -268,21 +268,20 @@ bar.
 
 ## CLI
 
-| Command                                                               | Purpose                                                               |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `thurview scaffold [--pr N \| --base R --head R]`                     | Create a review pinned to exact commits (`--update` re-pins)          |
-| `thurview explain [<path>] [--commit R]`                              | Create a code explainer of a codebase or subsystem at one commit      |
-| `thurview design [<path>] [--commit R]`                               | Create a design of what to build, pinned to the commit it argues from |
-| `thurview info [--all]`                                               | Reviews, explainers and designs bound to this worktree                |
-| `thurview publish --review ID [--view T] [--open]`                    | Validate the document and map, seal a revision                        |
-| `thurview open --review ID [--view T]`                                | Start the server if needed and open the browser                       |
-| `thurview wait --review ID [--timeout S]`                             | Block until the reader needs the agent                                |
-| `thurview threads list\|get\|reply\|resolve`                          | Read and answer threads                                               |
-| `thurview graph interfaces\|impact\|callers\|tests-for\|architecture` | Ask the code graph at a review's pins, or at `--base`/`--head`        |
-| `thurview forge status\|prior\|pass\|submit\|reply`                   | Read a change request through its forge, and post the review back     |
-| `thurview serve` / `thurview stop`                                    | Run the server in the foreground / stop the background one            |
-| `thurview setup hooks\|skill\|status`                                 | Session hooks, agent skill, install state                             |
-| `thurview update`                                                     | Self-update from npm                                                  |
+| Command                                             | Purpose                                                               |
+| --------------------------------------------------- | --------------------------------------------------------------------- |
+| `thurview scaffold [--pr N \| --base R --head R]`   | Create a review pinned to exact commits (`--update` re-pins)          |
+| `thurview explain [<path>] [--commit R]`            | Create a code explainer of a codebase or subsystem at one commit      |
+| `thurview design [<path>] [--commit R]`             | Create a design of what to build, pinned to the commit it argues from |
+| `thurview info [--all]`                             | Reviews, explainers and designs bound to this worktree                |
+| `thurview publish --review ID [--view T] [--open]`  | Validate the document and map, seal a revision                        |
+| `thurview open --review ID [--view T]`              | Start the server if needed and open the browser                       |
+| `thurview wait --review ID [--timeout S]`           | Block until the reader needs the agent                                |
+| `thurview threads list\|get\|reply\|resolve`        | Read and answer threads                                               |
+| `thurview forge status\|prior\|pass\|submit\|reply` | Read a change request through its forge, and post the review back     |
+| `thurview serve` / `thurview stop`                  | Run the server in the foreground / stop the background one            |
+| `thurview setup hooks\|skill\|status`               | Session hooks, agent skill, install state                             |
+| `thurview update`                                   | Self-update from npm                                                  |
 
 thurview is an [AXI](https://axi.md): built for agents that drive it through a
 shell. Output is [TOON](https://toonformat.dev) on stdout, errors are
@@ -298,19 +297,19 @@ stderr.
 
 The `thurview-fix` skill reviews a branch, a commit range or a pull or merge
 request, fixes what it is sure of and reports the rest, with no browser and no
-approval step. For each changed symbol it asks the code graph who calls it and
-which tests reach it, so a finding can name a caller the diff never shows.
+approval step. For each changed symbol it searches, at the pinned commits, who
+calls it and which tests name it, so a finding can name a caller the diff never
+shows.
 Fixes that pass the repository's own tests and lint land as one local commit;
 nothing is pushed unless you ask.
 
 ```sh
-thurview graph impact --head HEAD                 # changed symbols, the callers they left alone, the tests
-thurview graph callers discount --head HEAD       # every call site of one symbol
+git grep -n -E -e '\bdiscount *\(' <head> --              # every call site of one symbol
+git grep -n -w -e 'discount' <head> -- '*test*' '*spec*'  # the tests that name it
 ```
 
-`--base` and `--head` ask about two commits directly; `--head` alone diffs
-from where it forked from trunk. Each caller in `impact.reach` carries the line
-of its call and whether any test reaches it.
+Each finding carries the search behind it, so "no other caller" is a line you
+can run.
 
 With `--post`, the skill posts the findings it did not fix as inline comments
 on the change request, through `thurview forge`:
@@ -358,9 +357,10 @@ The agent writes three files in `~/.thurview/reviews/<id>/`:
   blocks `peek`, `sequence`, `flow`, `callstack` and `database` add components.
   `## Heading {collapsed}` folds a section by default.
 - `data.yaml`: typed inputs: `actors`, `anchors` (file, from, to, graph),
-  `stores`, `interfaces` (a capability line per derived entry, plus the
-  interfaces the graph cannot see), and `security`, where a review says where
-  the change lets input cross a trust boundary.
+  `stores`, `interfaces` (one entry per interface the change moved, each
+  anchored on the lines that moved it), `security`, where a review says where
+  the change lets input cross a trust boundary, and `searches`, where an
+  explainer records what it searched for its Coverage tab.
 - `map.yaml`: the software map at head, optionally at base. In an explainer it
   carries the breadth the prose has no room for, and a node's `files` globs are
   what let a file count as placed rather than not examined.
@@ -377,14 +377,14 @@ defined in one place — the `thurview-fix` skill's finding rules — and
 nothing else restates it.
 
 An explainer writes the same files, minus `interfaces` and `security`: there is
-no change to derive a delta from or to carry input across a boundary, and
+no change to take a delta from or to carry input across a boundary, and
 `graph: base` on an anchor is an error because there is one commit.
 
 A design writes the same files, and `interfaces` means something else in it:
 each entry is a **proposal** — what the design would add, change or remove,
 with the anchor of the code that proposal lands in, replaces or plugs into
 today. `graph: base` and `security` are errors for the same reason as in an
-explainer, a `symbol:` entry is an error because no diff derived one, and a
+explainer, `searches` is an error because a design has no Coverage tab, and a
 design that proposes nothing is refused: that document is an explainer. In its
 `map.yaml`, `base` is the structure as it stands and `nodes` the structure it
 proposes, so a proposed part may own files that do not exist yet while a `base`

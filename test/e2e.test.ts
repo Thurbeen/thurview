@@ -173,171 +173,47 @@ describe("thurview end to end", () => {
     await cli(["delete", "--review", id]);
   }, 20_000);
 
-  it("graphs the change: symbols touched, edges added, reach and tests", async () => {
-    expect(reviewId).toBeTruthy();
-    const impact = await cli(["graph", "impact", "--review", reviewId]);
-    const changed = impact["changed"] as Out[];
-    expect(changed.map((s) => `${s["symbol"]}@${s["file"]}:${s["change"]}`).sort()).toEqual([
-      "audit@src/audit.ts:added",
-      "login@src/auth.ts:modified",
-    ]);
-    expect(impact["edges"].added).toEqual(["src/auth.ts:login -> src/audit.ts:audit"]);
-    expect(impact["edges"].removed).toEqual([]);
-    expect(impact["tests"]).toEqual([]);
-    expect((impact["untested"] as string[]).sort()).toEqual([
-      "src/audit.ts:audit",
-      "src/auth.ts:login",
-    ]);
+  it("has no graph command: callers and tests are the agent's own search", async () => {
+    const out = await cli(["graph", "impact", "--review", reviewId], { expectCode: 2 });
+    expect(out["code"]).toBe("VALIDATION_ERROR");
   });
 
-  it("answers callers and tests-for at either pinned commit", async () => {
-    const head = await cli(["graph", "callers", "audit", "--review", reviewId]);
-    expect(head["callers"]).toEqual([{ symbol: "login", file: "src/auth.ts", line: 3, at: 4 }]);
-    const base = await cli(["graph", "callers", "check", "--review", reviewId, "--graph", "base"]);
-    expect(base["callers"]).toEqual([{ symbol: "login", file: "src/auth.ts", line: 1, at: 2 }]);
-    const none = await cli(["graph", "callers", "nothing", "--review", reviewId]);
-    expect(none["callers"]).toEqual([]);
-    const tests = await cli(["graph", "tests-for", "login", "--review", reviewId]);
-    expect(tests["tests"]).toEqual([]);
-  });
-
-  it("derives the architecture at head and its diff against base", async () => {
-    const arch = await cli(["graph", "architecture", "--review", reviewId]);
-    const files = (arch["communities"] as Out[]).flatMap((c) => c["files"] as string[]);
-    expect(files.sort()).toEqual(["src/audit.ts", "src/auth.ts"]);
-    expect(arch["diff"].added).toEqual(["src/auth.ts -> src/audit.ts"]);
-    expect(arch["diff"].removed).toEqual([]);
-  });
-
-  it("names the interfaces a change adds, changes and removes", async () => {
+  it("names the interfaces a change adds, changes and removes, as the author declared them", async () => {
     const ev = await cli(["scaffold", "--base", "feature", "--head", "surface"]);
     const id = ev["review"].uuid as string;
-    const out = await cli(["graph", "interfaces", "--review", id]);
-    const rows = out["interfaces"] as Out[];
-    // removed first: it is the entry a reviewer must not miss
-    expect(rows.map((r) => `${r["change"]} ${r["id"]}`)).toEqual([
-      "removed src/audit.ts:audit",
-      "changed src/auth.ts:login",
-      "added src/audit.ts:record",
-    ]);
-    const changed = rows.find((r) => r["change"] === "changed")!;
-    expect(changed["name"]).toBe("export function login(user: string, ip: string)");
-    expect(changed["was"]).toBe("export function login(user: string)");
-    expect(changed["graph"]).toBe("head");
-    expect(rows.find((r) => r["change"] === "removed")!["graph"]).toBe("base");
-    expect(rows.find((r) => r["change"] === "added")!["was"]).toBe("");
-    // check() changed inside without moving its surface; markdown is outside the graph
-    expect(out["internal"]).toBe(1);
-    expect(out["unreadable"]).toEqual(["notes.md"]);
-    expect(String(out["verdict"])).toBe(
-      "1 removed, 1 changed, 1 added. 1 changed file is outside the code graph.",
+    const dir = ev["review"].dir as string;
+    await writeFile(
+      join(dir, "data.yaml"),
+      `anchors:
+  oldAudit: { title: audit() before, peek: { file: src/audit.ts, from: 1, to: 3, graph: base } }
+  login: { title: login(), peek: { file: src/auth.ts, from: 3, to: 3 } }
+  record: { title: record(), peek: { file: src/audit.ts, from: 5, to: 7 } }
+interfaces:
+  record: { name: "record(user, ip)", change: added, capability: Records a login with the client ip., anchor: record }
+  login: { name: "login(user, ip)", change: changed, capability: Callers must pass the client ip., anchor: login }
+  audit: { name: audit(user), change: removed, capability: No longer exported; use record., anchor: oldAudit }
+`,
     );
+    await writeFile(
+      join(dir, "review.md"),
+      `# Record the client ip\n\n[login](anchor:login) passes the ip to [record](anchor:record); [audit](anchor:oldAudit) went private.\n`,
+    );
+    const out = await cli(["publish", "--review", id]);
+    expect(out["published"].interfaces).toBe("1 removed, 1 changed, 1 added.");
+    const p = await api<Out>(`/api/reviews/${id}`);
+    // removed first: it is the entry a reviewer must not miss
+    expect(
+      (p["document"]["interfaces"]["entries"] as Out[]).map((e) => `${e["change"]} ${e["name"]}`),
+    ).toEqual(["removed audit(user)", "changed login(user, ip)", "added record(user, ip)"]);
     await cli(["delete", "--review", id]);
   }, 30_000);
 
-  it("says plainly when a change moves no interface", async () => {
+  it("says plainly when a change declares no interface", async () => {
     const ev = await cli(["scaffold", "--base", "surface", "--head", "refactor"]);
     const id = ev["review"].uuid as string;
-    const out = await cli(["graph", "interfaces", "--review", id]);
-    expect(out["interfaces"]).toEqual([]);
-    expect(out["internal"]).toBe(1);
-    expect(String(out["verdict"])).toBe(
-      "No interface moved. 1 symbol changed inside, with no visible surface.",
-    );
+    const out = await cli(["publish", "--review", id]);
+    expect(out["published"].interfaces).toBe("No interface change declared.");
     await cli(["delete", "--review", id]);
-  }, 30_000);
-
-  it("rejects bad graph sub-commands and flags with exit code 2", async () => {
-    const badSub = await cli(["graph", "nonsense", "--review", reviewId], { expectCode: 2 });
-    expect(badSub["code"]).toBe("VALIDATION_ERROR");
-    const noName = await cli(["graph", "callers", "--review", reviewId], { expectCode: 2 });
-    expect(noName["code"]).toBe("VALIDATION_ERROR");
-    const badDepth = await cli(
-      ["graph", "tests-for", "login", "--review", reviewId, "--depth", "0"],
-      { expectCode: 2 },
-    );
-    expect(badDepth["code"]).toBe("VALIDATION_ERROR");
-    const badSide = await cli(
-      ["graph", "callers", "login", "--review", reviewId, "--graph", "sideways"],
-      { expectCode: 2 },
-    );
-    expect(badSide["code"]).toBe("VALIDATION_ERROR");
-  });
-
-  it("answers on two commits without a review, pinned the way scaffold pins them", async () => {
-    const main = (await git("rev-parse", "main")).stdout.trim();
-    const feature = (await git("rev-parse", "feature")).stdout.trim();
-    const impact = await cli(["graph", "impact", "--base", "main", "--head", "feature"]);
-    expect(main.startsWith(impact["base"])).toBe(true);
-    expect(feature.startsWith(impact["head"])).toBe(true);
-    expect((impact["changed"] as Out[]).map((s) => `${s["symbol"]}:${s["change"]}`).sort()).toEqual(
-      ["audit:added", "login:modified"],
-    );
-    // --head alone diffs from the trunk fork point
-    const forked = await cli(["graph", "impact", "--head", "feature"]);
-    expect(forked["base"]).toBe(impact["base"]);
-    const callers = await cli(["graph", "callers", "audit", "--base", "main", "--head", "feature"]);
-    expect(callers["callers"]).toEqual([{ symbol: "login", file: "src/auth.ts", line: 3, at: 4 }]);
-    const before = await cli(["graph", "callers", "check", "--head", "feature", "--graph", "base"]);
-    expect(before["callers"]).toEqual([{ symbol: "login", file: "src/auth.ts", line: 1, at: 2 }]);
-    const surface = await cli(["graph", "interfaces", "--base", "feature", "--head", "surface"]);
-    expect((surface["interfaces"] as Out[]).map((r) => `${r["change"]} ${r["id"]}`)).toEqual([
-      "removed src/audit.ts:audit",
-      "changed src/auth.ts:login",
-      "added src/audit.ts:record",
-    ]);
-    // with no review there is no data.yaml to write, so no step may point at one
-    expect(String(surface["help"])).not.toMatch(/data\.yaml/);
-    const both = await cli(["graph", "impact", "--review", reviewId, "--base", "main"], {
-      expectCode: 2,
-    });
-    expect(both["code"]).toBe("VALIDATION_ERROR");
-    const unknown = await cli(["graph", "impact", "--base", "no-such-ref"], { expectCode: 2 });
-    expect(unknown["code"]).toBe("VALIDATION_ERROR");
-  }, 30_000);
-
-  it("reads an Elixir surface instead of filing every symbol as internal", async () => {
-    const ex = await mkdtemp(join(tmpdir(), "thurview-elixir-"));
-    const exGit = (...a: string[]) =>
-      sh(ex, "git", a, {
-        GIT_AUTHOR_NAME: "t",
-        GIT_AUTHOR_EMAIL: "t@t",
-        GIT_COMMITTER_NAME: "t",
-        GIT_COMMITTER_EMAIL: "t@t",
-      });
-    const module = (extra: string, body: string) =>
-      `defmodule Chats do\n  def fetch(id) do\n    ${body}\n  end\n\n` +
-      `  defp hidden(id) do\n    id\n  end\n${extra}end\n`;
-    await exGit("init", "-q", "-b", "main");
-    await mkdir(join(ex, "lib"), { recursive: true });
-    await writeFile(join(ex, "lib", "chats.ex"), module("", "id"));
-    await exGit("add", ".");
-    await exGit("commit", "-q", "-m", "base");
-    const base = (await exGit("rev-parse", "HEAD")).stdout.trim();
-
-    // a language the graph reads is never "outside the code graph", and a body that
-    // moves while the signature holds still is not the surface moving
-    await writeFile(join(ex, "lib", "chats.ex"), module("", "to_string(id)"));
-    await exGit("commit", "-q", "-am", "body only");
-    const body = await cli(["graph", "interfaces", "--base", base, "--head", "HEAD"], { cwd: ex });
-    expect(body["interfaces"]).toEqual([]);
-    expect(body["unreadable"]).toEqual([]);
-    expect(String(body["verdict"])).not.toMatch(/outside the code graph/);
-
-    // `def` is the surface and `defp` is not, so only one of the two shows up
-    const held = (await exGit("rev-parse", "HEAD")).stdout.trim();
-    await writeFile(
-      join(ex, "lib", "chats.ex"),
-      module(
-        "\n  def purge!(id) do\n    id\n  end\n\n  defp secret(id) do\n    id\n  end\n",
-        "to_string(id)",
-      ),
-    );
-    await exGit("commit", "-q", "-am", "add a public and a private function");
-    const added = await cli(["graph", "interfaces", "--base", held, "--head", "HEAD"], { cwd: ex });
-    expect((added["interfaces"] as Out[]).map((r) => `${r["change"]} ${r["id"]}`)).toEqual([
-      "added lib/chats.ex:Chats.purge!",
-    ]);
   }, 30_000);
 
   it("rejects a document whose anchors do not resolve", async () => {
@@ -512,7 +388,9 @@ stores:
       events: { schema: { id: { type: int, pk: true }, user: { type: text } } }
 interfaces:
   auditFn:
-    symbol: src/audit.ts:audit
+    name: audit(user)
+    change: added
+    anchor: audit
     capability: Any caller can record a login attempt without touching the log file.
   strictFlag:
     name: auth.login --strict
@@ -609,19 +487,20 @@ check
       bad["diagnostics"].some((d: Out) => String(d["message"]).includes("claims an added call")),
     ).toBe(true);
     await writeFile(join(reviewDir, "review.md"), doc);
-    // an annotation of a symbol the change did not expose, and an authored entry
-    // whose anchor proves nothing, are both rejected rather than published
+    // a symbol entry named a row a code graph derived, and there is none; an
+    // entry whose anchor proves nothing is rejected rather than published
     const data = await readFile(join(reviewDir, "data.yaml"), "utf8");
     await writeFile(
       join(reviewDir, "data.yaml"),
-      data.replace("symbol: src/audit.ts:audit", "symbol: src/auth.ts:check"),
+      data.replace(
+        "name: audit(user)\n    change: added\n    anchor: audit",
+        "symbol: src/audit.ts:audit",
+      ),
     );
     const stale = await cli(["publish", "--review", reviewId], { expectCode: 1 });
-    expect(
-      stale["diagnostics"].some((d: Out) =>
-        String(d["message"]).includes('no interface change for symbol "src/auth.ts:check"'),
-      ),
-    ).toBe(true);
+    expect(stale["diagnostics"].some((d: Out) => String(d["message"]).includes("symbol"))).toBe(
+      true,
+    );
     await writeFile(
       join(reviewDir, "data.yaml"),
       data.replace("anchor: auditCall", "anchor: check"),
@@ -663,7 +542,6 @@ check
         interfaces: {
           entries: { change: string; name: string; capability?: string; anchor?: string }[];
           verdict: string;
-          internal: number;
         } | null;
       };
       map: { diff: { added: string[]; changed: string[] }; filesByNode: Record<string, string[]> };
@@ -671,13 +549,12 @@ check
     }>(`/api/reviews/${reviewId}`);
     const ifaces = p.document.interfaces!;
     expect(ifaces.entries.map((e) => `${e.change} ${e.name}`)).toEqual([
-      "added export function audit(user: string)",
+      "added audit(user)",
       "added auth.login --strict",
     ]);
     expect(ifaces.entries[0]!.capability).toContain("record a login attempt");
     expect(ifaces.entries[1]!.anchor).toBe("auditCall");
     expect(ifaces.verdict).toBe("2 added.");
-    expect(ifaces.internal).toBe(1);
     expect(p.review.status).toBe("awaiting-review");
     expect(p.theme.name).toBe("demo-light");
     expect(p.theme.css).toContain("--accent: #2563eb");
@@ -1094,18 +971,6 @@ check
     expect(String(out["error"])).toContain("no file matches");
   });
 
-  it("refuses the graph queries that compare two commits", async () => {
-    for (const sub of ["impact", "interfaces"]) {
-      const out = await cli(["graph", sub, "--review", explainerId], { expectCode: 2 });
-      expect(String(out["error"])).toContain("compares two commits");
-    }
-    const arch = await cli(["graph", "architecture", "--review", explainerId]);
-    expect(arch["scope"]).toBe("src/**");
-    expect(arch["base"]).toBeUndefined();
-    for (const c of arch["communities"])
-      for (const f of c["files"]) expect(f.startsWith("src/")).toBe(true);
-  }, 60_000);
-
   it("rejects an explainer that claims a change it cannot have", async () => {
     await writeFile(
       join(explainerDir, "data.yaml"),
@@ -1177,6 +1042,33 @@ check
     expect(String(out["warnings"])).toContain("no map");
   }, 60_000);
 
+  it("counts a file only a recorded search matched as searched, re-run at the pinned commit", async () => {
+    const anchors = `anchors:\n  login: { title: login(), peek: { file: src/auth.ts, from: 3, to: 6 } }\n`;
+    await writeFile(
+      join(explainerDir, "data.yaml"),
+      `${anchors}searches:\n  logs: { pattern: '(', why: what writes to the console }\n`,
+    );
+    const bad = await cli(["publish", "--review", explainerId], { expectCode: 1 });
+    expect(
+      bad["diagnostics"].some((d: Out) =>
+        String(d["message"]).includes("search logs: git grep refused"),
+      ),
+    ).toBe(true);
+    await writeFile(
+      join(explainerDir, "data.yaml"),
+      `${anchors}searches:\n  logs: { pattern: 'console\\.log', why: what writes to the console }\n  tests: { pattern: 'describe\\(', why: what tests auth }\n`,
+    );
+    const out = await cli(["publish", "--review", explainerId]);
+    expect(out["notExamined"]["files"]).toBe(0);
+    expect(String(out["published"]["coverage"])).toContain("1 matched by a recorded search only");
+    const cov = (await api<Out>(`/api/reviews/${explainerId}`))["coverage"];
+    expect(cov["searches"]).toEqual([
+      expect.objectContaining({ key: "logs", hits: 1, files: ["src/audit.ts"] }),
+      // a search that found nothing is stated, not dropped: a zero is a finding
+      expect.objectContaining({ key: "tests", hits: 0, files: [] }),
+    ]);
+  }, 60_000);
+
   it("counts a file a map node owns as placed, not as examined", async () => {
     await writeFile(
       join(explainerDir, "map.yaml"),
@@ -1195,33 +1087,26 @@ check
     expect(d["changes"]).toEqual([]);
     const cov = d["coverage"];
     expect(cov["scope"]).toBe("src/**");
-    expect(cov["states"]).toEqual({ explained: 1, placed: 1, uncovered: 0 });
+    expect(cov["states"]).toEqual({ explained: 1, placed: 1, searched: 0, uncovered: 0 });
     expect(cov["uncovered"]).toEqual([]);
     expect(cov["verdict"]).toContain("not examined");
-    // every count is re-derivable from the graph at the same commit
+    // every count is re-derivable from the files at the same commit
     expect(cov["clusters"].flatMap((c: Out) => c["explained"])).toContain("src/auth.ts");
   }, 20_000);
 
-  it("tells a file it cannot read apart from one the file cap dropped", async () => {
-    // notes.md is in no graph language, so it is absent from the structure. Saying
-    // that about a file the repo-wide cap merely skipped would be a false claim,
-    // and the two are counted separately.
-    // the surface branch is where notes.md exists
+  it("accounts for a file in any language, grouped by the directory it sits in", async () => {
+    // the surface branch is where notes.md exists; nothing parses it, and
+    // nothing has to, for it to be counted as not examined
     await cli(["explain", "**", "--update", "--commit", "surface", "--review", explainerId]);
     const out = await cli(["publish", "--review", explainerId]);
-    expect(String(out["published"]["coverage"])).toContain(
-      "outside the languages the code graph reads",
-    );
-    const d = await api<Out>(`/api/reviews/${explainerId}`);
-    const cov = d["coverage"];
+    expect(out["notExamined"]["first"]).toEqual(["notes.md"]);
+    const cov = (await api<Out>(`/api/reviews/${explainerId}`))["coverage"];
     expect(cov["scope"]).toBe("**");
-    expect(cov["files"]["outsideGraph"]).toBe(1);
-    expect(cov["files"]["capped"]).toBe(0);
-    expect(cov["truncated"]).toBe(false);
-    expect(cov["unclustered"]).toEqual([
-      { file: "notes.md", state: "uncovered", reason: "outsideGraph" },
+    expect(cov["files"]["total"]).toBe(3);
+    expect((cov["clusters"] as Out[]).map((c) => [c["label"], c["files"]])).toEqual([
+      ["src", 2],
+      [".", 1],
     ]);
-    expect(cov["outsideGraph"]).toEqual([{ extension: "md", files: 1 }]);
   }, 60_000);
 
   // ---- the design document kind ----
@@ -1250,19 +1135,9 @@ check
     expect(row["pins"]).not.toContain("..");
   }, 20_000);
 
-  it("refuses the graph queries that compare two commits", async () => {
-    for (const sub of ["impact", "interfaces"]) {
-      const out = await cli(["graph", sub, "--review", designId], { expectCode: 2 });
-      expect(String(out["error"])).toContain("a design is pinned to one");
-    }
-    const arch = await cli(["graph", "architecture", "--review", designId]);
-    expect(arch["scope"]).toBe("src/**");
-    expect(arch["base"]).toBeUndefined();
-  }, 60_000);
-
   it("rejects a design whose anchor points at code that is not there", async () => {
-    // `graph: base` and a proposal annotating a graph-derived symbol both claim
-    // a diff. A design has one commit and proposes what is not written yet.
+    // `graph: base` claims a diff, and a symbol entry a derived row. A design
+    // has one commit and proposes what is not written yet.
     await writeFile(
       join(designDir, "data.yaml"),
       `anchors:\n  old: { title: old, peek: { file: src/auth.ts, from: 1, to: 2, graph: base } }\ninterfaces:\n  audited:\n    symbol: src/audit.ts:audit\n    capability: does a thing\n`,

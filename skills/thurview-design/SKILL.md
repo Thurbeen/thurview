@@ -103,19 +103,19 @@ passed as `--review <id>`; that flag names a document, whichever kind it is.
 ### 2. Study what the design has to fit
 
 The design is an argument about a system, so read the system before proposing
-anything. The code graph is the fastest way in, and it is the same graph the
-reader can re-derive:
+anything. Search it yourself at the pinned commit, with the recipes in the
+`thurview` skill's Searching the code reference, so what you find is what the
+reader can re-run:
 
 ```sh
-thurview graph architecture --review <id>       # clusters in the scope, their hubs, the edges between them
-thurview graph callers <symbol> --review <id>   # who depends on what you plan to change
-thurview graph tests-for <symbol> --review <id> # what would have to move with it
+git ls-tree -d -r --name-only <commit> -- <scope>   # the parts the design has to fit
+git grep -n -E -e '\bname *\(' <commit> --          # who depends on what you plan to change
+git grep -n -w -e 'name' <commit> -- '*test*'       # what tests would have to move with it
 ```
 
-`graph interfaces` and `graph impact` compare two commits and are refused here:
-there is one. The graph covers TypeScript, JavaScript, Python, Go, Rust, Java
-and Elixir; other files are absent from it, not empty, and `truncated` means
-the answer is partial.
+A search finds names, not meaning: open each hit before you count it, and put
+the search beside any claim that rests on it - a design has no Coverage tab to
+carry it, so `searches` in `data.yaml` is refused here.
 
 Read every range you intend to anchor from the pinned commit itself —
 `git show <commit>:<path>` — not from the working tree.
@@ -144,8 +144,7 @@ interfaces:
   a restatement of the signature.
 - `anchor` is the **site**: real code at the pinned commit that this proposal
   lands in, replaces or plugs into. It must resolve and it must have a `peek`.
-- A `symbol:` entry is refused. That shape annotates a row the code graph
-  derived from a diff, and a design has none.
+- A `symbol:` entry is refused: every entry names its own interface.
 - **A design with no entry here is refused.** A document that proposes nothing
   is an explainer; write one of those instead.
 
@@ -164,8 +163,9 @@ finishes is a design nobody decided on. A shape that works:
    fence. This is what makes a design arguable rather than assertible.
 3. **What to build** — the proposals in step 3, with the reasoning the panel
    cannot carry.
-4. **What it costs** — what has to move, what breaks, what is left out. Use
-   `thurview graph callers` for the blast radius rather than guessing it.
+4. **What it costs** — what has to move, what breaks, what is left out. Search
+   for the callers to count the blast radius rather than guessing it, and give
+   the search with the count.
 5. **What was considered and dropped**, with the reason. This is the section
    readers send a design back for missing.
 
@@ -205,7 +205,10 @@ The Map tab is where a design shows structure. Put the structure it
   part, and publish does not warn about it.
 - A node under `base` may not. It is a claim about today, and publish warns
   when its globs match nothing at the pinned commit.
-- Seed `base` from `thurview graph architecture --review <id>`.
+- Seed `base` from the code: the directories at the pinned commit
+  (`git ls-tree -d -r --name-only <commit>`) and what imports what between
+  them, found with the `git grep` recipes in the `thurview` skill's Searching
+  the code reference.
 
 A design that changes one part in place does not raise the question: leave
 `nodes: []` and say so in the handover.

@@ -4,13 +4,15 @@ import {
   showFile,
   lineChanges,
   listFiles,
+  grepAt,
   changedFiles,
   type ChangedFile,
   type LineChange,
 } from "../git.js";
 import { highlightLines, languageFor } from "../highlight.js";
 import { parseDocument, FOREIGN_DIAGRAM_FENCES, type RawBlock } from "./parse.js";
-import { withVerdict, sortEntries, type InterfaceDelta } from "../interfaces.js";
+import { sortEntries, countsOf, type InterfaceDelta } from "../interfaces.js";
+import type { SearchRecord } from "../coverage.js";
 import type { DocumentKind } from "../store.js";
 import {
   DataSchema,
@@ -130,7 +132,7 @@ export interface CompiledSecurity {
 export interface CompiledDocument {
   title: string;
   blocks: Block[];
-  /** derived from the pinned commits, with the agent's capability lines merged in */
+  /** what the agent declared, each entry proven on the pinned diff; null for an explainer */
   interfaces: InterfaceDelta | null;
   /** review only: an explainer and a design have no change to cross a boundary */
   security: CompiledSecurity | null;
@@ -149,8 +151,6 @@ export interface CompileInput {
   kind?: DocumentKind;
   /** registered highlighter theme name (default skin when omitted) */
   themeName?: string;
-  /** the derived interface delta; null when the code graph could not be built */
-  interfaces?: InterfaceDelta | null;
 }
 
 /** The kind, as a message names it, so one sentence serves every kind that needs it. */
@@ -180,6 +180,8 @@ export async function compileDocument(input: CompileInput): Promise<{
   document: CompiledDocument | null;
   diagnostics: Diagnostic[];
   anchors: Record<string, CompiledAnchor>;
+  /** an explainer's searches, re-run at the pinned commit */
+  searches: SearchRecord[];
 }> {
   const diags: Diagnostic[] = [];
   const err = (file: string, message: string, line?: number) =>
@@ -196,7 +198,7 @@ export async function compileDocument(input: CompileInput): Promise<{
   const dataParsed = parseWith(DataSchema, dataRaw);
   const data: Data = dataParsed.ok
     ? dataParsed.value
-    : { actors: {}, anchors: {}, stores: {}, interfaces: {} };
+    : { actors: {}, anchors: {}, stores: {}, interfaces: {}, searches: {} };
   if (!dataParsed.ok) for (const m of dataParsed.errors) err("data.yaml", m);
 
   const kind: DocumentKind = input.kind ?? "review";
@@ -217,15 +219,23 @@ export async function compileDocument(input: CompileInput): Promise<{
       "data.yaml",
       `security is what a change crosses: ${kindWord(kind)} is pinned to one commit and has no diff, so it has none of its own to state`,
     );
-  // A design has no diff, so nothing derives a row for the agent to annotate.
-  // Every entry it declares is a proposal, and it has to name its own interface.
-  if (kind === "design")
-    for (const [key, e] of Object.entries(data.interfaces))
-      if (e.symbol)
-        err(
-          "data.yaml",
-          `interface ${key}: a design proposes an interface, it does not annotate one the code graph derived; name it with \`name\`, \`change\` and \`anchor\``,
-        );
+  // Nothing derives a row for the agent to annotate any more: every entry names
+  // its own interface, and an old `symbol:` entry is told how to say it now.
+  for (const [key, e] of Object.entries(data.interfaces))
+    if (e.symbol !== undefined)
+      err(
+        "data.yaml",
+        kind === "design"
+          ? `interface ${key}: a design proposes an interface, it does not annotate one; name it with \`name\`, \`change\` and \`anchor\``
+          : `interface ${key}: \`symbol\` is gone, thurview derives no interface to annotate; name it with \`name\`, \`change\` and \`anchor\``,
+      );
+  // Searches are what an explainer's Coverage tab counts. A review and a design
+  // have no such tab, so a search recorded there would be shown to nobody.
+  if (kind !== "explainer" && Object.keys(data.searches).length)
+    err(
+      "data.yaml",
+      `searches feed an explainer's coverage, and ${kindWord(kind)} has none; say in the prose what you searched and how`,
+    );
 
   const parsed = parseDocument(input.reviewMd);
   if (!parsed.title) err("review.md", "the document needs an H1 title");
@@ -321,14 +331,15 @@ export async function compileDocument(input: CompileInput): Promise<{
       : kind === "design"
         ? compileProposals({ declared: data.interfaces, anchors, used, err })
         : compileInterfaces({
-            delta: input.interfaces ?? null,
             declared: data.interfaces,
             anchors,
             changes,
             used,
             err,
-            warn,
           });
+
+  const searches =
+    kind === "explainer" ? await runSearches(input.cwd, input.pins.head, data.searches, err) : [];
 
   // Two questions, and only one of them needs the rest of data.yaml. The SHAPE
   // of `security` is read from the raw file, so a mistake in it is reported
@@ -370,7 +381,7 @@ export async function compileDocument(input: CompileInput): Promise<{
     );
 
   const errors = diags.filter((d) => d.level === "error");
-  if (errors.length) return { document: null, diagnostics: diags, anchors };
+  if (errors.length) return { document: null, diagnostics: diags, anchors, searches };
   return {
     document: {
       title: parsed.title,
@@ -384,7 +395,32 @@ export async function compileDocument(input: CompileInput): Promise<{
     },
     diagnostics: diags,
     anchors,
+    searches,
   };
+}
+
+/**
+ * Re-run each search the agent recorded, at the pinned commit. What the agent
+ * saw in its worktree may be a different commit; what the reader is told it
+ * matched is the one the document is pinned to.
+ */
+async function runSearches(
+  cwd: string,
+  commit: string,
+  declared: Data["searches"],
+  err: (file: string, message: string) => void,
+): Promise<SearchRecord[]> {
+  const out: SearchRecord[] = [];
+  for (const [key, s] of Object.entries(declared)) {
+    const paths = s.paths ?? [];
+    try {
+      const { files, hits } = await grepAt(cwd, commit, s.pattern, paths);
+      out.push({ key, pattern: s.pattern, paths, ...(s.why ? { why: s.why } : {}), hits, files });
+    } catch (e) {
+      err("data.yaml", `search ${key}: git grep refused it: ${(e as Error).message}`);
+    }
+  }
+  return out;
 }
 
 /**
@@ -485,38 +521,21 @@ function compileSecurity(ctx: {
 }
 
 /**
- * Merge what the agent wrote into what the graph derived. A capability line
- * must attach to an entry the change really moved, and an interface the graph
- * cannot see must be proved by an anchor on the diff's own added or deleted
- * lines, so neither can be manufactured or outlive the code.
+ * What the agent declared the change did to its interfaces. Each entry must be
+ * proved by an anchor on the diff's own added or deleted lines, so none can be
+ * manufactured or outlive the code.
  */
 function compileInterfaces(ctx: {
-  delta: InterfaceDelta | null;
   declared: Data["interfaces"];
   anchors: Record<string, CompiledAnchor>;
   changes: Map<string, LineChange>;
   used: Set<string>;
   err: (file: string, message: string) => void;
-  warn: (file: string, message: string) => void;
-}): InterfaceDelta | null {
-  const declared = Object.entries(ctx.declared);
-  if (!ctx.delta) {
-    if (declared.length)
-      ctx.warn("data.yaml", "the code graph is unavailable, so interfaces was not applied");
-    return null;
-  }
-  const delta: InterfaceDelta = { ...ctx.delta, entries: [...ctx.delta.entries] };
-  for (const [key, e] of declared) {
-    if (e.symbol) {
-      const row = delta.entries.find((x) => x.id === e.symbol);
-      if (!row)
-        ctx.err(
-          "data.yaml",
-          `interface ${key}: no interface change for symbol "${e.symbol}"; run \`thurview graph interfaces\` for the ids this change moved`,
-        );
-      else row.capability = e.capability;
-      continue;
-    }
+}): InterfaceDelta {
+  const entries: InterfaceDelta["entries"] = [];
+  for (const [key, e] of Object.entries(ctx.declared)) {
+    // a symbol entry is refused earlier, with how to write it now
+    if (e.symbol !== undefined) continue;
     const anchor = ctx.anchors[e.anchor!];
     ctx.used.add(e.anchor!);
     if (!anchor) {
@@ -550,7 +569,7 @@ function compileInterfaces(ctx: {
       );
       continue;
     }
-    delta.entries.push({
+    entries.push({
       id: `authored:${key}`,
       change: e.change!,
       name: e.name!,
@@ -563,12 +582,14 @@ function compileInterfaces(ctx: {
       anchor: e.anchor!,
     });
   }
-  return withVerdict(delta);
+  sortEntries(entries);
+  const counts = countsOf(entries);
+  return { entries, verdict: counts ? `${counts}.` : "No interface change declared." };
 }
 
 /**
  * What a design would add, change or remove, in the slot a review fills with
- * the delta its code graph derived.
+ * what its change did.
  *
  * The difference is the whole point of the kind and it is enforced here: a
  * review's entry is PROVEN - the anchor must sit on lines the pinned diff
@@ -587,7 +608,7 @@ function compileProposals(ctx: {
   const entries: InterfaceDelta["entries"] = [];
   for (const [key, e] of Object.entries(ctx.declared)) {
     // a symbol entry is refused earlier, with the reason a design cannot carry one
-    if (e.symbol) continue;
+    if (e.symbol !== undefined) continue;
     const anchor = ctx.anchors[e.anchor!];
     ctx.used.add(e.anchor!);
     if (!anchor) {
@@ -615,18 +636,12 @@ function compileProposals(ctx: {
     });
   }
   sortEntries(entries);
-  const counts = (["removed", "changed", "added"] as const)
-    .map((c) => [c, entries.filter((x) => x.change === c).length] as const)
-    .filter(([, n]) => n > 0)
-    .map(([c, n]) => `${n} ${c}`);
+  const counts = countsOf(entries);
   return {
     entries,
-    internal: 0,
-    unreadable: [],
     // "Proposed" up front, because the same panel on a review states what a
     // change already did, and the two must never read the same.
-    verdict: counts.length ? `Proposed: ${counts.join(", ")}.` : "Nothing proposed.",
-    truncated: { base: false, head: false },
+    verdict: counts ? `Proposed: ${counts}.` : "Nothing proposed.",
   };
 }
 
