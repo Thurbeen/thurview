@@ -100,6 +100,12 @@ function dataUri(type: string, bytes: Buffer): string {
   return `data:${type};base64,${bytes.toString("base64")}`;
 }
 
+/** index.html's boot script, which picks the palette before the first paint. */
+async function bootScript(): Promise<string> {
+  const index = await readFile(join(UI_DIR, "index.html"), "utf8");
+  return /<script>([\s\S]*?)<\/script>/.exec(index)?.[1]?.trim() ?? "";
+}
+
 async function appCss(): Promise<string> {
   let css = await readFile(join(UI_DIR, "app.css"), "utf8");
   for (const m of [...css.matchAll(/url\("\/(assets\/[^"]+\.woff2)"\)/g)])
@@ -139,6 +145,9 @@ export async function exportReview(
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Content-Security-Policy" content="${csp}" />
     <title>${escapeHtml(review.title)} · thurview</title>
+    <script>
+${await bootScript()}
+    </script>
     <style>
 ${await appCss()}
     </style>

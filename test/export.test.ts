@@ -173,6 +173,15 @@ describe("thurview export", () => {
     expect(html).toContain(THREAD);
   });
 
+  it("follows the reader's light or dark palette, like the served page", async () => {
+    const html = await readFile(withThreads, "utf8");
+    const index = await readFile(join(import.meta.dirname, "..", "src/ui/index.html"), "utf8");
+    const boot = /<script>([\s\S]*?)<\/script>/.exec(index)![1]!.trim();
+    // the served page's boot script, before the stylesheet, so nothing paints in the wrong palette
+    expect(html.indexOf(boot)).toBeGreaterThan(-1);
+    expect(html.indexOf(boot)).toBeLessThan(html.indexOf("<style>"));
+  });
+
   it("writes a folder target as its index.html, and leaves threads out when asked", async () => {
     const bare = await readFile(join(withoutThreads, "index.html"), "utf8");
     expect(bare).not.toContain(THREAD);
