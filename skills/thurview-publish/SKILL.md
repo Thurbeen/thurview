@@ -1,6 +1,6 @@
 ---
 name: thurview-publish
-description: Publish or update a thurview review, explainer or design as one self-contained HTML page in the user's own cloud - an Azure Storage container, an AWS S3 bucket, a Google Cloud Storage bucket or a Cloudflare Pages project - through the user's own CLI and login, at one stable unguessable path per document, and hand back a link that expires (an Azure SAS, an S3 presigned URL, a GCS signed URL) unless the user confirms a public copy. Also re-signs a link, and takes a copy down. Use when the user asks to publish, upload, host, share a link to or update a published thurview document, to re-sign or refresh its link, or to unpublish it, or invokes /thurview-publish. Not for authoring the document, which is the thurview, thurview-explain or thurview-design skill.
+description: Publish or update a thurview review, explainer or design as one self-contained HTML page in the user's own cloud - an Azure Storage container, an AWS S3 bucket, a Google Cloud Storage bucket or a Cloudflare Pages project - through the user's own CLI and login, at one stable unguessable path per document, and hand back a link that expires (an Azure SAS, an S3 presigned URL, a GCS signed URL) unless the user confirms a public copy. Refuses a target whose allow_remotes or deny_remotes rule out the repository, so a personal target never receives work code. Also re-signs a link, and takes a copy down. Use when the user asks to publish, upload, host, share a link to or update a published thurview document, to re-sign or refresh its link, or to unpublish it, or invokes /thurview-publish. Not for authoring the document, which is the thurview, thurview-explain or thurview-design skill.
 user-invocable: true
 argument-hint: "<review id> [--provider azure|aws|gcp|cloudflare] [--days N] [--public] [--resign | --unpublish]"
 ---
@@ -12,7 +12,9 @@ user's own cloud, and give them a link that stops working on its own.
 
 ```mermaid
 flowchart LR
-  A[thurview export] --> B[index.html]
+  S{repository's remotes vs the target's scope} -->|allowed, or the user said yes| A[thurview export]
+  S -->|denied| X[refuse, and say why]
+  A --> B[index.html]
   B --> C{provider}
   C -->|azure / aws / gcp| D[private object at prefix/slug/index.html]
   D --> E[signed link: 7 days at most, 12 hours on GCP]
@@ -21,18 +23,24 @@ flowchart LR
   C -.->|only after 'This will be public' and a yes| H[public copy, noindex]
 ```
 
-Three rules hold on every provider:
+Four rules hold on every provider:
 
+- **The user's own target, and only for code it is meant for.** A target
+  belongs to its user, and some are personal only - never for work or
+  company code. Before exporting anything, run the
+  [scope check](#0-check-the-target-may-take-this-repository): refuse on a
+  deny match, or on no allow match when the target has an allow list, and
+  say which remote and pattern decided it. With no scope configured, ask the
+  user whether this target is right for this repository, and wait for a yes.
 - **The user's own login, never a secret.** Every command below runs as the
-  identity the user's CLI is already signed in as: `az login`,
-  `aws sso login` or a named profile, `gcloud auth login`, `wrangler login`.
-  Never ask for, store, paste or pass an account key, connection string,
-  secret access key, service-account key file or API token. If the CLI is not
-  signed in, stop and tell the user which login command to run - do not work
-  around it.
-- **Ask before the first upload.** Name the provider, the bucket or
-  container, the object path, the expiry and whether the reader's threads go
-  in, and wait for a yes. An update of a copy the user already published
+  identity the user's CLI is already [signed in](#signing-in) as. Never ask
+  for, store, paste or pass an account key, connection string, secret access
+  key, service-account key file or API token, and never set one in the
+  environment yourself. If the CLI is not signed in, stop and tell the user
+  which login command to run - do not work around it.
+- **Ask before the first upload.** Name the target, its provider, the bucket
+  or container, the object path, the expiry and whether the reader's threads
+  go in, and wait for a yes. An update of a copy the user already published
   needs no second yes unless the target or the visibility changes.
 - **Private, with a link that expires, by default.** The object stays private
   and the link you hand back is signed for `expiry_days` (default 7), clamped
@@ -40,56 +48,115 @@ Three rules hold on every provider:
   public copy is opt-in only: see
   [Public copies](#public-copies-only-on-confirmation).
 
+## Signing in
+
+Interactive login is the default: it is how a person publishes from their
+own machine, and the CLI keeps the session in its own user config, not in
+anything thurview or the repository holds. Environment credentials are only
+for a non-interactive run - CI, a scheduled job - where whoever owns that
+environment sets them; the skill never does.
+
+| Provider   | Interactive, the default                                     | Non-interactive only                                                                                                             |
+| ---------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Azure      | `az login`                                                   | `az login --identity` (a managed identity), or a federated service principal the pipeline signs in                               |
+| AWS        | `aws sso login --profile <profile>`                          | the role the environment provides: an instance or task role, or web identity (`AWS_ROLE_ARN` with `AWS_WEB_IDENTITY_TOKEN_FILE`) |
+| GCP        | `gcloud auth login`                                          | the attached service account, or workload identity federation (`gcloud auth login --cred-file=<config>`, no key)                 |
+| Cloudflare | `wrangler login` (OAuth, kept in wrangler's own user config) | `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, set in that environment by its owner                                         |
+
 ## The config
 
 The settings live in `${THURVIEW_HOME:-$HOME/.thurview}/publish.yaml`, the
 user's own file beside thurview's review store - never in a repository, and
 never in the exported page. Read it before anything else. When it is missing,
-ask the user for their provider and target, write it, and show it to them.
+ask the user for their target and its scope, write it, and show it to them.
+
+A user can have several targets - a personal one, a work one - each with its
+own provider and its own scope. This one keeps a personal Cloudflare project
+away from a company's code and a work Azure account for that code only:
 
 ```yaml
-provider: azure # azure | aws | gcp | cloudflare
+default: personal # the target used when the user names none
 prefix: thurview # every copy goes under <prefix>/<slug>/index.html
 expiry_days: 7 # whole days, 1 or more; clamped to 7 on Azure and AWS, 12 hours on GCP
-azure:
-  account: mystorageaccount
-  container: reviews # a private container, not $web
-aws:
-  bucket: my-review-bucket
-  profile: default # the AWS CLI profile or SSO session to use
-  region: eu-west-1
-gcp:
-  bucket: my-review-bucket
-  signer: thurview-signer@my-project.iam.gserviceaccount.com # impersonated to sign, never a key file
-cloudflare:
-  project: thurview-reviews
-published: {} # <review id>: { provider, slug, public, url, expires }
+targets:
+  personal:
+    provider: cloudflare
+    project: my-reviews
+    deny_remotes: # personal only: never the company's code
+      - gitlab.example.com/**
+      - github.com/example-corp/**
+  work:
+    provider: azure
+    account: examplecorpreviews
+    container: reviews # a private container, not $web
+    allow_remotes: # this account takes the company's code and nothing else
+      - gitlab.example.com/**
+  aws:
+    provider: aws
+    bucket: my-review-bucket
+    profile: default # the AWS CLI profile or SSO session to use
+    region: eu-west-1
+  gcp:
+    provider: gcp
+    bucket: my-review-bucket
+    signer: thurview-signer@my-project.iam.gserviceaccount.com # impersonated to sign, never a key file
+published: {} # <review id>: { target, slug, public, url, expires }
 ```
 
-Only the block for the chosen provider needs filling. `published` is how a
-document keeps one path: it maps each review id to the slug its copy lives
-under. Write it after every upload, re-sign and unpublish.
+A target names its `provider` and that provider's fields: `account` and
+`container` for Azure, `bucket`, `profile` and `region` for AWS, `bucket` and
+`signer` for GCP, `project` for Cloudflare. `allow_remotes` and
+`deny_remotes` are globs over a remote's host and path, such as
+`gitlab.example.com/team/**`: `*` stays inside one path segment, `**`
+crosses them, and case does not matter. `published` is how a document keeps
+one path: it maps each review id to the target and slug its copy lives
+under. Write it after every upload, re-sign and unpublish, and update or
+unpublish a copy only on the target it records.
 
 Every block below reads the config through these shell variables. Run each
 operation - publish (steps 1 to 4), re-sign, unpublish - as **one** script
 file run with `bash`, never typed into an interactive shell, that starts by
-setting them, so no block runs in a shell where they are
-empty, and stops at the first command that fails:
+setting them, so no block runs in a shell where they are empty, and stops at
+the first command that fails:
 
 ```sh
 set -euo pipefail
-REVIEW="<review id>"
-PROVIDER="<provider>" PREFIX="<prefix>" EXPIRY_DAYS="<expiry_days>"
+REVIEW="<review id>" REPO="<the review's worktree>" SKILL_DIR="<this skill's directory>"
+PROVIDER="<target.provider>" PREFIX="<prefix>" EXPIRY_DAYS="<expiry_days>"
 SLUG="<published.<review id>.slug, or empty for a first upload>"
-ACCOUNT="<azure.account>" CONTAINER="<azure.container>"
-BUCKET="<aws.bucket or gcp.bucket>" PROFILE="<aws.profile>" REGION="<aws.region>"
-SIGNER="<gcp.signer>" PROJECT="<cloudflare.project>"
+ACCOUNT="<target.account>" CONTAINER="<target.container>"
+BUCKET="<target.bucket>" PROFILE="<target.profile>" REGION="<target.region>"
+SIGNER="<target.signer>" PROJECT="<target.project>"
 ```
 
 For a public Azure copy, `CONTAINER` is `'$web'` instead - see
 [Public copies](#public-copies-only-on-confirmation).
 
 ## Workflow
+
+### 0. Check the target may take this repository
+
+Before exporting or uploading anything - and again before an update, since
+a repository's remotes can change - hold the review's repository to the
+target's scope. The repository is the review's worktree:
+`thurview info --all --fields worktree` lists it beside the review's id.
+Pass each `allow_remotes` entry as `--allow` and each `deny_remotes` entry as
+`--deny`; the script sits in this skill's own directory:
+
+```sh
+node "$SKILL_DIR/scripts/check-scope.mjs" --repo "$REPO" \
+  --deny 'gitlab.example.com/**' --deny 'github.com/example-corp/**'
+```
+
+It checks every fetch and push URL of every remote, reduced to host and
+path, and prints one line per URL saying which pattern decided it. Its exit
+code decides what happens next:
+
+| Exit | Meaning                                                       | Do                                                                                                                                                                                  |
+| ---- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | allowed: no remote denied, and all allowed when a list is set | go on to step 1                                                                                                                                                                     |
+| 1    | refused: a remote is denied, or matches no allow pattern      | stop. Tell the user the remote and the pattern it printed, and that this target is not for this repository. Do not offer a way round it; the user changes the config if it is wrong |
+| 2    | nothing to decide by: no scope set, no remote, no repository  | ask the user whether this target is right for this repository, naming its remotes; go on only on a yes, and suggest adding a scope so the question does not come back               |
 
 ### 1. Export the page
 

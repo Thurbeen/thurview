@@ -52,8 +52,11 @@ locally.
   the forge and follows it until it merges or closes.
 - `skills/thurview-publish/`: the skill that uploads `thurview export`'s page
   to the user's own Azure, S3, Cloud Storage or Cloudflare Pages account with
-  the user's own CLI login, and signs an expiring link. It is commands, not
-  code; `test/publish-skill.test.ts` holds them to that contract.
+  the user's own CLI login, and signs an expiring link. It is commands, plus
+  one dependency-free script, `scripts/check-scope.mjs`, that holds a
+  repository's remotes to a target's allow and deny globs;
+  `test/publish-skill.test.ts` and `test/publish-scope.test.ts` hold them to
+  that contract.
 - `test/e2e.test.ts`: the suite, driving the CLI and the server end to end.
 - `test/forge.test.ts`: the same, with a fake `gh` and `glab` on PATH, so both
   forge adapters are driven rather than asserted.

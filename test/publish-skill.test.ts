@@ -213,12 +213,47 @@ describe("thurview-publish skill", () => {
     }
   });
 
-  it("keeps its settings in a config block with no secret in it", () => {
-    const yaml = blocks().find((b) => b.lang === "yaml" && b.body.includes("provider:"));
+  it("keeps its targets in a config block with a scope and no secret in it", () => {
+    const yaml = blocks().find((b) => b.lang === "yaml" && b.body.includes("targets:"));
     expect(yaml, "the config block").toBeDefined();
-    const config = parseYaml(yaml!.body) as Record<string, unknown>;
-    for (const key of ["provider", "prefix", "expiry_days", "azure", "aws", "gcp", "cloudflare"])
+    const config = parseYaml(yaml!.body) as {
+      default: string;
+      targets: Record<string, Record<string, unknown>>;
+    } & Record<string, unknown>;
+    for (const key of ["default", "prefix", "expiry_days", "targets", "published"])
       expect(config, key).toHaveProperty(key);
+    expect(config.targets).toHaveProperty(config.default);
+    const providers = Object.values(config.targets).map((t) => t["provider"]);
+    expect(new Set(providers)).toEqual(new Set(["azure", "aws", "gcp", "cloudflare"]));
+    // the example shows both shapes of scope, on hosts no real organisation owns
+    const scopes = Object.values(config.targets).flatMap((t) => [
+      ...((t["allow_remotes"] as string[]) ?? []),
+      ...((t["deny_remotes"] as string[]) ?? []),
+    ]);
+    expect(Object.values(config.targets).some((t) => t["deny_remotes"])).toBe(true);
+    expect(Object.values(config.targets).some((t) => t["allow_remotes"])).toBe(true);
+    for (const glob of scopes) expect(glob).toMatch(/example/);
     expect(yaml!.body).not.toMatch(/\b(key|secret|token|password)\b\s*:/i);
+  });
+
+  it("checks the target's scope before it exports anything", () => {
+    const scope = source.indexOf("scripts/check-scope.mjs");
+    const exporting = source.indexOf("thurview export --review");
+    expect(scope).toBeGreaterThan(-1);
+    expect(scope).toBeLessThan(exporting);
+    expect(existsSync(join(ROOT, "skills", "thurview-publish", "scripts", "check-scope.mjs"))).toBe(
+      true,
+    );
+  });
+
+  it("signs in interactively by default, and leaves environment tokens to non-interactive runs", () => {
+    const signingIn = source.slice(
+      source.indexOf("## Signing in"),
+      source.indexOf("## The config"),
+    );
+    for (const login of ["az login", "aws sso login", "gcloud auth login", "wrangler login"])
+      expect(signingIn).toContain(login);
+    expect(signingIn).toMatch(/Interactive, the default/);
+    expect(signingIn).toMatch(/Non-interactive only[\s\S]*CLOUDFLARE_API_TOKEN/);
   });
 });
