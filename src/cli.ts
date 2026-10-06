@@ -1,4 +1,4 @@
-import { renderStatic, publishStatic } from "./static.js";
+import { renderStatic, publishStatic, checkStaticTarget } from "./static.js";
 import {
   runAxiCli,
   AxiError,
@@ -672,6 +672,10 @@ const SPECS: Record<
       "Render a read-only snapshot, optionally deploy the retained archive to Cloudflare",
     args: "[<review>]",
     flags: {
+      check: {
+        kind: "boolean",
+        help: "check Cloudflare configuration, login and project without a review or upload",
+      },
       review: { kind: "string", help: "document id or unique prefix" },
       out: { kind: "string", help: "render locally to this directory without deploying" },
       to: { kind: "string", help: "deployment target (cloudflare)" },
@@ -685,6 +689,7 @@ const SPECS: Record<
       },
     },
     examples: [
+      "thurview publish-static --check --to cloudflare",
       "thurview publish-static <id> --out snapshot",
       "thurview publish-static <id> --to cloudflare",
       "thurview publish-static <id> --to cloudflare --initialize-archive",
@@ -1378,6 +1383,31 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
 
   async "publish-static"(args) {
     const p = parseFlags("publish-static", args, spec("publish-static").flags, 1);
+    if (bool(p, "check")) {
+      if (
+        str(p, "to") !== "cloudflare" ||
+        str(p, "out") ||
+        str(p, "review") ||
+        p.positional.length ||
+        bool(p, "initialize-archive")
+      )
+        throw new AxiError(
+          "--check takes --to cloudflare and optional --config only",
+          "VALIDATION_ERROR",
+          ["thurview publish-static --check --to cloudflare"],
+        );
+      try {
+        return {
+          preflight: await checkStaticTarget(str(p, "config") ?? join(home(), "cloudflare.json")),
+          help: ["Publishing setup is ready; scaffold and author the review next"],
+        };
+      } catch (e) {
+        throw new AxiError((e as Error).message, "VALIDATION_ERROR", [
+          "Follow skills/thurview-pr-review/references/cloudflare-setup.md for numbered setup steps",
+          "thurview publish-static --check --to cloudflare",
+        ]);
+      }
+    }
     const review = await resolveReview(str(p, "review") ?? p.positional[0], { terminal: true });
     const out = str(p, "out");
     const to = str(p, "to");

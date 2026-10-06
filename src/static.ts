@@ -1,5 +1,5 @@
 import { readFile, mkdir, rm, access } from "node:fs/promises";
-import { join, basename, resolve } from "node:path";
+import { join, basename, resolve, dirname } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -68,6 +68,57 @@ interface Archive {
   snapshots: Record<string, string>;
 }
 const slug = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80) || "review";
+
+/** Read-only setup check, usable before there is a document to publish. */
+export async function checkStaticTarget(configPath: string) {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(resolve(configPath), "utf8"));
+  } catch (e) {
+    throw new Error(
+      (e as NodeJS.ErrnoException).code === "ENOENT"
+        ? "Cloudflare configuration is missing; save cloudflare.json first"
+        : "Cloudflare configuration is unreadable or not valid JSON",
+    );
+  }
+  const parsed = Config.safeParse(raw);
+  if (!parsed.success)
+    throw new Error(
+      `Cloudflare configuration has missing or invalid fields: ${[...new Set(parsed.error.issues.map((i) => i.path.join(".") || "target shape"))].join(", ")}`,
+    );
+  const config = parsed.data;
+  if (config.allowLiveLink)
+    throw new Error("set allowLiveLink to false before publishing a public review");
+  const options = {
+    cwd: dirname(resolve(configPath)),
+    env: {
+      ...process.env,
+      ...(config.account_id ? { CLOUDFLARE_ACCOUNT_ID: config.account_id } : {}),
+      WRANGLER_SEND_METRICS: "false",
+    },
+    timeout: 30_000,
+    maxBuffer: 1024 * 1024,
+  };
+  try {
+    await execFileP("wrangler", ["whoami", "--json"], options);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT")
+      throw new Error("wrangler is missing; install the checked latest stable release");
+    throw new Error("Cloudflare login is unavailable; run wrangler login --device and retry");
+  }
+  try {
+    await execFileP(
+      "wrangler",
+      ["deployments", "status", "--name", config.name, "--json"],
+      options,
+    );
+  } catch {
+    throw new Error(
+      "Cloudflare project is missing or inaccessible; check the account and create the Worker first",
+    );
+  }
+  return { ready: true, project: config.name };
+}
 
 export async function publishStatic(
   review: ReviewState,

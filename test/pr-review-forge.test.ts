@@ -156,7 +156,14 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
       { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
     ]);
     const file = join(bin, "pass.json");
-    await writeFile(file, JSON.stringify(PASS));
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...PASS,
+        reviewUrl: "https://reviews.example.com/r/7/",
+        markdownUrl: "https://reviews.example.com/r/7/feedback.md",
+      }),
+    );
     const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
     expect(out["pass"].summary).toBe("created");
     const logged = await calls();
@@ -171,6 +178,9 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
     expect(JSON.parse(inline.body).body).toContain("```suggestion\n");
     const summary = logged.find((c) => c.args.join(" ").includes("issues/7/comments --method"))!;
     expect(JSON.parse(summary.body).body).toMatch(/^<!-- thurview-pr-review /);
+    expect(JSON.parse(summary.body).body).toContain(
+      "[Markdown export](https://reviews.example.com/r/7/feedback.md)",
+    );
     // A pass never touches the change request's own state.
     expect(logged.some((c) => /pulls\/7\/(merge|reviews)/.test(c.args.join(" ")))).toBe(false);
   });
@@ -188,9 +198,30 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
       { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
     ]);
     const file = join(bin, "pass.json");
-    await writeFile(file, JSON.stringify({ ...PASS, confidence: 5, findings: [] }));
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...PASS,
+        confidence: 5,
+        findings: [],
+        reviewUrl: "https://reviews.example.com/r/7/",
+        markdownUrl: "https://reviews.example.com/r/7/feedback.md",
+      }),
+    );
     const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
     expect(out["pass"].summary).toBe("edited");
+    expect(
+      JSON.parse(
+        (await calls()).find((c) => c.args.join(" ").includes("issues/comments/9 --method PATCH"))!
+          .body,
+      ).body,
+    ).toContain("[Full review](https://reviews.example.com/r/7/)");
+    expect(
+      JSON.parse(
+        (await calls()).find((c) => c.args.join(" ").includes("issues/comments/9 --method PATCH"))!
+          .body,
+      ).body,
+    ).toContain("[Markdown export](https://reviews.example.com/r/7/feedback.md)");
     const made = (await calls()).map((c) => c.args.join(" "));
     expect(made.filter((a) => a.includes("--method POST"))).toEqual([]);
     expect(made.some((a) => a.includes("issues/comments/9 --method PATCH"))).toBe(true);
@@ -340,7 +371,14 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
       ...base,
     ]);
     const file = join(bin, "pass.json");
-    await writeFile(file, JSON.stringify(PASS));
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...PASS,
+        reviewUrl: "https://reviews.example.com/r/7/",
+        markdownUrl: "https://reviews.example.com/r/7/feedback.md",
+      }),
+    );
     const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], gitlab);
     expect(out["pass"].summary).toBe("created");
     const logged = await calls();
@@ -355,6 +393,42 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
     expect(sent.body).toContain("```suggestion:-2+0\n");
     const note = logged.find((c) => c.args.join(" ").includes("notes --method POST"))!;
     expect(note.args.find((a) => a.startsWith("body="))).toMatch(/^body=<!-- thurview-pr-review /);
+    expect(note.args.find((a) => a.startsWith("body="))).toContain(
+      "[Markdown export](https://reviews.example.com/r/7/feedback.md)",
+    );
+  });
+
+  it("updates both public links on the same note for the next head", async () => {
+    await fixtures([
+      { cli: "glab", match: ["merge_requests/7/notes/9", "PUT"], body: {} },
+      {
+        cli: "glab",
+        match: ["merge_requests/7/notes?", "--paginate"],
+        body: ndjson({ id: 9, body: SUMMARY(OLD), author: { username: "bot" } }),
+      },
+      ...base,
+    ]);
+    const file = join(bin, "pass.json");
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...PASS,
+        confidence: 5,
+        findings: [],
+        reviewUrl: "https://reviews.example.com/r/7/",
+        markdownUrl: "https://reviews.example.com/r/7/feedback.md",
+      }),
+    );
+    const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], gitlab);
+    expect(out["pass"].summary).toBe("edited");
+    const logged = await calls();
+    expect(logged.some((c) => c.args.includes("POST"))).toBe(false);
+    const body = logged
+      .find((c) => c.args.join(" ").includes("notes/9 --method PUT"))!
+      .args.find((a) => a.startsWith("body="))!;
+    expect(body).toContain("[Full review](https://reviews.example.com/r/7/)");
+    expect(body).toContain("[Markdown export](https://reviews.example.com/r/7/feedback.md)");
+    expect(body).toContain(HEAD);
   });
 
   it("edits its note in place, and stops on a /thurview stop note", async () => {

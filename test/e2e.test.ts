@@ -1770,6 +1770,99 @@ check
   });
 });
 
+describe("static publishing preflight", () => {
+  it("checks setup before a review exists, redacts CLI failures and never deploys", async () => {
+    const isolated = join(home, "preflight");
+    const bin = join(isolated, "bin");
+    await mkdir(bin, { recursive: true });
+    const config = join(isolated, "cloudflare.json");
+    const log = join(isolated, "calls.jsonl");
+    const mode = join(isolated, "mode");
+    await writeFile(
+      join(bin, "wrangler"),
+      `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({args, account: process.env.CLOUDFLARE_ACCOUNT_ID}) + "\\n");
+const mode = fs.readFileSync(${JSON.stringify(mode)}, "utf8");
+if ((mode === "login" && args[0] === "whoami") || (mode === "project" && args[0] === "deployments")) {
+ console.error("PRIVATE_ACCOUNT_DETAILS"); process.exit(1);
+}
+if (args[0] === "whoami") console.log(JSON.stringify({accounts: [{id: "redacted"}]}));
+else if (args[0] === "deployments") console.log(JSON.stringify({deployments: [{id: "redacted"}]}));
+else process.exit(1);
+`,
+    );
+    await chmod(join(bin, "wrangler"), 0o755);
+    const saved = { path: process.env["PATH"] };
+    const run = (extra: string[] = [], code = 0) =>
+      cli(["publish-static", "--check", "--to", "cloudflare", "--config", config, ...extra], {
+        cwd: isolated,
+        expectCode: code,
+      });
+    process.env["PATH"] = `${bin}:${saved.path}`;
+    try {
+      const missing = await run([], 2);
+      expect(missing.error).toContain("configuration");
+      expect(missing.help.join(" ")).toContain("cloudflare-setup.md");
+      await writeFile(
+        config,
+        JSON.stringify({
+          name: "review-fixtures",
+          publicUrl: "https://reviews.example.com",
+          account_id: "a".repeat(32),
+        }),
+      );
+      await rename(join(bin, "wrangler"), join(bin, "saved-wrangler"));
+      const savedPath = process.env["PATH"];
+      process.env["PATH"] = bin;
+      try {
+        const absent = await run([], 2);
+        expect(absent.error).toContain("wrangler is missing");
+      } finally {
+        process.env["PATH"] = savedPath;
+        await rename(join(bin, "saved-wrangler"), join(bin, "wrangler"));
+      }
+      await writeFile(mode, "login");
+      const login = await run([], 2);
+      expect(login.error).toContain("login");
+      expect(JSON.stringify(login)).not.toContain("PRIVATE_ACCOUNT_DETAILS");
+      await writeFile(mode, "project");
+      const project = await run([], 2);
+      expect(project.error).toContain("project");
+      expect(JSON.stringify(project)).not.toContain("PRIVATE_ACCOUNT_DETAILS");
+      await writeFile(mode, "ok");
+      const ready = await run();
+      expect(ready.preflight).toMatchObject({ ready: true, project: "review-fixtures" });
+      expect(JSON.stringify(ready)).not.toContain("a".repeat(32));
+      await run();
+      const calls = (await readFile(log, "utf8"))
+        .trim()
+        .split("\n")
+        .map((s) => JSON.parse(s));
+      expect(calls.every((c) => ["whoami", "deployments"].includes(c.args[0]))).toBe(true);
+      expect(calls.every((c) => c.account === "a".repeat(32))).toBe(true);
+      const invalid = await run(["--initialize-archive"], 2);
+      expect(invalid.error).toContain("--check");
+      await writeFile(config, JSON.stringify({ name: "review-fixtures" }));
+      const badConfig = await run([], 2);
+      expect(badConfig.error).toContain("publicUrl");
+      await writeFile(
+        config,
+        JSON.stringify({
+          name: "review-fixtures",
+          publicUrl: "https://reviews.example.com",
+          allowLiveLink: true,
+        }),
+      );
+      const live = await run([], 2);
+      expect(live.error).toContain("allowLiveLink");
+    } finally {
+      process.env["PATH"] = saved.path;
+    }
+  }, 30_000);
+});
+
 describe("static snapshots", () => {
   it("includes shared pre-publication threads without inventing sealed draft context", async () => {
     const fixture = await cli(["scaffold", "--new"]);
