@@ -36,7 +36,7 @@ export function localTarget(out: string): ExportTarget {
  * expanding context still works with no server. Symbol lookup is left out.
  */
 async function snapshot(review: ReviewState, withThreads: boolean) {
-  const data = await revisionData(review.id, review.revision);
+  const data = await revisionData(review, review.revision);
   const t = await readThreads(review.id);
   const isReview = (review.kind ?? "review") === "review";
   const changes = isReview ? data.changes : [];

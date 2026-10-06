@@ -6,7 +6,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFileDiff, type FileDiff } from "../diff.js";
 import { highlightLines, languageFor } from "../highlight.js";
-import { changedFiles, log, showFile, git, type ChangedFile } from "../git.js";
+import { changedFiles, log, showFile, type ChangedFile } from "../git.js";
 import { symbolIndex } from "../symbols.js";
 import {
   listReviews,
@@ -80,7 +80,39 @@ async function findReview(idOrPrefix: string) {
   throw new HttpError(404, all.length ? "ambiguous review id" : "review not found");
 }
 
-export async function revisionData(id: string, n: number) {
+type Pins = { base: string; head: string };
+type SealedPeek = {
+  file: string;
+  from: number;
+  to: number;
+  graph: "base" | "head";
+  lang: string;
+  lines: string[];
+};
+
+/**
+ * A sealed peek carries its excerpt highlighted inline, in the palette of the
+ * thurview that sealed it. Highlight it again from the pinned commit so every
+ * revision, however old, reads in the one theme.
+ */
+async function rehighlightPeeks(document: unknown, worktree: string, pins: Pins): Promise<void> {
+  const anchors = (document as { anchors?: Record<string, { peek?: SealedPeek }> } | null)?.anchors;
+  for (const a of Object.values(anchors ?? {})) {
+    const peek = a.peek;
+    if (!peek) continue;
+    const commit = peek.graph === "base" ? pins.base : pins.head;
+    const text = await showFile(worktree, commit, peek.file);
+    if (text === null) continue;
+    const all = await highlightLines(text, peek.lang, `${commit}:${peek.file}`);
+    peek.lines = all.slice(peek.from - 1, peek.to);
+  }
+}
+
+export async function revisionData(
+  review: { id: string; worktree: string; pins: Pins },
+  n: number,
+) {
+  const id = review.id;
   const dir = revisionDir(id, n);
   const [document, map, changes, coverage, meta] = await Promise.all([
     readJson<unknown>(join(dir, "document.json")),
@@ -89,6 +121,8 @@ export async function revisionData(id: string, n: number) {
     readJson<unknown>(join(dir, "coverage.json")),
     readJson<unknown>(join(dir, "meta.json")),
   ]);
+  const sealedPins = (meta as { pins?: Pins } | null)?.pins ?? review.pins;
+  await rehighlightPeeks(document, review.worktree, sealedPins);
   return {
     // A revision is read back exactly as it was sealed, so one from before a
     // field existed simply lacks it. The browser is written for a field that is
@@ -218,7 +252,7 @@ export async function startServer(
       }
       const n = Number(url.searchParams.get("revision") ?? review.revision);
       const data = review.revision
-        ? await revisionData(id, n)
+        ? await revisionData(review, n)
         : { document: null, map: null, changes: [], coverage: null, meta: null };
       const threads = await readThreads(id);
       return {

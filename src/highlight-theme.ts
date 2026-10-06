@@ -4,7 +4,7 @@ import type { ThemeRegistration } from "shiki";
 const c = {
   bg: "#f6f8fa",
   fg: "#1f2328",
-  keyword: "#cf222e",
+  keyword: "#a40e26",
   string: "#0a3069",
   function: "#6639ba",
   type: "#953800",
@@ -12,7 +12,7 @@ const c = {
   number: "#0550ae",
   comment: "#5f6773",
   punctuation: "#57606a",
-  operator: "#cf222e",
+  operator: "#a40e26",
   tag: "#116329",
 };
 

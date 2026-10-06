@@ -1107,7 +1107,8 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       }
     }
     const diags: Diagnostic[] = [];
-    if (themeYaml !== null)
+    // an older scaffold wrote a comments-only template; only a theme someone wrote is worth a warning
+    if (themeYaml?.replace(/^\s*#.*$/gm, "").trim())
       diags.push({
         level: "warning",
         file: "theme.yaml",

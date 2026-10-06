@@ -17,6 +17,22 @@ function luminance(hex: string): number {
   });
   return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
 }
+/** `rgb(r g b / a)` laid over an opaque `#rrggbb` ground, as the browser composites it. */
+function over(tint: string, ground: string): string {
+  const m = /rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)\)/.exec(tint);
+  if (!m) throw new Error(`not an rgb() tint: ${tint}`);
+  const a = Number(m[4]);
+  return (
+    "#" +
+    [1, 2, 3]
+      .map((i) => {
+        const g = parseInt(ground.slice(2 * i - 1, 2 * i + 1), 16);
+        const v = Math.round(Number(m[i]) * a + g * (1 - a));
+        return v.toString(16).padStart(2, "0");
+      })
+      .join("")
+  );
+}
 const contrast = (a: string, b: string) => {
   const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
   return (x! + 0.05) / (y! + 0.05);
@@ -65,12 +81,15 @@ describe("one theme", () => {
     expect(code.type).toBe("light");
     const bg = code.colors!["editor.background"]!;
     expect(bg.toLowerCase()).toBe(t["--bg-code"]!.toLowerCase());
+    // added, deleted and selected rows tint the code ground; code stays legible on each
+    const grounds = [bg, ...["--add-bg", "--del-bg", "--sel"].map((v) => over(t[v]!, bg))];
     const fgs = [
       code.colors!["editor.foreground"]!,
       ...(code.tokenColors ?? []).flatMap((r) =>
         r.settings.foreground ? [r.settings.foreground] : [],
       ),
     ];
-    for (const f of fgs) expect(contrast(f, bg), f).toBeGreaterThanOrEqual(4.5);
+    for (const g of grounds)
+      for (const f of fgs) expect(contrast(f, g), `${f} on ${g}`).toBeGreaterThanOrEqual(4.5);
   });
 });
