@@ -1,5 +1,5 @@
 import { h, append, popover } from "../dom.js";
-import { state, navigate, threadsFor, kind } from "../state.js";
+import { state, navigate, threadsFor, kind, canWrite } from "../state.js";
 import { openAnchorPeek } from "../code.js";
 import { commentPopover, threadPinRow } from "../threads.js";
 import {
@@ -411,19 +411,24 @@ export function renderMap(root: HTMLElement): void {
             }),
           )
         : null,
-      h(
-        "div",
-        { style: { marginTop: "12px" } },
-        h(
-          "button",
-          {
-            class: "small",
-            onclick: (e: MouseEvent) =>
-              popover(commentPopover({ type: "map", node: n.id }), { x: e.pageX, y: e.pageY + 8 }),
-          },
-          "Comment on this node",
-        ),
-      ),
+      canWrite()
+        ? h(
+            "div",
+            { style: { marginTop: "12px" } },
+            h(
+              "button",
+              {
+                class: "small",
+                onclick: (e: MouseEvent) =>
+                  popover(commentPopover({ type: "map", node: n.id }), {
+                    x: e.pageX,
+                    y: e.pageY + 8,
+                  }),
+              },
+              "Comment on this node",
+            ),
+          )
+        : null,
       threads.length
         ? h(
             "div",

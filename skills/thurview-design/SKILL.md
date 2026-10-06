@@ -230,6 +230,10 @@ reader sees above the document, and `published.url` is the page.
 thurview open --review <id>
 ```
 
+To share it beyond the browser, `thurview export --review <id> --out <path>`
+writes a static, read-only copy - see the `thurview` skill's **Sharing a copy
+that needs no server**.
+
 ### 7. Hand over
 
 In a few lines, and nothing more: the `url`; the commit and scope it argues

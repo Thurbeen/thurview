@@ -48,6 +48,7 @@ import { replyThread, setThreadStatus, needsAgent } from "./threads.js";
 import { targetLabel, truncate } from "./thread-state.js";
 import { attach } from "./presence.js";
 import { startServer } from "./server/server.js";
+import { exportReview, localTarget } from "./export.js";
 import { parseFlags, helpFor, str, bool, type FlagSpec, type Parsed } from "./flags.js";
 import {
   forgeFor,
@@ -668,6 +669,28 @@ const SPECS: Record<
       },
     },
     examples: ["thurview open", "thurview open --review <id> --view map --no-browser"],
+  },
+  export: {
+    description:
+      "Write a published document to one self-contained HTML file that opens with no server",
+    flags: {
+      review: {
+        kind: "string",
+        help: "review id prefix (default: the review for this worktree)",
+      },
+      out: {
+        kind: "string",
+        help: "a .html file, or a folder to write index.html into (a Pages folder works)",
+      },
+      threads: {
+        kind: "boolean",
+        help: "show the reader's threads as static notes (use --no-threads to leave them out)",
+      },
+    },
+    examples: [
+      "thurview export --out review.html",
+      "thurview export --review <id> --out docs/reviews/auth --no-threads",
+    ],
   },
   serve: {
     description: "Run the review server in the foreground",
@@ -1316,6 +1339,36 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       },
       help: [
         `Run \`thurview wait --review ${short(review.id)}\` to block until the reader responds`,
+      ],
+    };
+  },
+
+  async export(args) {
+    const p = parseFlags("export", args, spec("export").flags);
+    const out = str(p, "out");
+    if (!out)
+      throw new AxiError("--out is required", "VALIDATION_ERROR", [
+        "Run `thurview export --out review.html`, or `--out <folder>` for <folder>/index.html",
+      ]);
+    const review = await resolveReview(str(p, "review"), { terminal: true });
+    if (!review.revision)
+      throw new AxiError(`review ${short(review.id)} is not published yet`, "VALIDATION_ERROR", [
+        `Run \`thurview publish --review ${short(review.id)}\` first`,
+      ]);
+    const threads = p.flags["threads"] !== false;
+    const html = await exportReview(review, { threads });
+    const file = await localTarget(out).write(html);
+    return {
+      exported: {
+        id: short(review.id),
+        revision: review.revision,
+        file,
+        bytes: Buffer.byteLength(html),
+        threads,
+      },
+      help: [
+        "Open the file in any browser; it needs no thurview server and fetches nothing",
+        "Commit it to a Pages folder or copy it to a static host to share it",
       ],
     };
   },

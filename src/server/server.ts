@@ -4,7 +4,7 @@ import { watch, existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildFileDiff } from "../diff.js";
+import { buildFileDiff, type FileDiff } from "../diff.js";
 import { highlightLines, languageFor } from "../highlight.js";
 import { changedFiles, log, showFile, git, type ChangedFile } from "../git.js";
 import { symbolIndex } from "../symbols.js";
@@ -22,6 +22,7 @@ import {
   writeJson,
   serverStateFile,
   type ThreadTarget,
+  type ReviewState,
 } from "../store.js";
 import { queue } from "../queue.js";
 import {
@@ -81,7 +82,7 @@ async function findReview(idOrPrefix: string) {
   throw new HttpError(404, all.length ? "ambiguous review id" : "review not found");
 }
 
-async function revisionData(id: string, n: number) {
+export async function revisionData(id: string, n: number) {
   const dir = revisionDir(id, n);
   const [document, map, changes, coverage, meta, theme] = await Promise.all([
     readJson<unknown>(join(dir, "document.json")),
@@ -109,13 +110,61 @@ async function revisionData(id: string, n: number) {
 }
 
 /** Highlighter theme name for a review's presented revision (default skin when none). */
-async function themeFor(id: string, revision: number): Promise<string | undefined> {
+export async function themeFor(id: string, revision: number): Promise<string | undefined> {
   if (!revision) return undefined;
   const t = await readJson<CompiledTheme>(join(revisionDir(id, revision), "theme.json"));
   return t ? registerTheme(t.shiki) : undefined;
 }
 
-const BLOB_TYPES: Record<string, string> = {
+/** One changed file's diff between the review's pins, highlighted in its theme. */
+export async function fileDiff(review: ReviewState, path: string): Promise<FileDiff> {
+  const changes = await changedFiles(review.worktree, review.pins.base, review.pins.head);
+  const entry = changes.find((c) => c.path === path);
+  const oldPath = entry?.oldPath ?? path;
+  const [oldText, newText] = await Promise.all([
+    entry?.status === "A"
+      ? Promise.resolve(null)
+      : showFile(review.worktree, review.pins.base, oldPath),
+    entry?.status === "D"
+      ? Promise.resolve(null)
+      : showFile(review.worktree, review.pins.head, path),
+  ]);
+  return buildFileDiff(
+    path,
+    oldText,
+    newText,
+    { old: `${review.pins.base}:${oldPath}`, new: `${review.pins.head}:${path}` },
+    entry?.oldPath,
+    await themeFor(review.id, review.revision),
+  );
+}
+
+/** Every highlighted line of one file at a pinned commit, or null when it is not there. */
+export async function fileLines(
+  review: ReviewState,
+  path: string,
+  graph: "head" | "base",
+): Promise<{
+  path: string;
+  graph: "head" | "base";
+  lang: string;
+  total: number;
+  lines: string[];
+} | null> {
+  const commit = graph === "base" ? review.pins.base : review.pins.head;
+  const text = await showFile(review.worktree, commit, path);
+  if (text === null) return null;
+  const lang = languageFor(path);
+  const lines = await highlightLines(
+    text,
+    lang,
+    `${commit}:${path}`,
+    await themeFor(review.id, review.revision),
+  );
+  return { path, graph, lang, total: lines.length, lines };
+}
+
+export const BLOB_TYPES: Record<string, string> = {
   woff2: "font/woff2",
   woff: "font/woff",
   ttf: "font/ttf",
@@ -231,42 +280,16 @@ export async function startServer(
     if (sub === "diff") {
       const path = url.searchParams.get("path") ?? "";
       if (!path) throw new HttpError(400, "path required");
-      const changes = await changedFiles(review.worktree, review.pins.base, review.pins.head);
-      const entry = changes.find((c) => c.path === path);
-      const oldPath = entry?.oldPath ?? path;
-      const [oldText, newText] = await Promise.all([
-        entry?.status === "A"
-          ? Promise.resolve(null)
-          : showFile(review.worktree, review.pins.base, oldPath),
-        entry?.status === "D"
-          ? Promise.resolve(null)
-          : showFile(review.worktree, review.pins.head, path),
-      ]);
-      return (await buildFileDiff(
-        path,
-        oldText,
-        newText,
-        { old: `${review.pins.base}:${oldPath}`, new: `${review.pins.head}:${path}` },
-        entry?.oldPath,
-        await themeFor(id, review.revision),
-      )) as unknown as Json;
+      return (await fileDiff(review, path)) as unknown as Json;
     }
     if (sub === "file") {
       const path = url.searchParams.get("path") ?? "";
       const graph = url.searchParams.get("graph") === "base" ? "base" : "head";
-      const commit = graph === "base" ? review.pins.base : review.pins.head;
-      const text = await showFile(review.worktree, commit, path);
-      if (text === null) throw new HttpError(404, `${path} not found at ${graph}`);
-      const lang = languageFor(path);
-      const all = await highlightLines(
-        text,
-        lang,
-        `${commit}:${path}`,
-        await themeFor(id, review.revision),
-      );
+      const f = await fileLines(review, path, graph);
+      if (!f) throw new HttpError(404, `${path} not found at ${graph}`);
       const from = Math.max(1, Number(url.searchParams.get("from") ?? 1));
-      const to = Math.min(all.length, Number(url.searchParams.get("to") ?? all.length));
-      return { path, graph, lang, total: all.length, from, to, lines: all.slice(from - 1, to) };
+      const to = Math.min(f.total, Number(url.searchParams.get("to") ?? f.total));
+      return { ...f, from, to, lines: f.lines.slice(from - 1, to) };
     }
     if (sub === "symbols") {
       const name = url.searchParams.get("name") ?? "";

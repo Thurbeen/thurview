@@ -224,6 +224,14 @@ Approve, or send it back with the comments:
 ![The submit dialog, one pending comment, Approve or Request
 changes](./media/review-decision.png)
 
+To share a document with someone who will not run thurview,
+`thurview export --out review.html` writes the published revision as one HTML
+file: the same page, read only, with every snippet, diagram and diff resolved
+at the pinned commits and the reader's threads shown as notes (`--no-threads`
+leaves them out). It opens from disk, fetches nothing, and names no server and
+no local path. Point `--out` at a folder for `<folder>/index.html`, such as a
+repository's Pages folder.
+
 ## What's in a review
 
 - **Interface delta**: above the document, what the change added to, changed
@@ -268,20 +276,21 @@ bar.
 
 ## CLI
 
-| Command                                             | Purpose                                                               |
-| --------------------------------------------------- | --------------------------------------------------------------------- |
-| `thurview scaffold [--pr N \| --base R --head R]`   | Create a review pinned to exact commits (`--update` re-pins)          |
-| `thurview explain [<path>] [--commit R]`            | Create a code explainer of a codebase or subsystem at one commit      |
-| `thurview design [<path>] [--commit R]`             | Create a design of what to build, pinned to the commit it argues from |
-| `thurview info [--all]`                             | Reviews, explainers and designs bound to this worktree                |
-| `thurview publish --review ID [--view T] [--open]`  | Validate the document and map, seal a revision                        |
-| `thurview open --review ID [--view T]`              | Start the server if needed and open the browser                       |
-| `thurview wait --review ID [--timeout S]`           | Block until the reader needs the agent                                |
-| `thurview threads list\|get\|reply\|resolve`        | Read and answer threads                                               |
-| `thurview forge status\|prior\|pass\|submit\|reply` | Read a change request through its forge, and post the review back     |
-| `thurview serve` / `thurview stop`                  | Run the server in the foreground / stop the background one            |
-| `thurview setup hooks\|skill\|status`               | Session hooks, agent skill, install state                             |
-| `thurview update`                                   | Self-update from npm                                                  |
+| Command                                                 | Purpose                                                               |
+| ------------------------------------------------------- | --------------------------------------------------------------------- |
+| `thurview scaffold [--pr N \| --base R --head R]`       | Create a review pinned to exact commits (`--update` re-pins)          |
+| `thurview explain [<path>] [--commit R]`                | Create a code explainer of a codebase or subsystem at one commit      |
+| `thurview design [<path>] [--commit R]`                 | Create a design of what to build, pinned to the commit it argues from |
+| `thurview info [--all]`                                 | Reviews, explainers and designs bound to this worktree                |
+| `thurview publish --review ID [--view T] [--open]`      | Validate the document and map, seal a revision                        |
+| `thurview open --review ID [--view T]`                  | Start the server if needed and open the browser                       |
+| `thurview export --review ID --out PATH [--no-threads]` | Write the published revision as one static HTML file, no server       |
+| `thurview wait --review ID [--timeout S]`               | Block until the reader needs the agent                                |
+| `thurview threads list\|get\|reply\|resolve`            | Read and answer threads                                               |
+| `thurview forge status\|prior\|pass\|submit\|reply`     | Read a change request through its forge, and post the review back     |
+| `thurview serve` / `thurview stop`                      | Run the server in the foreground / stop the background one            |
+| `thurview setup hooks\|skill\|status`                   | Session hooks, agent skill, install state                             |
+| `thurview update`                                       | Self-update from npm                                                  |
 
 thurview is an [AXI](https://axi.md): built for agents that drive it through a
 shell. Output is [TOON](https://toonformat.dev) on stdout, errors are

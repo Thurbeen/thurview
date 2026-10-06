@@ -1,5 +1,5 @@
 import { h, popover } from "../dom.js";
-import { state, threadsFor, navigate, kind, VIEWS } from "../state.js";
+import { state, threadsFor, navigate, kind, VIEWS, canWrite } from "../state.js";
 import { codeTable, openAnchorPeek } from "../code.js";
 import { commentPopover, threadPinRow } from "../threads.js";
 import { sequenceDiagram, callstackDiff, databaseLens, flowDiagram } from "../diagrams.js";
@@ -140,7 +140,7 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
         class: threads.length ? "count" : "",
         title: design ? "Comment on what this design proposes" : "Comment on the interface delta",
         onclick: (e: MouseEvent) => {
-          if (state.viewingRevision !== null) return;
+          if (!canWrite()) return;
           popover(commentPopover({ type: "document", blockId: DELTA_BLOCK }), {
             x: e.pageX + 10,
             y: e.pageY,
@@ -225,7 +225,7 @@ function coveragePanel(cov: Coverage | null): HTMLElement {
         class: threads.length ? "count" : "",
         title: "Comment on coverage",
         onclick: (e: MouseEvent) => {
-          if (state.viewingRevision !== null) return;
+          if (!canWrite()) return;
           popover(commentPopover({ type: "document", blockId: COVERAGE_BLOCK }), {
             x: e.pageX + 10,
             y: e.pageY,
@@ -298,7 +298,7 @@ function securityPanel(sec: CompiledSecurity | null | undefined): HTMLElement {
         class: threads.length ? "count" : "",
         title: "Comment on the trust boundaries",
         onclick: (e: MouseEvent) => {
-          if (state.viewingRevision !== null) return;
+          if (!canWrite()) return;
           popover(commentPopover({ type: "document", blockId: SECURITY_BLOCK }), {
             x: e.pageX + 10,
             y: e.pageY,
@@ -420,7 +420,7 @@ function renderBlock(b: Block): HTMLElement {
         class: threads.length ? "count" : "",
         title: "Comment on this block",
         onclick: (e: MouseEvent) => {
-          if (state.viewingRevision !== null) return;
+          if (!canWrite()) return;
           popover(commentPopover({ type: "document", blockId: b.id }), {
             x: e.pageX + 10,
             y: e.pageY,
@@ -526,7 +526,7 @@ function selectionHandler(docEl: HTMLElement): void {
         ? range.commonAncestorContainer
         : range.commonAncestorContainer.parentElement
     )?.closest(".block") as HTMLElement | null;
-    if (!block || !docEl.contains(block) || state.viewingRevision !== null) return remove();
+    if (!block || !docEl.contains(block) || !canWrite()) return remove();
     const quote = sel.toString().trim();
     if (!quote) return remove();
     const rect = range.getBoundingClientRect();

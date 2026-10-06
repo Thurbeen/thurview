@@ -331,6 +331,25 @@ Then publish again (step 7), tell the user what changed since the previous
 revision in a line or two, and wait again (step 9). A republish requires zero
 open submitted comment threads; questions do not block.
 
+## Sharing a copy that needs no server
+
+When the user asks to share, export or publish the rendered page somewhere -
+a file to send, a Pages site, a static host - write it from the published
+revision:
+
+```sh
+thurview export --review <id> --out <file.html | folder>   # --no-threads
+```
+
+It writes one self-contained HTML file (a folder gets `index.html`): the same
+page, read only, with every snippet, diagram and diff resolved at the pins,
+fetching nothing, naming no server and no local path. The reader's sent
+threads and decisions appear as static notes; their unsent drafts never do.
+Pass `--no-threads` when the copy goes beyond the people in the conversation.
+It refuses a document with no published revision, and a copy does not update:
+export again after each publish. Committing or uploading the file is the
+user's step - name where it was written and leave it there unless asked.
+
 ## Explaining a codebase rather than a change
 
 Do not pin the same commit as base and head to fake it. That leaves a review
