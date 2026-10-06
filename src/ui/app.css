@@ -1938,6 +1938,9 @@ kbd {
 .cov-seg.placed {
   background: var(--accent-bg);
 }
+.cov-seg.searched {
+  background: var(--line);
+}
 .cov-seg.uncovered {
   background: var(--bg3);
 }
@@ -1965,6 +1968,9 @@ kbd {
 }
 .cov-dot.placed {
   background: var(--accent-bg);
+}
+.cov-dot.searched {
+  background: var(--line);
 }
 .cov-dot.uncovered {
   background: var(--bg3);
@@ -2006,13 +2012,6 @@ kbd {
 .cov-label {
   font-weight: 600;
 }
-.cov-hubs {
-  font-size: 12px;
-  margin-top: 6px;
-}
-.cov-hubs code {
-  margin-right: 6px;
-}
 .cov-files {
   display: flex;
   flex-wrap: wrap;
@@ -2035,13 +2034,16 @@ kbd {
   border-color: var(--accent);
   background: var(--accent-bg);
 }
+.cov-b-searched {
+  color: var(--fg2);
+  border-color: var(--line);
+}
 .cov-b-uncovered {
   color: var(--muted);
   border-color: var(--line);
   background: var(--bg3);
 }
-.cov-links,
-.cov-shared {
+.cov-links {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--line);

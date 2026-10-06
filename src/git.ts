@@ -103,6 +103,42 @@ export async function listFiles(cwd: string, commit: string): Promise<string[]> 
   return out.split("\0").filter(Boolean);
 }
 
+/**
+ * `git grep -E` at a commit: the files that match `pattern` and how many lines
+ * matched, binary files skipped. `paths` are plain git pathspecs, read the way
+ * the agent's own `git grep` reads them, so a `*` crosses directories. No match
+ * is an answer, not an error; a pattern git cannot read is an error, with git's
+ * own words.
+ */
+export async function grepAt(
+  cwd: string,
+  commit: string,
+  pattern: string,
+  paths: string[],
+): Promise<{ files: string[]; hits: number }> {
+  let out: string;
+  try {
+    ({ stdout: out } = await execFileP(
+      "git",
+      ["grep", "-I", "-c", "-z", "-E", "-e", pattern, commit, "--", ...paths],
+      { cwd, maxBuffer: 64 * 1024 * 1024 },
+    ));
+  } catch (err) {
+    const e = err as { code?: number; stderr?: string; message: string };
+    if (e.code === 1 && !e.stderr?.trim()) return { files: [], hits: 0 };
+    throw new GitError((e.stderr || e.message).trim());
+  }
+  const files: string[] = [];
+  let hits = 0;
+  // with -z each match is `<commit>:<path>\0<count>\n`, the path unquoted
+  for (const m of out.matchAll(/([^\0]*)\0(\d+)\n/g)) {
+    if (!m[1]!.startsWith(`${commit}:`)) continue;
+    files.push(m[1]!.slice(commit.length + 1));
+    hits += Number(m[2]);
+  }
+  return { files: files.sort(), hits };
+}
+
 export interface ChangedFile {
   path: string;
   oldPath?: string;

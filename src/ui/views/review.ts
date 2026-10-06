@@ -116,12 +116,13 @@ const CHANGE_CLASS: Record<InterfaceEntry["change"], string> = {
 
 /**
  * What the change did to the surfaces other code can reach, above the document
- * because it is the reader's first question. Derived at publish from the code
- * graph, so a refactor that moved nothing says exactly that.
+ * because it is the reader's first question. Declared by the author and held
+ * at publish to anchors on lines the diff moved, so it cannot claim a change
+ * the code did not make.
  *
  * On a design the same panel, in the same slot, states what the document
- * PROPOSES to do to those surfaces - declared by the author, not derived, since
- * the code is not written. The words differ everywhere they must, so a proposal
+ * PROPOSES to do to those surfaces - declared by the author with no diff to
+ * hold it to, since the code is not written. The words differ everywhere they must, so a proposal
  * can never be misread as something that already happened.
  */
 function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
@@ -180,7 +181,7 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
         ? delta.verdict
         : design
           ? "Unavailable: this revision declared no proposal."
-          : "Unavailable: the code graph could not be built for these commits.",
+          : "Unavailable: this revision recorded no interface delta.",
     ),
   );
   const entries = delta?.entries ?? [];
@@ -207,8 +208,8 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
 
 /**
  * What an explainer examined and what it did not, in the slot a review gives the
- * interface delta - because it is the same kind of thing: a fact derived at
- * publish from the pinned commit, above prose the agent wrote, so the reader
+ * interface delta - because it is the same kind of thing: a fact publish
+ * checks against the pinned commit, above prose the agent wrote, so the reader
  * knows the bound of the document before reading a word of it.
  */
 function coveragePanel(cov: Coverage | null): HTMLElement {

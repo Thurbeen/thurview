@@ -133,37 +133,32 @@ cold, and the walkthrough is what makes it so.
 ### 3. Study the change
 
 Read the whole diff once (`git diff <base> <head>`). The diff tells you what
-changed. The code graph tells you what it means, which is what the review is
-for. thurview builds it from the pinned commits with tree-sitter and the
-definitions-and-references query each grammar ships, so ask it rather than
-re-deriving structure from hunks:
+changed; what it means is in the code it does not show - who calls what the
+change moved, which tests reach it, what imports the module it touched. Find
+those yourself, at the pinned commits, with the recipes in
+[Searching the code](references/searching.md):
 
 ```sh
-thurview graph interfaces --review <id>         # what the change added to, changed in or removed from the visible surface
-thurview graph impact --review <id>             # symbols touched, edges added and removed, what reaches them, what tests cover them
-thurview graph callers <symbol> --review <id>   # used, or speculative? (--graph base for the old side)
-thurview graph tests-for <symbol> --review <id>
-thurview graph architecture --review <id>       # file clusters with their hubs, the edges between them, the file-level diff
+git grep -n -E -e '\bname *\(' <head> --       # who calls it now
+git grep -n -E -e '\bname *\(' <base> --       # who called it before: a removed symbol's callers are only here
+git grep -n -E -e '\bname\b' <head> -- '*test*'      # what tests name it
 ```
 
-The graph covers TypeScript, JavaScript, Python, Go, Rust, Java and Elixir; other
-files are absent from it, not empty. References resolve by name, so treat
-`unresolved` as the size of what it could not place, and `<module>` as code
-outside any definition. If `truncated` is true (`truncated.base` and
-`truncated.head` for impact and architecture, which look at both commits; a
-plain `truncated` for callers and tests-for, which look at one), the repo has
-more supported files than the graph could parse, and that answer is a partial
-view: say so rather than treating an empty result as "nothing there".
+Start with the interfaces: what the change added to, changed in or removed
+from what other code, a user or another system reaches - an exported function,
+a CLI flag, an HTTP route, a config key, a file format. It is the reader's own
+first question, and the list you declare in `data.yaml` (step 5) is what the
+browser shows above your document. A removed or changed one is the most
+review-worthy thing a change can contain, so search for its callers at both
+pins. A change that moves none is internal, and the document should say why the
+refactor was worth making rather than dress it up as a feature. Do not repeat
+the entries in prose - the panel already lists them.
 
-Read `graph interfaces` first: it is the reader's own first question, and its
-`verdict` is what the browser shows above your document. A `removed` entry is
-the most review-worthy thing the change can contain; `No interface moved`
-means the change is internal, and the document should say why the refactor was
-worth making rather than dress it up as a feature. Do not repeat the entries
-in prose - the panel already lists them. Explain the ones that need it,
-in `data.yaml` (see below).
+A search finds names, not meaning, so open each hit before you count it, and
+state the search beside any claim that rests on one - "no other caller" is
+worth exactly the line that found none.
 
-Spend the rest of the review on what the other queries answer: what the change
+Spend the rest of the review on what the searches answer: what the change
 reaches that the diff does not show, which boundaries it crosses, what now
 depends on what, what it left untested. Then compare the stated intent (commit
 messages, PR description, the user's own words) with what the code does. The
@@ -205,9 +200,11 @@ Source worktree: <worktree>
 Base commit: <base>
 Head commit: <head>
 
-Seed the structure from `thurview graph architecture --review <id>` rather
-than guessing it: communities and their hubs become nodes, its edges the
-edges, and its diff the difference between base and head.
+Seed the structure from the code rather than guessing it: the directories at
+each pin (`git ls-tree -d -r --name-only <commit>`) become candidate nodes, and
+the importers of each one (the recipes in the thurview skill's
+references/searching.md) the edges. What differs between base and head is the
+diff the map shows.
 
 Author <dir>/map.yaml: the head structure under nodes/edges and the base
 structure under base. Do not edit review.md or data.yaml. Do not publish.
@@ -225,10 +222,11 @@ Edit `review.md` and `data.yaml` in the review directory following
 Default to anchor links for evidence; use an inline peek only when the reader
 must see the code to follow the main claim.
 
-In `data.yaml`, add an `interfaces` entry for each interface change a
-consumer would not understand from its declaration alone, and for the ones
-the graph cannot see - a CLI flag, an HTTP route, a config key, a file
-format. See [Components](references/components.md) for the shape and
+In `data.yaml`, add an `interfaces` entry for each interface the change added,
+changed or removed - an exported function, a CLI flag, an HTTP route, a config
+key, a file format - anchored on the lines that moved it. Publish refuses an
+anchor that sits on no added or deleted line, so an entry cannot outlive the
+code. See [Components](references/components.md) for the shape and
 [Document authoring](references/document-authoring.md) for what earns an
 entry. Never write one for a capability the change did not deliver.
 

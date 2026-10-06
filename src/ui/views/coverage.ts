@@ -4,17 +4,23 @@
  * A review is bounded by its diff; a codebase is not. So this tab exists to
  * make the bound of an explainer a stated fact rather than something the reader
  * has to infer from what the prose happens to mention. Everything here is
- * derived at publish from the code graph at the pinned commit: counts and lists
- * of named things, nothing graded. Where a number invites a conclusion - a part
- * everything reaches, a name defined in four places, a link that runs both ways
- * - drawing it is the reader's job, and this page deliberately stops short.
+ * derived at publish from what the agent did that can be checked at the pinned
+ * commit - its anchors, its map's globs, and the searches it recorded, re-run
+ * there - as counts and lists of named things, nothing graded.
  */
 import { h, append } from "../dom.js";
 import { state, navigate } from "../state.js";
 import { openAnchorPeek } from "../code.js";
-import type { Coverage, ClusterCoverage } from "../../coverage.js";
+import type { Coverage, ClusterCoverage, FileState, SearchRecord } from "../../coverage.js";
 
 const SHOWN = 8;
+
+const LABELS: [FileState, string][] = [
+  ["explained", "anchored in the document"],
+  ["placed", "placed on the map only"],
+  ["searched", "matched by a recorded search only"],
+  ["uncovered", "not examined"],
+];
 
 export function renderCoverage(root: HTMLElement): void {
   const cov = state.data?.coverage;
@@ -29,8 +35,11 @@ export function renderCoverage(root: HTMLElement): void {
     ]);
     return;
   }
-  append(root, [intro(cov), clusters(cov), links(cov), sharedNames(cov), unread(cov)]);
+  append(root, [intro(cov), searches(cov), clusters(cov), owners(cov)]);
 }
+
+/** A revision sealed before searches were counted has no such state. */
+const count = (cov: Coverage, s: FileState) => cov.states[s] ?? 0;
 
 function bar(cov: Coverage): HTMLElement {
   const total = Math.max(cov.files.total, 1);
@@ -45,18 +54,11 @@ function bar(cov: Coverage): HTMLElement {
   return h(
     "div",
     { class: "cov-bar" },
-    seg(cov.states.explained, "explained", "anchored in the document"),
-    seg(cov.states.placed, "placed", "placed on the map only"),
-    seg(cov.states.uncovered, "uncovered", "not examined"),
+    LABELS.map(([s, label]) => seg(count(cov, s), s, label)),
   );
 }
 
 function intro(cov: Coverage): HTMLElement {
-  const key: [number, string, string][] = [
-    [cov.states.explained, "explained", "anchored in the document"],
-    [cov.states.placed, "placed", "placed on the map only"],
-    [cov.states.uncovered, "uncovered", "not examined"],
-  ];
   return h(
     "div",
     { class: "cov-intro" },
@@ -66,14 +68,19 @@ function intro(cov: Coverage): HTMLElement {
       null,
       "A codebase does not fit in a short document, so this one selects. Here is the",
       " selection, counted rather than claimed: every file in scope at the pinned commit,",
-      " and which of the three states it is in.",
+      " and which of the four states it is in.",
     ),
     bar(cov),
     h(
       "div",
       { class: "cov-key" },
-      key.map(([n, cls, label]) =>
-        h("span", { class: "cov-key-item" }, h("i", { class: `cov-dot ${cls}` }), `${n} ${label}`),
+      LABELS.map(([s, label]) =>
+        h(
+          "span",
+          { class: "cov-key-item" },
+          h("i", { class: `cov-dot ${s}` }),
+          `${count(cov, s)} ${label}`,
+        ),
       ),
     ),
     h(
@@ -82,11 +89,6 @@ function intro(cov: Coverage): HTMLElement {
       fact("scope", cov.scope === "**" ? "the whole repository" : cov.scope),
       fact("commit", cov.commit.slice(0, 12)),
       fact("files in scope", String(cov.files.total)),
-      fact("read by the code graph", `${cov.files.inGraph} of ${cov.files.total}`),
-      cov.unresolved ? fact("references the graph could not place", String(cov.unresolved)) : null,
-      cov.truncated
-        ? fact("file list capped", "the graph is partial; treat every count as a floor")
-        : null,
     ),
   );
 }
@@ -116,11 +118,55 @@ function fileList(files: string[], cls: string): HTMLElement | null {
   return wrap;
 }
 
+/** The line a reader runs to check a search: the same one publish ran. */
+function command(cov: Coverage, s: SearchRecord): string {
+  const quote = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`;
+  const paths = s.paths.map((p) => ` ${quote(p)}`).join("");
+  return `git grep -I -n -E -e ${quote(s.pattern)} ${cov.commit.slice(0, 12)} --${paths}`;
+}
+
+function searches(cov: Coverage): HTMLElement | null {
+  const list = cov.searches ?? [];
+  if (!list.length) return null;
+  return h(
+    "div",
+    { class: "cov-section" },
+    h("h3", null, "What the agent searched"),
+    h(
+      "p",
+      { class: "muted" },
+      "Each search the agent recorded, re-run at the pinned commit. A search that matched",
+      " nothing is listed too: that zero is what a claim like “nothing else calls it” rests on.",
+    ),
+    h(
+      "div",
+      { class: "cov-links" },
+      list.map((s) =>
+        h(
+          "div",
+          { class: "cov-link" },
+          h("code", null, s.key),
+          s.why ? h("span", null, s.why) : null,
+          h(
+            "span",
+            { class: "muted mono" },
+            `${s.hits} line${s.hits === 1 ? "" : "s"} in ${s.files.length} file${s.files.length === 1 ? "" : "s"}`,
+          ),
+          h("code", { class: "muted" }, command(cov, s)),
+          fileList(s.files, "searched"),
+        ),
+      ),
+    ),
+  );
+}
+
 function clusterRow(c: ClusterCoverage): HTMLElement {
   const anchors = state.data?.document?.anchors ?? {};
   const firstAnchor = c.explained.length
     ? Object.values(anchors).find((a) => a.peek && c.explained.includes(a.peek.file))
     : undefined;
+  const badge = (files: string[] | undefined, cls: string, label: string) =>
+    files?.length ? h("span", { class: `badge cov-b-${cls}` }, `${files.length} ${label}`) : null;
   return h(
     "div",
     { class: "cov-cluster" },
@@ -128,29 +174,16 @@ function clusterRow(c: ClusterCoverage): HTMLElement {
       "div",
       { class: "cov-cluster-head" },
       h("code", { class: "cov-label" }, c.label),
-      h("span", { class: "muted" }, `${c.files} files · ${c.symbols} symbols`),
+      h("span", { class: "muted" }, `${c.files} files`),
       h("span", { class: "spacer" }),
-      c.explained.length
-        ? h("span", { class: "badge cov-b-explained" }, `${c.explained.length} anchored`)
-        : null,
-      c.placed.length
-        ? h("span", { class: "badge cov-b-placed" }, `${c.placed.length} placed`)
-        : null,
-      c.uncovered.length
-        ? h("span", { class: "badge cov-b-uncovered" }, `${c.uncovered.length} not examined`)
-        : null,
+      badge(c.explained, "explained", "anchored"),
+      badge(c.placed, "placed", "placed"),
+      badge(c.searched, "searched", "searched"),
+      badge(c.uncovered, "uncovered", "not examined"),
       firstAnchor
         ? h("button", { class: "small", onclick: () => openAnchorPeek(firstAnchor) }, "Peek code ▸")
         : null,
     ),
-    c.hubs.length
-      ? h(
-          "div",
-          { class: "muted cov-hubs" },
-          "most referenced here: ",
-          c.hubs.map((n) => h("code", null, n)),
-        )
-      : null,
     fileList(c.uncovered, "uncovered"),
   );
 }
@@ -159,168 +192,45 @@ function clusters(cov: Coverage): HTMLElement {
   return h(
     "div",
     { class: "cov-section" },
-    h("h3", null, "By part of the system"),
+    h("h3", null, "By directory"),
     h(
       "p",
       { class: "muted" },
-      "Files clustered by how they reference each other at the pinned commit, largest first.",
-      " The files listed under a part are the ones this explainer never examined.",
+      "The files in scope by the directory they sit in, largest first.",
+      " The files listed under a directory are the ones nothing in this explainer reached.",
     ),
     cov.clusters.map(clusterRow),
   );
 }
 
-function links(cov: Coverage): HTMLElement | null {
-  if (!cov.links.length) return null;
+function owners(cov: Coverage): HTMLElement | null {
+  if (!cov.owners.length) return null;
   return h(
     "div",
     { class: "cov-section" },
-    h("h3", null, "What reaches what"),
+    h("h3", null, "What each map node owns"),
     h(
       "p",
       { class: "muted" },
-      "References that cross from one part to another, with how many there are.",
-      " A pair marked both ways references each other in both directions.",
+      "A file counts as placed because a map node's globs match it. The globs are here",
+      " so a broad one is visible rather than silently inflating the count.",
     ),
     h(
       "div",
       { class: "cov-links" },
-      cov.links
-        .slice(0, 24)
-        .map((l) =>
-          h(
-            "div",
-            { class: "cov-link" },
-            h("code", null, label(cov, l.from)),
-            h("span", { class: "muted" }, "→"),
-            h("code", null, label(cov, l.to)),
-            h("span", { class: "muted mono" }, `${l.references} refs`),
-            l.bothWays ? h("span", { class: "badge" }, "both ways") : null,
-          ),
-        ),
-    ),
-  );
-}
-
-function label(cov: Coverage, id: string): string {
-  return cov.clusters.find((c) => c.id === id)?.label ?? id;
-}
-
-function sharedNames(cov: Coverage): HTMLElement | null {
-  if (!cov.sharedNames.length) return null;
-  return h(
-    "div",
-    { class: "cov-section" },
-    h("h3", null, "Names defined in more than one part"),
-    h(
-      "p",
-      { class: "muted" },
-      `${cov.sharedNamesTotal} name${cov.sharedNamesTotal === 1 ? " at this commit is" : "s at this commit are"}`,
-      " defined in two or more parts. What that means here - the same idea in two places,",
-      " two different ideas sharing a word, or a name too common to mean anything - is",
-      " what the code says and this page does not.",
-    ),
-    h(
-      "div",
-      { class: "cov-shared" },
-      cov.sharedNames.map((n) =>
+      cov.owners.map((o) =>
         h(
           "div",
-          { class: "cov-link" },
-          h("code", null, n.name),
-          h("span", { class: "muted mono" }, `${n.clusters.length} parts`),
-          h("span", { class: "muted" }, n.files.join(" · ")),
+          {
+            class: "cov-link",
+            onclick: () => navigate("map", { node: o.node }),
+            style: { cursor: "pointer" },
+          },
+          h("code", null, o.node),
+          h("span", { class: "muted" }, o.globs.join(" ")),
+          h("span", { class: "muted mono" }, `${o.files} files`),
         ),
       ),
     ),
-  );
-}
-
-function unread(cov: Coverage): HTMLElement | null {
-  if (!cov.outsideGraph.length && !cov.files.capped && !cov.owners.length) return null;
-  return h(
-    "div",
-    { class: "cov-section" },
-    h("h3", null, "Outside the code graph"),
-    cov.outsideGraph.length
-      ? h(
-          "div",
-          null,
-          h(
-            "p",
-            { class: "muted" },
-            `${cov.files.outsideGraph} files in scope are not in a language the graph reads,`,
-            " so they are in no part above. They are absent from the structure, not empty.",
-          ),
-          h(
-            "div",
-            { class: "cov-links" },
-            cov.outsideGraph
-              .slice(0, 16)
-              .map((e) =>
-                h(
-                  "div",
-                  { class: "cov-link" },
-                  h("code", null, `.${e.extension}`),
-                  h("span", { class: "muted mono" }, `${e.files} files`),
-                ),
-              ),
-          ),
-          fileList(
-            cov.unclustered
-              .filter((u) => u.state === "uncovered" && u.reason === "outsideGraph")
-              .map((u) => u.file),
-            "uncovered",
-          ),
-        )
-      : null,
-    cov.files.capped
-      ? h(
-          "div",
-          null,
-          h(
-            "p",
-            { class: "muted" },
-            `${cov.files.capped} files in scope are in a language the graph reads, but the`,
-            " repo-wide file cap was hit before this scope was read, so they were never parsed.",
-          ),
-          fileList(
-            cov.unclustered
-              .filter((u) => u.state === "uncovered" && u.reason === "capped")
-              .map((u) => u.file),
-            "uncovered",
-          ),
-        )
-      : null,
-    cov.owners.length
-      ? h(
-          "div",
-          null,
-          h("h4", null, "What each map node owns"),
-          h(
-            "p",
-            { class: "muted" },
-            "A file counts as placed because a map node's globs match it. The globs are here",
-            " so a broad one is visible rather than silently inflating the count.",
-          ),
-          h(
-            "div",
-            { class: "cov-links" },
-            cov.owners.map((o) =>
-              h(
-                "div",
-                {
-                  class: "cov-link",
-                  onclick: () => navigate("map", { node: o.node }),
-                  style: { cursor: "pointer" },
-                },
-                h("code", null, o.node),
-                h("span", { class: "muted" }, o.globs.join(" ")),
-                h("span", { class: "muted mono" }, `${o.files} files`),
-              ),
-            ),
-          ),
-        )
-      : null,
   );
 }

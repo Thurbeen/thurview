@@ -79,10 +79,7 @@ stores:
           body: { type: text }
 
 interfaces:
-  spawnPty:                               # annotate a derived entry
-    symbol: src/pty.ts:spawnPty           # an id from `thurview graph interfaces`
-    capability: Callers get a sized PTY without knowing the fallback.
-  dryRun:                                 # declare one the graph cannot see
+  dryRun:                                 # one per interface the change moved
     name: thurview publish --dry-run      # what a consumer types or calls
     change: added                         # added | changed | removed
     capability: Validate a review without sealing a revision.
@@ -91,33 +88,38 @@ interfaces:
 security:                                 # a review only; omit until you have looked
   - boundary: The --shell flag reaches execFile's argv unquoted.
     anchor: spawn                         # a head anchor, with a peek
+
+searches:                                 # an explainer only
+  spawnCallers:
+    pattern: '\bspawnPty *\('            # git grep -E, re-run at the pinned commit
+    paths: ["src/"]                       # optional git pathspecs; the whole commit when left out
+    why: who opens a PTY                  # optional; the question it answered
 ```
 
 An anchor without `peek` can label a map node but cannot open code.
 
 ## interfaces
 
-The browser shows the interface delta above the document. thurview derives it
-at `publish` from the code graph at both pinned commits - every symbol the
-diff touched that is visible outside its own file, split into added, changed
-and removed - so the list itself is never authored and never goes stale.
+The browser shows the interface delta above the document: what the change
+added to, changed in or removed from the surfaces something outside it reaches.
+You declare each entry; thurview checks it.
 
-Each entry in `interfaces` does one of two things, and never both:
+Every entry has `name`, `change`, `capability` and `anchor`:
 
-- **`symbol`** annotates a derived entry with `capability`, one sentence in a
-  consumer's terms. `publish` fails when the change did not move that symbol,
-  so an annotation cannot outlive the entry it explains. Take the id verbatim
-  from `thurview graph interfaces`.
-- **`name`** declares an interface the graph cannot see: a CLI subcommand or
-  flag, an HTTP route, an event kind, a config key, a file format. It needs
-  `change` and an `anchor`. `publish` checks the anchor against the pinned
-  diff - a `removed` entry needs a `graph: base` anchor covering a deleted
-  line, `added` and `changed` need a head anchor covering an added line - so a
-  declared interface is evidence, not a claim.
+- **`name`** is what a consumer types or calls: an exported function, a CLI
+  subcommand or flag, an HTTP route, an event kind, a config key, a file
+  format.
+- **`change`** is `added`, `changed` or `removed`.
+- **`anchor`** proves it. `publish` checks it against the pinned diff - a
+  `removed` entry needs a `graph: base` anchor covering a deleted line, `added`
+  and `changed` need a head anchor covering an added line - so an entry is
+  evidence, not a claim, and cannot outlive the code that moved it.
+- **`capability`** is what a consumer can now do, or can no longer do. Write
+  "`thurview publish` gains `--dry-run`", not "added a boolean to
+  PublishOptions".
 
-`capability` is what a consumer can now do, or can no longer do. Write
-"`thurview publish` gains `--dry-run`", not "added a boolean to
-PublishOptions".
+An entry written with `symbol:` named a row thurview used to derive. It derives
+none now, and `publish` refuses the key with how to write the entry instead.
 
 ## security
 
@@ -152,6 +154,27 @@ There is no severity here. A crossing is a place for the reader to look; the
 severity that exists belongs to the findings in `thurview-fix`, not to this
 document. An explainer and a design are pinned to one commit and have no change,
 so `publish` refuses the key on either.
+
+## searches
+
+An explainer's record of what it searched: the callers, tests and importers
+it looked for while reading the code. `publish` re-runs each one with
+`git grep -I -E` at the pinned commit, so what it matched is the commit's and
+not the worktree's, and the Coverage tab counts every file in scope it matched
+and nothing anchored or placed as _matched by a search_. A search that matched
+nothing is listed too, since that zero is what a claim of absence rests on.
+
+- **`pattern`** is a POSIX extended regular expression, as `git grep -E` reads
+  it. One git refuses fails the publish with git's own message.
+- **`paths`** are git pathspecs to search under, read exactly as your own
+  `git grep` reads them, so `*test*` reaches into every directory; the whole
+  commit when left out.
+  Coverage counts only the files inside the explainer's scope either way.
+- **`why`** is the question the search answered, in a sentence.
+
+A review or a design has no Coverage tab, so `publish` refuses `searches` there:
+put the search beside the claim it supports, in the prose. The recipes are in
+[Searching the code](searching.md).
 
 ## Anchor link
 

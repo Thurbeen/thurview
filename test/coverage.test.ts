@@ -1,101 +1,84 @@
 import { describe, it, expect } from "vitest";
-import { computeCoverage, scopeTruncated } from "../src/coverage.ts";
-import { GRAPH_SCHEMA, type CodeGraph } from "../src/graph.ts";
+import { computeCoverage, type SearchRecord } from "../src/coverage.ts";
 
-function graph(overrides: Partial<CodeGraph> = {}): CodeGraph {
-  return {
-    schema: GRAPH_SCHEMA,
-    commit: "deadbeef",
-    files: [],
-    symbols: [],
-    edges: [],
-    unresolved: 0,
-    unresolvedByFile: {},
-    truncated: false,
-    ...overrides,
-  };
-}
+const search = (key: string, files: string[], hits = files.length): SearchRecord => ({
+  key,
+  pattern: key,
+  paths: [],
+  hits,
+  files,
+});
 
 describe("computeCoverage", () => {
-  it("tells a graph-language file the repo-wide cap dropped apart from one the graph cannot read", () => {
+  it("counts a file only a recorded search matched as searched, below anchored and placed", () => {
     const cov = computeCoverage({
       commit: "deadbeef",
       scope: "**",
-      allFiles: ["src/seen.ts", "src/dropped.ts", "notes.md"],
-      graph: graph({ files: ["src/seen.ts"] }),
-      anchored: [],
-      owners: [],
+      allFiles: ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"],
+      anchored: ["src/a.ts"],
+      owners: [{ node: "b", globs: ["src/b.ts"] }],
+      searches: [search("callers", ["src/a.ts", "src/b.ts", "src/c.ts"])],
     });
-    expect(cov.files.capped).toBe(1);
-    expect(cov.truncated).toBe(true);
-    expect(cov.unclustered).toContainEqual(
-      expect.objectContaining({ file: "src/dropped.ts", reason: "capped" }),
+    expect(cov.states).toEqual({ explained: 1, placed: 1, searched: 1, uncovered: 1 });
+    expect(cov.uncovered).toEqual(["src/d.ts"]);
+    expect(cov.verdict).toBe(
+      "4 files at deadbeef in the repository, 1 anchored in the document, 1 placed on the map only, 1 matched by a recorded search only, 1 not examined.",
     );
-    expect(cov.unclustered).toContainEqual(
-      expect.objectContaining({ file: "notes.md", reason: "outsideGraph" }),
-    );
-    expect(cov.files.outsideGraph).toBe(1);
   });
 
-  it("sums unresolved references only from files inside the requested scope", () => {
+  it("states a search that matched nothing, since a zero is a finding", () => {
+    const cov = computeCoverage({
+      commit: "deadbeef",
+      scope: "**",
+      allFiles: ["src/a.ts"],
+      anchored: ["src/a.ts"],
+      owners: [],
+      searches: [search("tests", [], 0)],
+    });
+    expect(cov.searches).toEqual([expect.objectContaining({ key: "tests", hits: 0, files: [] })]);
+  });
+
+  it("does not count a search hit outside the scope", () => {
     const cov = computeCoverage({
       commit: "deadbeef",
       scope: "src/in",
       allFiles: ["src/in/a.ts", "src/out/b.ts"],
-      graph: graph({
-        files: ["src/in/a.ts", "src/out/b.ts"],
-        unresolved: 5,
-        unresolvedByFile: { "src/in/a.ts": 2, "src/out/b.ts": 3 },
-      }),
       anchored: [],
       owners: [],
+      searches: [search("callers", ["src/out/b.ts"])],
     });
-    expect(cov.unresolved).toBe(2);
+    expect(cov.files.total).toBe(1);
+    expect(cov.states).toEqual({ explained: 0, placed: 0, searched: 0, uncovered: 1 });
   });
 
-  it("does not report a dunder as one concept living in two parts", () => {
-    const sym = (file: string, name: string) => ({
-      id: `${file}:Model.${name}`,
-      name,
-      kind: "function",
-      file,
-      line: 2,
-      end: 3,
-    });
-    const files = ["src/a/one.py", "src/b/two.py"];
+  it("groups the files in scope by the directory under it, largest first", () => {
     const cov = computeCoverage({
       commit: "deadbeef",
       scope: "**",
-      allFiles: files,
-      graph: graph({
-        files,
-        symbols: files.flatMap((f) => [sym(f, "__init__"), sym(f, "prepare_tensors")]),
-      }),
+      allFiles: ["README.md", "src/a.ts", "src/b.ts", "test/a.test.ts"],
+      anchored: ["src/a.ts"],
+      owners: [],
+      searches: [],
+    });
+    expect(cov.clusters.map((c) => [c.label, c.files])).toEqual([
+      ["src", 2],
+      [".", 1],
+      ["test", 1],
+    ]);
+    expect(cov.clusters[0]).toEqual(
+      expect.objectContaining({ explained: ["src/a.ts"], uncovered: ["src/b.ts"] }),
+    );
+  });
+
+  it("keeps the files at the top of a scope apart from a directory of the same name", () => {
+    const cov = computeCoverage({
+      commit: "deadbeef",
+      scope: "src",
+      allFiles: ["src/x.ts", "src/src/y.ts"],
       anchored: [],
       owners: [],
+      searches: [],
     });
-    // Python tags a method `function`, so methods are shared names like any other -
-    // but `__init__` is a slot every class fills and says nothing about the split
-    expect(cov.sharedNames.map((s) => s.name)).toEqual(["prepare_tensors"]);
-  });
-});
-
-describe("scopeTruncated", () => {
-  it("is false when the whole-repo graph is truncated but nothing inside the scope was dropped", () => {
-    const truncated = scopeTruncated(
-      ["src/in/a.ts", "src/out/dropped.ts"],
-      graph({ files: ["src/in/a.ts"], truncated: true }),
-      "src/in",
-    );
-    expect(truncated).toBe(false);
-  });
-
-  it("is true when a graph-language file inside the scope is missing from the graph", () => {
-    const truncated = scopeTruncated(
-      ["src/in/a.ts", "src/in/dropped.ts"],
-      graph({ files: ["src/in/a.ts"] }),
-      "src/in",
-    );
-    expect(truncated).toBe(true);
+    expect(cov.clusters.map((c) => c.label).sort()).toEqual(["src", "src/"]);
   });
 });

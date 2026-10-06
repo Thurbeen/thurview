@@ -1,6 +1,6 @@
 ---
 name: thurview-fix
-description: Review a change and fix what the review finds - bugs, regressions for callers, missing or broken tests, security issues - with thurview's code graph showing the callers and tests a diff does not. Commits only the fixes that pass the repository's own tests and lint, and reports the rest. Use when the user asks to review and fix a branch, a commit range or a pull or merge request, to find and fix bugs in a change, or invokes /thurview-fix.
+description: Review a change and fix what the review finds - bugs, regressions for callers, missing or broken tests, security issues - with a search of the callers and tests a diff does not show. Commits only the fixes that pass the repository's own tests and lint, and reports the rest. Use when the user asks to review and fix a branch, a commit range or a pull or merge request, to find and fix bugs in a change, or invokes /thurview-fix.
 user-invocable: true
 argument-hint: "[<branch> | <base>..<head> | <PR or MR number or URL>] [--post]"
 ---
@@ -8,12 +8,12 @@ argument-hint: "[<branch> | <base>..<head> | <PR or MR number or URL>] [--post]"
 # thurview-fix
 
 Review a change, fix what you are sure of, report the rest. The diff shows what
-changed; thurview's code graph shows what depends on it, which is where a
-change breaks code the diff never shows.
+changed; a search of the code around it shows what depends on it, which is
+where a change breaks code the diff never shows.
 
 ```mermaid
 flowchart LR
-  A[Scope: pin base and head] --> B[Graph: who reaches the change]
+  A[Scope: pin base and head] --> B[Search: who reaches the change]
   B --> C[Findings]
   C --> D[Fix, then the repo's tests and lint]
   D -->|green| E[One fix commit]
@@ -42,49 +42,53 @@ $ARGUMENTS
 ## 1. Scope
 
 Start from a clean tree (`git status --porcelain` prints nothing), otherwise
-ask: the fixes get committed. Check out the head, then pin both commits with
-one graph call:
+ask: the fixes get committed. Check out the head, then pin both commits:
 
-| Request            | Check out                                      | Pin with                                                                          |
-| ------------------ | ---------------------------------------------- | --------------------------------------------------------------------------------- |
-| empty              | the current branch                             | `thurview graph impact --head HEAD`                                               |
-| a branch           | `git switch <branch>`                          | `thurview graph impact --head HEAD`                                               |
-| `<base>..<head>`   | the branch at `<head>`                         | `thurview graph impact --base <base> --head HEAD`                                 |
-| a PR or MR ref/URL | `gh pr checkout <n>` or `glab mr checkout <n>` | `thurview graph impact --base $(git merge-base origin/<target> HEAD) --head HEAD` |
+| Request            | Check out                                      | Base                                  |
+| ------------------ | ---------------------------------------------- | ------------------------------------- |
+| empty              | the current branch                             | `git merge-base origin/HEAD HEAD`     |
+| a branch           | `git switch <branch>`                          | `git merge-base origin/HEAD HEAD`     |
+| `<base>..<head>`   | the branch at `<head>`                         | `git rev-parse <base>`                |
+| a PR or MR ref/URL | `gh pr checkout <n>` or `glab mr checkout <n>` | `git merge-base origin/<target> HEAD` |
 
-With `--head` alone the base is where head forked from trunk. For a change
-request, `thurview forge status --change <ref>` names `<target>` as
-`change.baseBranch`.
+Head is `git rev-parse HEAD`, taken now. For a change request,
+`thurview forge status --change <ref>` names `<target>` as
+`change.baseBranch`; when `origin/HEAD` is unset, use the trunk branch by name.
 
-The output's `base` and `head` are the pins. Pass `--base <base> --head <head>`
-to every later graph command, as its `help` lines do, so your fix commit does
-not move what you are reviewing.
+Write both full shas down and use them, not `HEAD`, in every later command, so
+your fix commit does not move what you are reviewing.
 
-## 2. Ask the graph
+## 2. Search what the change reaches
+
+List what changed, then find what the diff does not show, at the pins, with
+the recipes in the `thurview` skill's Searching the code reference
+(`thurview skill` prints its path):
 
 ```sh
-thurview graph impact     --base <base> --head <head>  # changed symbols, who reaches them, tests
-thurview graph interfaces --base <base> --head <head>  # exports and signatures that moved
-thurview graph callers <name> --base <base> --head <head>  # every call site; --graph base for before
-thurview graph tests-for <name> --base <base> --head <head>
+git diff --stat <base> <head>                              # the files
+git diff <base> <head>                                     # the change
+git grep -n -E -e '\bname *\(' <head> --                   # who calls a changed symbol now
+git grep -n -E -e '\bname *\(' <base> --                   # who called it before; a removed one's callers are only here
+git grep -n -E -e '\bname\b' <head> -- '*test*' '*spec*'       # which tests name it
 ```
 
-What to take from them:
+What to look for:
 
-- **`impact.reach`** lists code that calls a changed symbol and was not changed
-  itself - what the author may have forgotten. `at` is the line of the call,
-  `via` the changed symbol it reaches. Read each call site against the new
-  behaviour: this is the finding a diff cannot give you.
-- **`reach[].tested: false`**: no test reaches that caller, so nothing catches
-  a break there.
-- **`interfaces`** rows `changed` or `removed`: run `callers` on each, with
-  `--graph base` for a removed one, since head no longer has its callers.
-- **`impact.untested`**: changed symbols no test reaches.
-- **`unresolved`, `truncated`**: references the graph could not resolve and
-  files past its cap. "No callers" is only as true as those allow; say so when
-  a finding rests on it.
+- **Callers the change left alone.** For every function, method, type or
+  export whose signature or behaviour the diff changed, search its callers at
+  head and drop the ones the diff itself touched. What is left is what the
+  author may have forgotten: read each call site against the new behaviour.
+  This is the finding a diff cannot give you.
+- **Removed or renamed interfaces.** Search the old name at head: any hit is
+  a caller the change broke.
+- **Untested reach.** A changed symbol, or a caller of one, that no test names
+  has nothing to catch a break there.
+- **What a search misses.** A text search finds names, not meaning: a call
+  through a variable, a re-export or a string-built name escapes it. "No
+  callers" is only as true as the forms you searched; say which when a finding
+  rests on it.
 
-Then read the diff (`git diff <base> <head>`) and every call site the rows name.
+Then read every call site the searches name.
 
 ## 3. Findings
 
@@ -95,8 +99,9 @@ For each one, record:
   `medium` (a likely bug, or a risky path no test reaches), `low` (real but
   narrow)
 - why, in one line
-- the graph evidence when there is some, e.g.
-  `reach: checkout src/cart.js:5 via discount, tested false`
+- the search evidence when there is some: the search and the hit, e.g.
+  `git grep -n -E -e '\bdiscount *\(' <head>` → `src/cart.js:5`, no test names
+  it
 
 Security means input crossing a trust boundary: a shell command, query or path
 built from it, a secret reaching a log, an authorization check the change
@@ -133,9 +138,9 @@ git commit -m "fix: address review findings" -m "<one line per fix: file:line - 
 
 ## 5. Report
 
-One table - severity, `file:line`, the finding, its graph evidence, and the fix
-commit or why it is unfixed - then the tests and lint after the commit, and
-what the graph could not see. Do not push; offer to.
+One table - severity, `file:line`, the finding, its search evidence, and the
+fix commit or why it is unfixed - then the tests and lint after the commit, and
+what the searches could not see. Do not push; offer to.
 
 ## 6. Post, with `--post` only
 
