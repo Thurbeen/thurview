@@ -26,16 +26,19 @@ and each finding's first comment
 `<!-- thurview-finding {"id":"<id>","category":"bug","severity":"blocking"} -->`.
 `state` is `active`, `stopped`, `merged` or `closed`. `seen` is the newest
 note already read, so a `/thurview stop` posted before a `start` stops nothing.
-A finding's id is the `id` given in the pass, or a hash of its category, path
+Only a summary posted by the account the CLI is logged in as counts, so a
+pasted marker changes nothing. A finding's id is the `id` given in the pass, or a hash of its category, path
 and title, which is how the same finding found on the next push is recognised.
 
 ## Gaps
 
 - No forge approve. A forge approve can arm an auto-merge, and the verdict
   lives in the summary; `thurview forge submit` is the command for one.
-- Threads are read from the first 100 on each forge (`reviewThreads(last:100)`
-  on GitHub, one page of discussions on GitLab), the same limit
-  `thurview forge prior` has. Notes are read on every page.
+- GitHub reads the newest 100 review threads (`reviewThreads(last:100)`), the
+  same limit `thurview forge prior` has; GitLab reads every page.
+- Every call asks the forge who it is (`gh api user`, `glab api user`) to
+  tell its own markers from pasted ones, so it needs a token that can read its
+  own user; a GitHub App installation token cannot.
 - A finding must sit on a line the diff touches. A finding on an untouched
   caller goes in a risk bullet.
 - GitLab reports no per-thread staleness, and its adapter is driven by stub

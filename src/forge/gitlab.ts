@@ -106,11 +106,20 @@ interface RestNote {
   body: string;
   system?: boolean;
   type?: string | null;
+  position?: unknown;
   author: { username: string } | null;
 }
 
 function noteOf(n: RestNote): Note {
   return { id: String(n.id), author: n.author?.username ?? "unknown", body: n.body };
+}
+
+/** One JSON value per line; a line holding an array is a page of them. */
+function ndjson<T>(out: string): T[] {
+  return out
+    .split("\n")
+    .filter((l) => l.trim())
+    .flatMap((l) => JSON.parse(l) as T | T[]);
 }
 
 function iidOf(ref: string): string {
@@ -213,13 +222,17 @@ export class GitLabForge implements Forge {
     repo: RepoId,
     cr: ChangeRequest,
   ): Promise<{ passes: PriorPass[]; threads: PriorThread[] }> {
-    const discussions = await runJson<Discussion[]>(
+    // Every page: each system event is a discussion of its own, so a busy
+    // merge request passes one page long before its threads run out.
+    const out = await run(
       "glab",
       this.api(
         repo,
         `projects/${this.project(repo)}/merge_requests/${cr.number}/discussions?per_page=100`,
+        ["--paginate", "--output", "ndjson"],
       ),
     );
+    const discussions = ndjson<Discussion>(out);
     const threads: PriorThread[] = [];
     const passes: PriorPass[] = [];
     for (const d of discussions) {
@@ -380,12 +393,16 @@ export class GitLabForge implements Forge {
         ["--paginate", "--output", "ndjson"],
       ),
     );
-    return out
-      .split("\n")
-      .filter((l) => l.trim())
-      .map((l) => JSON.parse(l) as RestNote)
-      .filter((n) => !n.system && n.type !== "DiffNote" && n.type !== "DiscussionNote")
-      .map(noteOf);
+    return (
+      out
+        .split("\n")
+        .filter((l) => l.trim())
+        .map((l) => JSON.parse(l) as RestNote)
+        // A reply to a note turns it into a DiscussionNote, and it is still a
+        // top-level note: only a note on a diff line is left out.
+        .filter((n) => !n.system && n.type !== "DiffNote" && !n.position)
+        .map(noteOf)
+    );
   }
 
   async postNote(repo: RepoId, cr: ChangeRequest, body: string): Promise<Note> {

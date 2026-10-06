@@ -57,6 +57,8 @@ const Finding = z.object({
 });
 
 const PassSchema = z.object({
+  /** The head this pass reviewed; `sync` refuses it once the change request moved on. */
+  head: z.string().min(7),
   confidence: z.number().int().min(1).max(5),
   reason: z.string().min(1),
   risk: z.array(z.string().min(1)).min(1).max(5),
@@ -97,6 +99,19 @@ export function parsePass(text: string, file: string): Pass {
 
 /** The rules no schema says: one line per title, and the comment budget. */
 export function checkPass(p: Pass): void {
+  // A newline would let a line pass as a table row or the marker, and so
+  // slip past the word budget; every one of these is one line by design.
+  const oneLine: [string, string | undefined][] = [
+    ["reason", p.reason],
+    ["change", p.change],
+    ["signoff", p.signoff],
+    ...p.risk.map((r, i): [string, string] => [`risk[${i}]`, r]),
+  ];
+  for (const [field, text] of oneLine)
+    if (text && /[\r\n]/.test(text.trim()))
+      throw new AxiError(`${field} is more than one line`, "VALIDATION_ERROR", [
+        "reason, each risk bullet, change and signoff are one line each",
+      ]);
   for (const f of p.findings ?? []) {
     const at = `${f.path}:${f.line}`;
     if (f.title.includes("\n"))

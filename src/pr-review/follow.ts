@@ -31,7 +31,7 @@ import {
 /** The forge methods a follow loop uses, and no other. */
 export type ReviewForge = Pick<
   Forge,
-  "id" | "get" | "prior" | "reply" | "notes" | "postNote" | "editNote" | "comment"
+  "id" | "whoami" | "get" | "prior" | "reply" | "notes" | "postNote" | "editNote" | "comment"
 >;
 
 export interface Ctx {
@@ -68,21 +68,30 @@ function maxId(...ids: string[]): string {
 }
 
 export async function readState(ctx: Ctx): Promise<ReviewState> {
-  const [notes, prior] = await Promise.all([
+  const [notes, prior, me] = await Promise.all([
     ctx.forge.notes(ctx.repo, ctx.cr),
     ctx.forge.prior(ctx.repo, ctx.cr),
+    ctx.forge.whoami(ctx.repo),
   ]);
+  // Only this account's own marker counts: anyone can paste one, and
+  // trusting it would let a commenter silence the loop or have it edit
+  // their comment.
   let summary: ReviewState["summary"] = null;
   for (const note of notes) {
-    const marker = readSummaryMarker(note.body);
+    const marker = note.author === me ? readSummaryMarker(note.body) : null;
     if (marker) {
-      summary = { note, marker };
+      // A change request reopened after it closed is followed again.
+      const ended = marker.state === "merged" || marker.state === "closed";
+      summary = {
+        note,
+        marker: ended && ctx.cr.state === "open" ? { ...marker, state: "active" } : marker,
+      };
       break;
     }
   }
   const findings: FindingState[] = [];
   for (const t of prior.threads) {
-    const m = readFindingMarker(t.messages[0]?.body ?? "");
+    const m = t.author === me ? readFindingMarker(t.messages[0]?.body ?? "") : null;
     if (!m) continue;
     findings.push({
       id: m.id,
@@ -135,6 +144,15 @@ export async function sync(
       "There is nothing left to review; the follow loop ends here",
     ]);
   checkPass(pass);
+  if (!cr.head.startsWith(pass.head))
+    throw new AxiError(
+      `the pass reviewed ${pass.head.slice(0, 12)}, and the head is now ${cr.head.slice(0, 12)}`,
+      "CONFLICT",
+      [
+        `Review \`git diff ${pass.head.slice(0, 12)} ${cr.head.slice(0, 12)}\` as well, then sync with head ${cr.head}`,
+        "Its line numbers are the old head's, so posting it would land comments on the wrong lines",
+      ],
+    );
   const st = await readState(ctx);
   const status = st.summary?.marker.state;
   if (st.stop || (status && status !== "active"))
@@ -143,10 +161,11 @@ export async function sync(
       "CONFLICT",
       [`Run \`thurview pr-review start --change ${cr.number}\` if the reader asked to resume`],
     );
-  const fixed = pass.fixed ?? [];
-  for (const id of fixed) {
-    const f = st.findings.find((x) => x.id === id);
-    if (!f || !f.open)
+  // A finding resolved already - by an earlier run of this same pass, or by
+  // hand - is done; only an id never posted is a mistake.
+  const fixed = (pass.fixed ?? []).filter((id) => st.findings.some((x) => x.id === id && x.open));
+  for (const id of pass.fixed ?? []) {
+    if (!st.findings.some((x) => x.id === id))
       throw new AxiError(`no open finding ${id} on this change request`, "NOT_FOUND", [
         `The open ones: ${
           st.findings
@@ -207,7 +226,13 @@ export async function sync(
     });
   const reply = `Fixed in ${cr.head.slice(0, 7)}.${pass.signoff ? `\n\n${pass.signoff}` : ""}`;
   for (const id of fixed)
-    await forge.reply(repo, cr, st.findings.find((x) => x.id === id)!.thread, reply, true);
+    await forge.reply(
+      repo,
+      cr,
+      st.findings.find((x) => x.id === id && x.open)!.thread,
+      reply,
+      true,
+    );
   if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, body);
   else await forge.postNote(repo, cr, body);
   return result;

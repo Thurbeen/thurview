@@ -109,6 +109,7 @@ holds the ids of open findings this push fixed:
 
 ```json
 {
+  "head": "<the full sha you reviewed>",
   "confidence": 2,
   "reason": "Safe once the retry loop stops on a 4xx.",
   "risk": ["Every upload goes through the changed retry path.", "No test covers a 4xx."],
@@ -131,9 +132,13 @@ holds the ids of open findings this push fixed:
 }
 ```
 
-- `reason` is one line; `risk` is one to five bullets naming what could break,
-  the blast radius, and anything touching security, data, infra or a public
-  API; `change` is two or three sentences.
+- `head` is the commit you reviewed. `sync` refuses the pass when the change
+  request moved on since: review what the new push added, then sync again.
+- `reason`, `change`, `signoff` and each `risk` bullet are one line each;
+  `sync` refuses a line break in any of them. `reason` is one sentence;
+  `risk` is one to five bullets naming what could break, the blast radius, and
+  anything touching security, data, infra or a public API; `change` is two or
+  three sentences.
 - The summary is capped at 120 words, the counts table aside. `sync` refuses
   more: cut to what the author acts on.
 - A finding's `title` is the claim in one line, `body` the fix. Title, body

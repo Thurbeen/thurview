@@ -69,6 +69,7 @@ async function calls(): Promise<{ cli: string; args: string[]; body: string }[]>
 }
 
 const PASS = {
+  head: HEAD,
   confidence: 2,
   reason: "One blocking bug.",
   risk: ["Uploads retry on a 4xx."],
@@ -152,6 +153,7 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
       { cli: "gh", match: ["issues/7/comments", "--paginate", "--slurp"], body: [[]] },
       { cli: "gh", match: ["graphql"], body: NO_THREADS },
       { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
     ]);
     const file = join(bin, "pass.json");
     await writeFile(file, JSON.stringify(PASS));
@@ -183,6 +185,7 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
       },
       { cli: "gh", match: ["graphql"], body: NO_THREADS },
       { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
     ]);
     const file = join(bin, "pass.json");
     await writeFile(file, JSON.stringify({ ...PASS, confidence: 5, findings: [] }));
@@ -233,6 +236,7 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
         },
       },
       { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
     ]);
     const status = await cli(["pr-review", "status", "--change", "7"], github);
     expect(status["open"][0]).toMatchObject({ id: "loop", category: "bug" });
@@ -262,6 +266,7 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
         match: ["repos/acme/web/pulls/7"],
         body: PULL({ state: "closed", merged: true }),
       },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
     ]);
     const out = await cli(["pr-review", "wait", "--change", "7"], github);
     expect(out["event"].event).toBe("merged");
@@ -283,6 +288,7 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
         match: ["repos/acme/web/pulls/7"],
         body: PULL({ labels: [{ name: "thurview:stop" }] }),
       },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
     ]);
     const out = await cli(["pr-review", "wait", "--change", "7"], github);
     expect(out["event"].event).toBe("stopped");
@@ -316,6 +322,7 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
     { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
     { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
     { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+    { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
   ];
 
   it("opens a diff discussion per finding and posts the summary as a note", async () => {
@@ -370,5 +377,48 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
     const body = put.args.find((a) => a.startsWith("body="))!;
     expect(body).toContain('"state":"stopped"');
     expect(body).toContain('"seen":"12"');
+  });
+});
+
+describe("GitLab notes and threads", { timeout: 30_000 }, () => {
+  it("finds its summary after someone replied to it, and reads every page of threads", async () => {
+    const thread = {
+      id: "d9",
+      notes: [
+        {
+          id: 20,
+          body: '<!-- thurview-finding {"id":"loop","category":"bug","severity":"blocking"} -->\n**Bug · blocking:** Loops.',
+          system: false,
+          resolvable: true,
+          resolved: false,
+          author: { username: "bot" },
+          position: { new_path: "src/upload.ts", new_line: 42, head_sha: OLD },
+        },
+      ],
+    };
+    await fixtures([
+      { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+      { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+      {
+        cli: "glab",
+        match: ["merge_requests/7/discussions?", "--paginate", "ndjson"],
+        body: ndjson(thread),
+      },
+      { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+      {
+        cli: "glab",
+        match: ["merge_requests/7/notes?", "--paginate"],
+        body: ndjson({
+          id: 9,
+          body: SUMMARY(OLD),
+          type: "DiscussionNote",
+          author: { username: "bot" },
+        }),
+      },
+      { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+    ]);
+    const out = await cli(["pr-review", "status", "--change", "7"], gitlab);
+    expect(out["review"].reviewedHead).toBe(OLD);
+    expect(out["open"][0]).toMatchObject({ id: "loop" });
   });
 });
