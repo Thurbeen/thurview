@@ -44,6 +44,7 @@ export interface ReviewState {
   /** presented (sealed) revision number; 0 when nothing is published */
   revision: number;
   dismissed: boolean;
+  staticSnapshot?: { url: string; revision: number };
   createdAt: string;
   updatedAt: string;
 }

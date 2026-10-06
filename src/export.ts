@@ -127,11 +127,11 @@ function escapeHtml(s: string): string {
  */
 export async function exportReview(
   review: ReviewState,
-  opts: { threads: boolean },
+  opts: { threads: boolean; banner?: { revision: number; sha: string; liveUrl?: string }; markdown?: string },
 ): Promise<string> {
   if (!existsSync(join(UI_DIR, "app.js")))
     throw new Error(`the bundled UI is missing at ${UI_DIR}; run \`pnpm build\``);
-  const snap = await snapshot(review, opts.threads);
+  const snap = { ...await snapshot(review, opts.threads), banner: opts.banner, markdown: opts.markdown };
   const js = (await readFile(join(UI_DIR, "app.js"), "utf8"))
     .replace(/\n\/\/# sourceMappingURL=.*\s*$/, "\n")
     .replace(/<\/script/gi, "<\\/script");

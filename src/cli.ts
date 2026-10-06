@@ -1,3 +1,4 @@
+import { renderStatic, publishStatic } from "./static.js";
 import {
   runAxiCli,
   AxiError,
@@ -662,6 +663,20 @@ const SPECS: Record<
       },
     },
     examples: ["thurview open", "thurview open --review <id> --view map --no-browser"],
+  },
+  "publish-static": {
+    description: "Render a read-only snapshot, optionally deploy the retained archive to Cloudflare",
+    args: "[<review>]",
+    flags: {
+      review: { kind: "string", help: "document id or unique prefix" },
+      out: { kind: "string", help: "render locally to this directory without deploying" },
+      to: { kind: "string", help: "deployment target (cloudflare)" },
+      config: { kind: "string", help: "Cloudflare target JSON (default: THURVIEW_HOME/cloudflare.json)" },
+    },
+    examples: [
+      "thurview publish-static <id> --out snapshot",
+      "thurview publish-static <id> --to cloudflare",
+    ],
   },
   export: {
     description:
@@ -1344,6 +1359,28 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     };
   },
 
+  async "publish-static"(args) {
+    const p = parseFlags("publish-static", args, spec("publish-static").flags, 1);
+    const review = await resolveReview(str(p, "review") ?? p.positional[0], { terminal: true });
+    const out = str(p, "out");
+    const to = str(p, "to");
+    if ((to && to !== "cloudflare") || (!out && !to) || (out && to))
+      throw new AxiError("choose --out <directory> or --to cloudflare", "VALIDATION_ERROR", [
+        "thurview publish-static <id> --out snapshot",
+        "thurview publish-static <id> --to cloudflare",
+      ]);
+    try {
+      return {
+        snapshot: out ? await renderStatic(review, resolve(out)) :
+          await publishStatic(review, str(p, "config") ?? join(home(), "cloudflare.json")),
+        help: ["Run `thurview publish-static <id> --to cloudflare` to refresh the public snapshot"],
+      };
+    } catch (e) {
+      throw new AxiError((e as Error).message, "VALIDATION_ERROR", [
+        "Publish a revision first and configure THURVIEW_HOME/cloudflare.json; run `thurview publish-static --help`",
+      ]);
+    }
+  },
   async export(args) {
     const p = parseFlags("export", args, spec("export").flags);
     const out = str(p, "out");
