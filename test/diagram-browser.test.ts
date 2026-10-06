@@ -2,26 +2,20 @@
 // geometry check without one cannot see: text that runs out of its box, off
 // the drawing, or down to a size nobody can read.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, delimiter } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { decode } from "@toon-format/toon";
+import { browserBin, launchBrowser, type Browser } from "./browser.ts";
 
 const execFileP = promisify(execFile);
 const ROOT = join(import.meta.dirname, "..");
 
-const browserBin =
-  process.env["CHROMIUM"] ??
-  ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]
-    .flatMap((b) => (process.env["PATH"] ?? "").split(delimiter).map((d) => join(d, b)))
-    .find((p) => existsSync(p));
-
 let tmp: string;
 let server: { port: number; close(): Promise<void> };
-let browser: ChildProcess;
+let browser: Browser;
 let devtools: number;
 let reviewId: string;
 
@@ -199,42 +193,15 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
     const { startServer } = await import(join(ROOT, "dist", "server", "server.js"));
     server = await startServer({ hosts: ["127.0.0.1"] });
 
-    const port = (devtools = 9800 + Math.floor(Math.random() * 400));
-    browser = spawn(
-      browserBin!,
-      [
-        "--headless=new",
-        "--no-sandbox",
-        "--disable-gpu",
-        `--user-data-dir=${join(tmp, "profile")}`,
-        `--remote-debugging-port=${port}`,
-        "about:blank",
-      ],
-      { stdio: "ignore" },
-    );
-    for (let i = 0; i < 100; i++) {
-      if (
-        await fetch(`http://127.0.0.1:${port}/json/version`).then(
-          () => true,
-          () => false,
-        )
-      )
-        break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }, 90_000);
+    browser = await launchBrowser(join(tmp, "profile"));
+    devtools = browser.devtools;
+  }, 150_000);
 
   afterAll(async () => {
-    // Chromium keeps writing its profile until it has exited, so the temporary
-    // tree is removed only after that, not as soon as the kill is sent.
-    if (browser && browser.exitCode === null) {
-      const exited = new Promise((r) => browser.once("exit", r));
-      browser.kill();
-      await exited;
-    }
+    await browser?.close();
     await server?.close();
     if (tmp) await rm(tmp, { recursive: true, force: true, maxRetries: 5 });
-  });
+  }, 30_000);
 
   for (const [name, width, height] of [
     ["desktop", 1440, 900],

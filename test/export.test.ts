@@ -3,23 +3,18 @@
 // ask the network for nothing, name no server, and come out byte-identical
 // every time it is exported.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdtemp, writeFile, mkdir, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, delimiter } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { decode } from "@toon-format/toon";
+import { browserBin, launchBrowser, type Browser } from "./browser.ts";
 
 const execFileP = promisify(execFile);
 const ROOT = join(import.meta.dirname, "..");
-
-const browserBin =
-  process.env["CHROMIUM"] ??
-  ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]
-    .flatMap((b) => (process.env["PATH"] ?? "").split(delimiter).map((d) => join(d, b)))
-    .find((p) => existsSync(p));
 
 let tmp: string;
 let home: string;
@@ -211,42 +206,15 @@ describe("thurview export", () => {
 });
 
 describe.skipIf(!browserBin)("an exported document in a browser, offline", () => {
-  let browser: ChildProcess;
+  let browser: Browser;
   let devtools: number;
 
   beforeAll(async () => {
-    devtools = 9800 + Math.floor(Math.random() * 400);
-    browser = spawn(
-      browserBin!,
-      [
-        "--headless=new",
-        "--no-sandbox",
-        "--disable-gpu",
-        `--user-data-dir=${join(tmp, "profile")}`,
-        `--remote-debugging-port=${devtools}`,
-        "about:blank",
-      ],
-      { stdio: "ignore" },
-    );
-    for (let i = 0; i < 100; i++) {
-      if (
-        await fetch(`http://127.0.0.1:${devtools}/json/version`).then(
-          () => true,
-          () => false,
-        )
-      )
-        break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }, 30_000);
+    browser = await launchBrowser(join(tmp, "profile"));
+    devtools = browser.devtools;
+  }, 90_000);
 
-  afterAll(async () => {
-    if (browser && browser.exitCode === null) {
-      const exited = new Promise((r) => browser.once("exit", r));
-      browser.kill();
-      await exited;
-    }
-  });
+  afterAll(() => browser?.close(), 30_000);
 
   // Open `file` from disk with the network switched off, record every request
   // the page makes, and wait until `ready` holds.
