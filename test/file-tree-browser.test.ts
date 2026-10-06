@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFile } from "node:child_process";
-import { mkdtemp, writeFile, mkdir, rm, copyFile } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, rm, copyFile, cp, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -10,6 +10,7 @@ import { browserBin, launchBrowser, type Browser } from "./browser.ts";
 const run = promisify(execFile);
 const ROOT = join(import.meta.dirname, "..");
 let scratch: string;
+let buildRoot: string;
 let browser: Browser;
 let server: { port: number; close(): Promise<void> };
 let url: string;
@@ -90,10 +91,18 @@ const key = (key: string) =>
 
 describe.skipIf(!browserBin)("file explorer in the reader", () => {
   beforeAll(async () => {
-    await run("pnpm", ["build"], { cwd: ROOT });
     const cache = join(ROOT, "node_modules", ".cache");
     await mkdir(cache, { recursive: true });
     scratch = await mkdtemp(join(cache, "file-tree-"));
+    // Other browser suites can compile while this one exports; its command and server
+    // must read a build that none of those compilers can truncate underneath them.
+    buildRoot = join(scratch, "build");
+    await mkdir(join(buildRoot, "scripts"), { recursive: true });
+    for (const path of ["src", "bin", "package.json", "tsconfig.json"])
+      await cp(join(ROOT, path), join(buildRoot, path), { recursive: true });
+    await copyFile(join(ROOT, "scripts/build-ui.mjs"), join(buildRoot, "scripts/build-ui.mjs"));
+    await symlink(join(ROOT, "node_modules"), join(buildRoot, "node_modules"), "dir");
+    await run("pnpm", ["build"], { cwd: buildRoot });
     const repo = join(scratch, "repo");
     const home = join(scratch, "home");
     await mkdir(join(repo, "src", "kernel", "host"), { recursive: true });
@@ -129,10 +138,14 @@ describe.skipIf(!browserBin)("file explorer in the reader", () => {
     await git("add", ".");
     await git("commit", "-qm", "change");
     const cli = async (args: string[]) => {
-      const { stdout } = await run(process.execPath, [join(ROOT, "bin/thurview.js"), ...args], {
-        cwd: repo,
-        env: { ...process.env, THURVIEW_HOME: home },
-      });
+      const { stdout } = await run(
+        process.execPath,
+        [join(buildRoot, "bin/thurview.js"), ...args],
+        {
+          cwd: repo,
+          env: { ...process.env, THURVIEW_HOME: home },
+        },
+      );
       return decode(stdout.trim()) as Record<string, any>;
     };
     const { review } = await cli(["scaffold"]);
@@ -146,7 +159,7 @@ describe.skipIf(!browserBin)("file explorer in the reader", () => {
     );
     await cli(["publish", "--review", review.uuid]);
     process.env["THURVIEW_HOME"] = home;
-    const { startServer } = await import(join(ROOT, "dist/server/server.js"));
+    const { startServer } = await import(join(buildRoot, "dist/server/server.js"));
     server = await startServer({ hosts: ["127.0.0.1"] });
     const response = await fetch(
       `http://127.0.0.1:${server.port}/api/reviews/${review.uuid}/threads`,
