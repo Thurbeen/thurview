@@ -56,12 +56,18 @@ Use the thurview skill to review my current branch against up-to-date main
 and open it.
 ```
 
+For an opened PR or MR, ask: `Use thurview-pr-review to review <URL>`. That
+one skill checks cloud setup, authors and serves the review, publishes its
+public snapshot and Markdown export, then edits one linked summary on every
+new push. Setup is saved once; see
+[Cloudflare setup](skills/thurview-pr-review/references/cloudflare-setup.md).
+
 ## The six skills
 
-Three kinds of document, and three companions that write none:
+Four authoring workflows, and two companions:
 
-- **`thurview`** - a change that is already written: a branch, a pull request,
-  a commit range. The document carries the diff, the commits and the interface
+- **`thurview`** - a local change that is already written: a branch or
+  commit range. The document carries the diff, the commits and the interface
   delta, and the reader approves it or sends it back.
 - **`thurview-explain`** - a codebase, or one subsystem of it, at a single
   pinned commit. No diff and nothing to approve: it surfaces the architecture
@@ -74,8 +80,10 @@ Three kinds of document, and three companions that write none:
 - **`thurview-fix`** - no browser and no reader. It reviews, fixes what it is
   sure of behind the repository's own tests and lint, and reports the rest -
   optionally as inline comments on the change request.
-- **`thurview-pr-review`** - reviews a change request on the forge and follows
-  it to merge: one summary edited in place, one resolvable thread per finding.
+- **`thurview-pr-review`** - the entrypoint for an opened PR/MR: publishing
+  preflight, an anchored browser page, a public snapshot and Markdown export,
+  then one summary with both links edited on every push and resolvable finding
+  threads. Follows until merge, close or stop.
 - **`thurview-publish`** - puts a published document in your own Azure,
   S3, Cloud Storage or Cloudflare Pages account with your own login, and hands
   back a link that expires; public only when you confirm it.
@@ -300,6 +308,7 @@ Copy it or download it as `.md`; agents can fetch the same document with
 | `thurview info [--all]`                                 | Reviews, explainers and designs bound to this worktree                |
 | `thurview publish --review ID [--view T] [--open]`      | Validate the document and map, seal a revision                        |
 | `thurview open --review ID [--view T]`                  | Start the server if needed and open the browser                       |
+| `thurview publish-static --check --to cloudflare`       | Check target, login and project before authoring                      |
 | `thurview publish-static <id> --out snapshot`           | Render HTML and downloadable reader feedback Markdown                 |
 | `thurview publish-static <id> --to cloudflare`          | Refresh a durable public snapshot and retain earlier links            |
 | `thurview export --review ID --out PATH [--no-threads]` | Write the published revision as one static HTML file, no server       |
@@ -389,14 +398,22 @@ Create `~/.thurview/cloudflare.json` (or pass `--config <file>`):
 }
 ```
 
-Install Wrangler and authenticate with `wrangler login`, or set
+Install the registry-checked stable Wrangler and authenticate with
+`wrangler login --device` for remote sessions, or set
 `CLOUDFLARE_API_TOKEN`. An optional `account_id` belongs only in this local
 configuration; credentials never go in it.
 
 ```sh
+thurview publish-static --check --to cloudflare
 thurview publish-static <id> --out snapshot
 thurview publish-static <id> --to cloudflare --initialize-archive
 ```
+
+The read-only `--check` validates configuration, login and project access
+before a review exists; it does not upload. Setup and project creation have
+one home in the [PR/MR setup reference](skills/thurview-pr-review/references/cloudflare-setup.md).
+The managed summary pass accepts `reviewUrl` and `markdownUrl`; the PR/MR
+workflow supplies both on every pass.
 
 Use `--initialize-archive` once, only for a Worker with no existing snapshots.
 Later runs omit it. A lost archive must be restored; the command refuses to
