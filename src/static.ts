@@ -9,9 +9,10 @@ import {
   revisionDir,
   readJson,
   readReview,
+  listReviews,
   writeJson,
   writeText,
-  writeReview,
+  reviewDir,
   type ReviewState,
 } from "./store.js";
 import { exportMarkdown } from "./export-markdown.js";
@@ -25,7 +26,7 @@ export async function renderStatic(review: ReviewState, out: string, liveUrl?: s
   );
   if (!meta) throw new Error("sealed revision is unavailable");
   const sealed = { ...review, title: meta.title, pins: meta.pins };
-  const feedback = await exportMarkdown(sealed);
+  const feedback = await exportMarkdown(sealed, sealed.revision, { sentOnly: true });
   const html = await exportReview(sealed, {
     threads: true,
     banner: { revision: review.revision, sha: meta.pins.head, liveUrl },
@@ -63,15 +64,18 @@ const Config = z
   .strict();
 
 interface Archive {
+  account_id: string | null;
   snapshots: Record<string, string>;
 }
 const slug = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80) || "review";
 
-export async function publishStatic(review: ReviewState, configPath: string) {
+export async function publishStatic(
+  review: ReviewState,
+  configPath: string,
+  initializeArchive = false,
+) {
   const config = Config.parse(JSON.parse(await readFile(resolve(configPath), "utf8")));
-  const target = createHash("sha256")
-    .update(JSON.stringify([config.name, new URL(config.publicUrl).origin]))
-    .digest("hex");
+  const target = createHash("sha256").update(config.name).digest("hex");
   const root = join(home(), "static", target);
   await mkdir(root, { recursive: true });
   const lock = join(root, "deploy.lock");
@@ -86,6 +90,7 @@ export async function publishStatic(review: ReviewState, configPath: string) {
     try {
       index = z
         .object({
+          account_id: z.string().nullable().default(null),
           snapshots: z.record(
             z.string(),
             z.string().regex(/^r\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\/[a-f0-9]{32}\/$/),
@@ -95,13 +100,26 @@ export async function publishStatic(review: ReviewState, configPath: string) {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT")
         throw new Error("static archive index is unreadable; restore it before deploying");
-      if (
-        review.staticSnapshot &&
-        new URL(review.staticSnapshot.url).origin === new URL(config.publicUrl).origin
-      )
-        throw new Error("static archive is missing; restore it before deploying");
-      index = { snapshots: {} };
+      if (!initializeArchive)
+        throw new Error(
+          "static archive is missing; restore it, or use --initialize-archive only for a Worker with no existing snapshots",
+        );
+      const prior = (await listReviews()).some(
+        (r) =>
+          r.staticSnapshot &&
+          (r.staticSnapshot.target === config.name ||
+            new URL(r.staticSnapshot.url).origin === new URL(config.publicUrl).origin),
+      );
+      if (prior)
+        throw new Error(
+          "existing snapshot URLs require restoring the archive, not initializing it",
+        );
+      index = { account_id: config.account_id ?? null, snapshots: {} };
     }
+    if (index.account_id !== (config.account_id ?? null))
+      throw new Error(
+        "configured account differs from this archive; restore its original target configuration",
+      );
     const assets = join(root, "assets");
     for (const prior of Object.values(index.snapshots)) {
       try {
@@ -151,8 +169,11 @@ export async function publishStatic(review: ReviewState, configPath: string) {
       throw new Error(
         "snapshot deployed, but the review was removed before its URL could be recorded",
       );
-    current.staticSnapshot = { url, revision: review.revision };
-    await writeReview(current);
+    await writeJson(join(reviewDir(review.id), "static.json"), {
+      url,
+      revision: review.revision,
+      target: config.name,
+    });
     return { url, revision: review.revision, snapshots: Object.keys(index.snapshots).length };
   } finally {
     await rm(lock, { recursive: true, force: true });

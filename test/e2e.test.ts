@@ -2,9 +2,9 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { execFile, spawn } from "node:child_process";
 import { decode } from "@toon-format/toon";
 import { promisify } from "node:util";
-import { mkdtemp, writeFile, mkdir, readFile, chmod, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, readFile, chmod, rm, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 
 const execFileP = promisify(execFile);
 const ROOT = join(import.meta.dirname, "..");
@@ -1570,6 +1570,23 @@ check
 });
 
 describe("static snapshots", () => {
+  it("includes shared pre-publication threads without inventing sealed draft context", async () => {
+    const fixture = await cli(["scaffold", "--new"]);
+    const id = fixture.review.uuid;
+    await post(`/api/reviews/${id}/threads`, {
+      kind: "question",
+      mode: "ask",
+      target: { type: "review" },
+      body: "A question before first publish",
+    });
+    await cli(["publish", "--review", id]);
+    const out = join(home, "early-thread");
+    await cli(["publish-static", id, "--out", out]);
+    const md = await readFile(join(out, "feedback.md"), "utf8");
+    expect(md).toContain("A question before first publish");
+    expect(md).toContain("unpublished draft");
+  }, 30_000);
+
   it("renders a self-contained read-only static snapshot and deploys the archive", async () => {
     const fixture = await cli(["scaffold", "--new"]);
     const id = fixture.review.uuid;
@@ -1597,6 +1614,12 @@ describe("static snapshots", () => {
       body: "Snapshot question",
     })) as Out;
     await cli(["threads", "reply", thread.id, "--review", id, "--body", "Snapshot answer"]);
+    await post(`/api/reviews/${id}/threads`, {
+      kind: "comment",
+      mode: "review",
+      target: { type: "review" },
+      body: "Private unsubmitted draft",
+    });
     await cli(["publish-static", id, "--out", output]);
     const html = await readFile(join(output, "index.html"), "utf8");
     expect(html.includes("Snapshot of revision")).toBe(true);
@@ -1618,6 +1641,10 @@ describe("static snapshots", () => {
     expect(html).not.toContain(repo);
 
     expect(await readFile(join(output, "feedback.md"), "utf8")).toContain("Snapshot answer");
+    expect(await readFile(join(output, "feedback.md"), "utf8")).not.toContain(
+      "Private unsubmitted draft",
+    );
+    expect(await readFile(join(output, "feedback.md"), "utf8")).toContain("Target: Review overall");
     const config = join(home, "cloudflare.json");
     await writeFile(
       config,
@@ -1638,6 +1665,7 @@ if (fs.existsSync(${JSON.stringify(join(home, "edit-during-deploy"))})) {
   const review = JSON.parse(fs.readFileSync(file, "utf8"));
   review.title = "Edited during deployment";
   fs.writeFileSync(file, JSON.stringify(review));
+  fs.writeFileSync(${JSON.stringify(join(home, "state-after-deploy.json"))}, JSON.stringify(review));
 }
 if (fs.existsSync(${JSON.stringify(join(home, "fail-deploy"))})) process.exit(1);
 `,
@@ -1646,7 +1674,20 @@ if (fs.existsSync(${JSON.stringify(join(home, "fail-deploy"))})) process.exit(1)
     const savedPath = process.env["PATH"];
     process.env["PATH"] = bin + ":" + savedPath;
     try {
-      const first = await cli(["publish-static", id, "--to", "cloudflare", "--config", config]);
+      const uninitialized = await cli(
+        ["publish-static", id, "--to", "cloudflare", "--config", config],
+        { expectCode: 2 },
+      );
+      expect(uninitialized.error).toContain("archive is missing");
+      const first = await cli([
+        "publish-static",
+        id,
+        "--to",
+        "cloudflare",
+        "--config",
+        config,
+        "--initialize-archive",
+      ]);
       expect(first.snapshot.url).toMatch(
         /^https:\/\/reviews.example.com\/r\/[^/]+\/[^/]+\/[a-f0-9]{32}\/$/,
       );
@@ -1669,11 +1710,13 @@ if (fs.existsSync(${JSON.stringify(join(home, "fail-deploy"))})) process.exit(1)
       const again = await cli(["publish-static", id, "--to", "cloudflare", "--config", config]);
       expect(again.snapshot.url).toBe(first.snapshot.url);
       const stored = JSON.parse(await readFile(join(dir, "review.json"), "utf8"));
-      expect(stored.staticSnapshot.url).toBe(first.snapshot.url);
       expect(stored.title).toBe("Edited during deployment");
+      expect(await readFile(join(dir, "review.json"), "utf8")).toBe(
+        await readFile(join(home, "state-after-deploy.json"), "utf8"),
+      );
       const info = await cli(["info", "--fields", "uuid,staticSnapshot"]);
-      expect(info.reviews.find((r: Out) => r.uuid === id).staticSnapshot).toEqual(
-        stored.staticSnapshot,
+      expect(info.reviews.find((r: Out) => r.uuid === id).staticSnapshot.url).toBe(
+        first.snapshot.url,
       );
       await writeFile(join(home, "fail-deploy"), "");
       const failed = await cli(["publish-static", id, "--to", "cloudflare", "--config", config], {
@@ -1681,6 +1724,45 @@ if (fs.existsSync(${JSON.stringify(join(home, "fail-deploy"))})) process.exit(1)
       });
       expect(failed.error).toContain("wrangler deploy failed");
       await rm(join(home, "fail-deploy"));
+      await writeFile(
+        config,
+        JSON.stringify({ name: "review-fixtures", publicUrl: "https://alias.example.com" }),
+      );
+      const alias = await cli(["publish-static", id, "--to", "cloudflare", "--config", config]);
+      expect(new URL(alias.snapshot.url).pathname).toBe(new URL(first.snapshot.url).pathname);
+      expect(alias.snapshot.snapshots).toBe(2);
+      await writeFile(
+        config,
+        JSON.stringify({ name: "review-fixtures", publicUrl: "https://reviews.example.com" }),
+      );
+      const fresh = (await cli(["scaffold", "--new"])).review.uuid;
+      await cli(["publish", "--review", fresh]);
+      const archive = dirname(deployed.assets.directory);
+      const backup = join(home, "archive-backup");
+      await rename(archive, backup);
+      try {
+        const lost = await cli(
+          ["publish-static", fresh, "--to", "cloudflare", "--config", config],
+          { expectCode: 2 },
+        );
+        expect(lost.error).toContain("archive is missing");
+        const reset = await cli(
+          [
+            "publish-static",
+            fresh,
+            "--to",
+            "cloudflare",
+            "--config",
+            config,
+            "--initialize-archive",
+          ],
+          { expectCode: 2 },
+        );
+        expect(reset.error).toContain("require restoring the archive");
+      } finally {
+        await rm(archive, { recursive: true, force: true });
+        await rename(backup, archive);
+      }
       await rm(firstPage);
       const incomplete = await cli(
         ["publish-static", secondFixture.review.uuid, "--to", "cloudflare", "--config", config],

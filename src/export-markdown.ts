@@ -105,7 +105,7 @@ async function context(thread: Thread, snapshot: Sealed, review: ReviewState) {
   const pins = snapshot.meta.pins;
   const anchors: string[] = [];
   let quote = "";
-  let target = "Document overall";
+  let target = "Review overall";
   if (t.type === "file") {
     const path = relative(t.path);
     const sha = pins[t.side];
@@ -181,21 +181,28 @@ async function context(thread: Thread, snapshot: Sealed, review: ReviewState) {
   return { target, anchors, quote: shortQuote(quote) };
 }
 
-export async function exportMarkdown(review: ReviewState, revision = review.revision) {
+export async function exportMarkdown(
+  review: ReviewState,
+  revision = review.revision,
+  opts: { sentOnly?: boolean } = {},
+) {
   if (!Number.isInteger(revision) || revision < 1 || revision > review.revision)
     throw new Error("export requires a published revision between 1 and the current revision");
   const snapshots = new Map<number, Sealed>();
   const current = await sealed(review, revision);
   snapshots.set(revision, current);
   const feedback = await readThreads(review.id);
-  const threads = feedback.threads.filter((t) => t.revision <= revision);
+  const threads = feedback.threads.filter(
+    (t) => t.revision <= revision && (!opts.sentOnly || t.submitted || t.mode === "ask"),
+  );
   for (const t of threads) {
-    if (!snapshots.has(t.revision)) snapshots.set(t.revision, await sealed(review, t.revision));
+    if (t.revision > 0 && !snapshots.has(t.revision))
+      snapshots.set(t.revision, await sealed(review, t.revision));
   }
   threads.sort((a, b) => {
     if (a.revision !== b.revision) return a.revision - b.revision;
-    const x = position(a, snapshots.get(a.revision)!);
-    const y = position(b, snapshots.get(b.revision)!);
+    const x = position(a, snapshots.get(a.revision) ?? current);
+    const y = position(b, snapshots.get(b.revision) ?? current);
     for (let i = 0; i < x.length; i++) {
       if (x[i] !== y[i]) return x[i]! < y[i]! ? -1 : 1;
     }
@@ -234,7 +241,24 @@ export async function exportMarkdown(review: ReviewState, revision = review.revi
   if (!threads.length) lines.push("No reader feedback.", "");
   const checklist: string[] = [];
   for (const [i, t] of threads.entries()) {
-    const c = await context(t, snapshots.get(t.revision)!, review);
+    const c =
+      t.revision === 0
+        ? {
+            target:
+              (t.target.type === "review"
+                ? "Review overall"
+                : t.target.type === "file"
+                  ? relative(t.target.path)
+                  : t.target.type === "map"
+                    ? "Map node: " + t.target.node
+                    : "Document block") + " (unpublished draft; no sealed code context)",
+            anchors: [],
+            quote:
+              t.target.type === "file" || t.target.type === "document"
+                ? shortQuote(t.target.quote ?? "")
+                : "",
+          }
+        : await context(t, snapshots.get(t.revision)!, review);
     lines.push(
       `### ${i + 1}. ${t.kind === "question" ? "Question" : "Comment"} — ${t.status}`,
       "",

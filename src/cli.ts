@@ -674,6 +674,10 @@ const SPECS: Record<
       review: { kind: "string", help: "document id or unique prefix" },
       out: { kind: "string", help: "render locally to this directory without deploying" },
       to: { kind: "string", help: "deployment target (cloudflare)" },
+      "initialize-archive": {
+        kind: "boolean",
+        help: "initialize only a Worker with no existing snapshots; never use after losing an archive",
+      },
       config: {
         kind: "string",
         help: "Cloudflare target JSON (default: THURVIEW_HOME/cloudflare.json)",
@@ -682,6 +686,7 @@ const SPECS: Record<
     examples: [
       "thurview publish-static <id> --out snapshot",
       "thurview publish-static <id> --to cloudflare",
+      "thurview publish-static <id> --to cloudflare --initialize-archive",
     ],
   },
   export: {
@@ -1370,7 +1375,12 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const review = await resolveReview(str(p, "review") ?? p.positional[0], { terminal: true });
     const out = str(p, "out");
     const to = str(p, "to");
-    if ((to && to !== "cloudflare") || (!out && !to) || (out && to))
+    if (
+      (to && to !== "cloudflare") ||
+      (!out && !to) ||
+      (out && to) ||
+      (bool(p, "initialize-archive") && !to)
+    )
       throw new AxiError("choose --out <directory> or --to cloudflare", "VALIDATION_ERROR", [
         "thurview publish-static <id> --out snapshot",
         "thurview publish-static <id> --to cloudflare",
@@ -1379,7 +1389,11 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       return {
         snapshot: out
           ? await renderStatic(review, resolve(out))
-          : await publishStatic(review, str(p, "config") ?? join(home(), "cloudflare.json")),
+          : await publishStatic(
+              review,
+              str(p, "config") ?? join(home(), "cloudflare.json"),
+              bool(p, "initialize-archive"),
+            ),
         help: ["Run `thurview publish-static <id> --to cloudflare` to refresh the public snapshot"],
       };
     } catch (e) {
