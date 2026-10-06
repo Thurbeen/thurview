@@ -42,8 +42,6 @@ import {
 } from "./store.js";
 import { compileDocument, compileMap, globToRegExp, type Diagnostic } from "./document/compile.js";
 import { computeCoverage, scopeGlob, type Coverage } from "./coverage.js";
-import { parseTheme, compileTheme, type CompiledTheme } from "./theme.js";
-import { registerTheme } from "./highlight.js";
 import { replyThread, setThreadStatus, needsAgent } from "./threads.js";
 import { targetLabel, truncate } from "./thread-state.js";
 import { attach } from "./presence.js";
@@ -335,19 +333,6 @@ const TEMPLATE_MAP = `# Software map: where this change landed in the system, an
 nodes: []
 edges: []
 `;
-const TEMPLATE_THEME = `# Look of this review, derived from the reviewed project's own design system.
-# Leave this file empty (or delete it) for the default skin. See the thurview skill
-# reference (references/theme.md) for every key. Example:
-#
-# name: acme-web
-# source: tailwind.config.ts, src/styles/tokens.css
-# mode: light
-# colors: { bg: "#ffffff", bg2: "#f6f7f9", fg: "#111827", fg2: "#4b5563", muted: "#9ca3af", line: "#e5e7eb", accent: "#2563eb", link: "#2563eb", ok: "#16a34a", warn: "#d97706", del: "#dc2626" }
-# fonts: { display: "Inter, sans-serif", body: "Inter, sans-serif", mono: "'JetBrains Mono', monospace", stylesheets: ["https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap"] }
-# shape: { radius: 8px, bevel: false, glow: false, scanlines: false, headingTransform: none }
-# code: { keyword: "#7c3aed", string: "#15803d", function: "#b45309", variable: "#0369a1", comment: "#9ca3af" }
-`;
-
 const TEMPLATE_EXPLAIN_MD = (title: string) => `# ${title}
 
 **Summary**
@@ -560,7 +545,6 @@ async function pinOneCommit(
   await writeText(join(reviewDir(id), "review.md"), k.templates.md(review.title));
   await writeText(join(reviewDir(id), "data.yaml"), k.templates.data);
   await writeText(join(reviewDir(id), "map.yaml"), k.templates.map);
-  await writeText(join(reviewDir(id), "theme.yaml"), TEMPLATE_THEME);
   await writeReview(review);
   return { review, reused: false, scope, commit, worktree, inScope };
 }
@@ -646,8 +630,7 @@ const SPECS: Record<
     examples: ["thurview info", "thurview info --all --fields pins,inSync"],
   },
   publish: {
-    description:
-      "Validate review.md, data.yaml, map.yaml and theme.yaml against the pins and seal a revision",
+    description: "Validate review.md, data.yaml and map.yaml against the pins and seal a revision",
     flags: {
       review: {
         kind: "string",
@@ -958,7 +941,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         await writeText(join(reviewDir(id), "review.md"), TEMPLATE_MD(review.title));
         await writeText(join(reviewDir(id), "data.yaml"), TEMPLATE_DATA);
         await writeText(join(reviewDir(id), "map.yaml"), TEMPLATE_MAP);
-        await writeText(join(reviewDir(id), "theme.yaml"), TEMPLATE_THEME);
         await writeReview(review);
       }
     }
@@ -983,7 +965,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         document: join(dir, "review.md"),
         data: join(dir, "data.yaml"),
         map: join(dir, "map.yaml"),
-        theme: join(dir, "theme.yaml"),
       },
       change: stat,
       guidance: await guidanceFiles(worktree),
@@ -1020,7 +1001,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         document: join(dir, "review.md"),
         data: join(dir, "data.yaml"),
         map: join(dir, "map.yaml"),
-        theme: join(dir, "theme.yaml"),
       },
       scale: { filesInScope: pinned.inScope.length },
       guidance: await guidanceFiles(worktree),
@@ -1055,7 +1035,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         document: join(dir, "review.md"),
         data: join(dir, "data.yaml"),
         map: join(dir, "map.yaml"),
-        theme: join(dir, "theme.yaml"),
       },
       scale: { filesInScope: pinned.inScope.length },
       guidance: await guidanceFiles(worktree),
@@ -1128,25 +1107,14 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       }
     }
     const diags: Diagnostic[] = [];
-    let theme: CompiledTheme | null = null;
-    if (themeYaml) {
-      const t = parseTheme(themeYaml);
-      diags.push(...t.diagnostics);
-      if (t.theme) {
-        theme = compileTheme(
-          t.theme,
-          (p) => `/api/reviews/${review.id}/blob?path=${encodeURIComponent(p)}`,
-        );
-        for (const f of t.theme.fonts.files)
-          if (!(await g.fileExists(review.worktree, review.pins.head, f.path)))
-            diags.push({
-              level: "error",
-              file: "theme.yaml",
-              message: `fonts.files: ${f.path} does not exist at the pinned head commit`,
-            });
-      }
-    }
-    const themeName = theme ? await registerTheme(theme.shiki) : undefined;
+    // an older scaffold wrote a comments-only template; only a theme someone wrote is worth a warning
+    if (themeYaml?.replace(/^\s*#.*$/gm, "").trim())
+      diags.push({
+        level: "warning",
+        file: "theme.yaml",
+        message:
+          "ignored: a review no longer restyles thurview's own light and dark theme; delete the file",
+      });
     const kind = kindOf(review);
     const doc = await compileDocument({
       cwd: review.worktree,
@@ -1154,7 +1122,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       reviewMd,
       dataYaml: dataYaml ?? "",
       kind,
-      ...(themeName ? { themeName } : {}),
     });
     diags.push(...doc.diagnostics);
     let map = null;
@@ -1254,8 +1221,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     await writeJson(join(rdir, "map.json"), map);
     await writeJson(join(rdir, "changes.json"), changes);
     await writeJson(join(rdir, "coverage.json"), coverage);
-    if (themeYaml !== null) await cp(join(dir, "theme.yaml"), join(rdir, "theme.yaml"));
-    await writeJson(join(rdir, "theme.json"), theme);
     await writeJson(join(rdir, "meta.json"), {
       revision: n,
       at: now(),
@@ -1263,7 +1228,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       pins: review.pins,
       kind,
       hasMap: !!map,
-      theme: theme?.name ?? "default",
     });
     review.title = doc.document.title;
     review.revision = n;
@@ -1296,7 +1260,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
                 interfaces: doc.document.interfaces?.verdict ?? "(unavailable)",
                 security: doc.document.security?.verdict ?? "(unavailable)",
               }),
-        theme: theme?.name ?? "default",
         url: url ?? "(server not running)",
       },
     };

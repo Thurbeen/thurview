@@ -56,7 +56,7 @@ anchors:
 
 // One DevTools session per page, driven over the protocol the same way
 // scripts/browser-check.mjs does, so the suite needs no browser library.
-async function page(width: number, height: number) {
+async function page(width: number, height: number, os: "light" | "dark" = "light") {
   const target = (await (
     await fetch(`http://127.0.0.1:${devtools}/json/new?about:blank`, { method: "PUT" })
   ).json()) as { webSocketDebuggerUrl: string };
@@ -88,8 +88,12 @@ async function page(width: number, height: number) {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await call("Page.navigate", { url: `http://127.0.0.1:${server.port}/review/${reviewId}` });
-  await evaluate(`new Promise((ok, no) => {
+  await call("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-color-scheme", value: os }],
+  });
+  const open = async () => {
+    await call("Page.navigate", { url: `http://127.0.0.1:${server.port}/review/${reviewId}` });
+    await evaluate(`new Promise((ok, no) => {
     const t = Date.now();
     (function wait() {
       if (document.querySelector("svg.seq") && document.fonts.status === "loaded") return ok(true);
@@ -97,7 +101,9 @@ async function page(width: number, height: number) {
       setTimeout(wait, 100);
     })();
   })`);
-  return { evaluate, close: () => ws.close() };
+  };
+  await open();
+  return { evaluate, reload: open, close: () => ws.close() };
 }
 
 interface Measured {
@@ -225,4 +231,39 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
       // Every message that opens code answers the keyboard, not only the mouse.
       expect.soft(m.buttons).toBe(5);
     }, 30_000);
+
+  it("follows the OS palette until the reader picks one, and remembers the pick", async () => {
+    const p = await page(1440, 900, "dark");
+    const seen = () =>
+      p.evaluate<{ theme: string; bg: string }>(`({
+        theme: document.documentElement.dataset.theme,
+        bg: getComputedStyle(document.body).backgroundColor,
+      })`);
+    // the menu's theme item cycles system -> light -> dark -> system
+    const pick = () =>
+      p.evaluate<string>(`(async () => {
+        document.querySelector(".bar-more").click();
+        await new Promise((r) => setTimeout(r, 50));
+        const item = [...document.querySelectorAll(".def-popover .item")].find((e) => e.textContent.startsWith("Theme"));
+        item.click();
+        return localStorage.getItem("thurview.theme");
+      })()`);
+    const system = await seen();
+    expect(system.theme).toBe("dark");
+    expect(await pick()).toBe("light");
+    const light = await seen();
+    expect(light.theme).toBe("light");
+    expect(light.bg).not.toBe(system.bg);
+    await p.reload();
+    expect((await seen()).theme).toBe("light");
+    expect(await pick()).toBe("dark");
+    expect((await seen()).bg).toBe(system.bg);
+    expect(await pick()).toBe("system");
+    expect((await seen()).theme).toBe("dark");
+    // with site data blocked the pick still applies, for this page
+    await p.evaluate(`Storage.prototype.setItem = () => { throw new Error("blocked"); }`);
+    await pick();
+    expect((await seen()).theme).toBe("light");
+    p.close();
+  }, 30_000);
 });

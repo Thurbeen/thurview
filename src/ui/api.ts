@@ -15,8 +15,7 @@ export interface Payload {
   changes: ChangedFile[];
   /** explainers only: what the document examined at the pinned commit, and what it did not */
   coverage: Coverage | null;
-  meta: { revision: number; at: string; title: string; hasMap: boolean; theme?: string } | null;
-  theme: { name: string; source?: string; css: string } | null;
+  meta: { revision: number; at: string; title: string; hasMap: boolean } | null;
   threads: Thread[];
   decisions: Decision[];
   /** whether an agent is listening to this document right now */

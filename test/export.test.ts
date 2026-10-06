@@ -161,7 +161,7 @@ describe("thurview export", () => {
     expect(html).toMatch(/^<!doctype html>/);
     // The bundled app still holds the paths it asks a server for, never taken
     // here; what must be absent is any server's address and this review's own
-    // endpoints, which a theme's fonts would otherwise be loaded from.
+    // endpoints.
     for (const server of ["localhost", "127.0.0.1", `/api/reviews/${reviewId}`])
       expect(html).not.toContain(server);
     expect(html).not.toMatch(/(src|href)="\/(?!\/)/);
@@ -171,6 +171,15 @@ describe("thurview export", () => {
     expect(html).toContain(`http-equiv="Content-Security-Policy"`);
     expect(html).toContain("default-src 'none'");
     expect(html).toContain(THREAD);
+  });
+
+  it("follows the reader's light or dark palette, like the served page", async () => {
+    const html = await readFile(withThreads, "utf8");
+    const index = await readFile(join(import.meta.dirname, "..", "src/ui/index.html"), "utf8");
+    const boot = /<script>([\s\S]*?)<\/script>/.exec(index)![1]!.trim();
+    // the served page's boot script, before the stylesheet, so nothing paints in the wrong palette
+    expect(html.indexOf(boot)).toBeGreaterThan(-1);
+    expect(html.indexOf(boot)).toBeLessThan(html.indexOf("<style>"));
   });
 
   it("writes a folder target as its index.html, and leaves threads out when asked", async () => {

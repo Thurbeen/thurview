@@ -6,10 +6,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFileDiff, type FileDiff } from "../diff.js";
 import { highlightLines, languageFor } from "../highlight.js";
-import { changedFiles, log, showFile, git, type ChangedFile } from "../git.js";
+import { changedFiles, log, showFile, type ChangedFile } from "../git.js";
 import { symbolIndex } from "../symbols.js";
-import { registerTheme } from "../highlight.js";
-import type { CompiledTheme } from "../theme.js";
 import {
   listReviews,
   readReview,
@@ -82,16 +80,53 @@ async function findReview(idOrPrefix: string) {
   throw new HttpError(404, all.length ? "ambiguous review id" : "review not found");
 }
 
-export async function revisionData(id: string, n: number) {
+type Pins = { base: string; head: string };
+type SealedPeek = {
+  file: string;
+  from: number;
+  to: number;
+  graph: "base" | "head";
+  lang: string;
+  lines: string[];
+};
+
+/**
+ * A sealed peek carries its excerpt highlighted inline, in the palette of the
+ * thurview that sealed it. Highlight it again from the pinned commit so every
+ * revision, however old, reads in the reader's palette.
+ */
+async function rehighlightPeeks(document: unknown, worktree: string, pins: Pins): Promise<void> {
+  const anchors = (document as { anchors?: Record<string, { peek?: SealedPeek }> } | null)?.anchors;
+  for (const a of Object.values(anchors ?? {})) {
+    const peek = a.peek;
+    if (!peek) continue;
+    const commit = peek.graph === "base" ? pins.base : pins.head;
+    const text = await showFile(worktree, commit, peek.file);
+    if (text === null) {
+      // the commit is gone: keep the text, drop a colour picked for another ground
+      peek.lines = peek.lines.map((l) => l.replace(/color:#[0-9a-f]{3,8};?/gi, ""));
+      continue;
+    }
+    const all = await highlightLines(text, peek.lang, `${commit}:${peek.file}`);
+    peek.lines = all.slice(peek.from - 1, peek.to);
+  }
+}
+
+export async function revisionData(
+  review: { id: string; worktree: string; pins: Pins },
+  n: number,
+) {
+  const id = review.id;
   const dir = revisionDir(id, n);
-  const [document, map, changes, coverage, meta, theme] = await Promise.all([
+  const [document, map, changes, coverage, meta] = await Promise.all([
     readJson<unknown>(join(dir, "document.json")),
     readJson<unknown>(join(dir, "map.json")),
     readJson<ChangedFile[]>(join(dir, "changes.json")),
     readJson<unknown>(join(dir, "coverage.json")),
     readJson<unknown>(join(dir, "meta.json")),
-    readJson<CompiledTheme>(join(dir, "theme.json")),
   ]);
+  const sealedPins = (meta as { pins?: Pins } | null)?.pins ?? review.pins;
+  await rehighlightPeeks(document, review.worktree, sealedPins);
   return {
     // A revision is read back exactly as it was sealed, so one from before a
     // field existed simply lacks it. The browser is written for a field that is
@@ -105,18 +140,10 @@ export async function revisionData(id: string, n: number) {
     changes: changes ?? [],
     coverage,
     meta,
-    theme: theme ? { name: theme.name, source: theme.source, css: theme.css } : null,
   };
 }
 
-/** Highlighter theme name for a review's presented revision (default skin when none). */
-export async function themeFor(id: string, revision: number): Promise<string | undefined> {
-  if (!revision) return undefined;
-  const t = await readJson<CompiledTheme>(join(revisionDir(id, revision), "theme.json"));
-  return t ? registerTheme(t.shiki) : undefined;
-}
-
-/** One changed file's diff between the review's pins, highlighted in its theme. */
+/** One changed file's diff between the review's pins, highlighted. */
 export async function fileDiff(review: ReviewState, path: string): Promise<FileDiff> {
   const changes = await changedFiles(review.worktree, review.pins.base, review.pins.head);
   const entry = changes.find((c) => c.path === path);
@@ -135,7 +162,6 @@ export async function fileDiff(review: ReviewState, path: string): Promise<FileD
     newText,
     { old: `${review.pins.base}:${oldPath}`, new: `${review.pins.head}:${path}` },
     entry?.oldPath,
-    await themeFor(review.id, review.revision),
   );
 }
 
@@ -155,27 +181,9 @@ export async function fileLines(
   const text = await showFile(review.worktree, commit, path);
   if (text === null) return null;
   const lang = languageFor(path);
-  const lines = await highlightLines(
-    text,
-    lang,
-    `${commit}:${path}`,
-    await themeFor(review.id, review.revision),
-  );
+  const lines = await highlightLines(text, lang, `${commit}:${path}`);
   return { path, graph, lang, total: lines.length, lines };
 }
-
-export const BLOB_TYPES: Record<string, string> = {
-  woff2: "font/woff2",
-  woff: "font/woff",
-  ttf: "font/ttf",
-  otf: "font/otf",
-  svg: "image/svg+xml",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  webp: "image/webp",
-  css: "text/css",
-};
 
 export function tailscaleAddresses(): string[] {
   const out: string[] = [];
@@ -248,7 +256,7 @@ export async function startServer(
       }
       const n = Number(url.searchParams.get("revision") ?? review.revision);
       const data = review.revision
-        ? await revisionData(id, n)
+        ? await revisionData(review, n)
         : { document: null, map: null, changes: [], coverage: null, meta: null };
       const threads = await readThreads(id);
       return {
@@ -371,23 +379,6 @@ export async function startServer(
           subscribe(review.id, res);
           const ping = setInterval(() => res.write(": ping\n\n"), 25000);
           res.on("close", () => clearInterval(ping));
-          return;
-        }
-        if (parts[1] === "reviews" && parts[3] === "blob" && parts[2]) {
-          // raw file at the head commit, for theme fonts and images the reviewed project ships
-          const review = await findReview(parts[2]);
-          const path = url.searchParams.get("path") ?? "";
-          const ext = path.split(".").pop()?.toLowerCase() ?? "";
-          const type = BLOB_TYPES[ext];
-          if (!path || !type) throw new HttpError(400, "path must name a font, image or css file");
-          const text = await git(review.worktree, ["show", `${review.pins.head}:${path}`], {
-            encoding: "buffer",
-          });
-          res.writeHead(200, {
-            "content-type": type,
-            "cache-control": "public, max-age=31536000, immutable",
-          });
-          res.end(text);
           return;
         }
         const body = await api(req, url);

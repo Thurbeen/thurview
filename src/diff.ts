@@ -36,7 +36,6 @@ export async function buildFileDiff(
   newText: string | null,
   keys: { old: string; new: string },
   oldPath?: string,
-  themeName?: string,
 ): Promise<FileDiff> {
   const lang = languageFor(path);
   const o = oldText ?? "";
@@ -52,8 +51,8 @@ export async function buildFileDiff(
       ...(oldPath ? { oldPath } : {}),
     };
   }
-  const oldLines = oldText === null ? [] : await highlightLines(o, lang, keys.old, themeName);
-  const newLines = newText === null ? [] : await highlightLines(n, lang, keys.new, themeName);
+  const oldLines = oldText === null ? [] : await highlightLines(o, lang, keys.old);
+  const newLines = newText === null ? [] : await highlightLines(n, lang, keys.new);
   const patch = structuredPatch(path, path, o, n, "", "", { context: 3 });
   const hunks: DiffHunk[] = patch.hunks.map((h) => {
     let ol = h.oldStart;

@@ -171,16 +171,6 @@ function shell(): void {
   app.append(topbar, banner, h("div", { class: "main" }, center, resizer, side));
 }
 
-function applyTheme(): void {
-  let style = document.getElementById("review-theme") as HTMLStyleElement | null;
-  if (!style) {
-    style = document.createElement("style");
-    style.id = "review-theme";
-    document.head.appendChild(style);
-  }
-  style.textContent = state.data?.theme?.css ?? "";
-}
-
 function renderTopbar(): void {
   clear(topbar);
   const d = state.data!;
@@ -274,6 +264,21 @@ function renderTopbar(): void {
   append(topbar, [identity, actions]);
 }
 
+const THEME_PICKS = ["system", "light", "dark"] as const;
+const themeLabel = () => `Theme: ${document.documentElement.dataset["themePick"] ?? "system"}`;
+
+/** Cycle system -> light -> dark; index.html's boot script applies the pick. */
+function pickTheme(item: HTMLElement): void {
+  const now = document.documentElement.dataset["themePick"] ?? "system";
+  const next = THEME_PICKS[(THEME_PICKS.indexOf(now as never) + 1) % THEME_PICKS.length]!;
+  try {
+    localStorage.setItem("thurview.theme", next);
+  } catch {}
+  (window as unknown as { thurviewTheme?: (pick: string) => void }).thurviewTheme?.(next);
+  const label = [...item.querySelectorAll(".item")].find((e) => e.textContent?.startsWith("Theme"));
+  if (label) label.textContent = themeLabel();
+}
+
 function moreMenu(e: MouseEvent): void {
   const r = state.data!.review;
   const box = h(
@@ -313,7 +318,7 @@ function moreMenu(e: MouseEvent): void {
                 h(
                   "button",
                   {
-                    style: { background: "var(--del)", color: "#fff" },
+                    style: { background: "var(--del)", color: "var(--on-fill)" },
                     onclick: async () => {
                       await api.remove(state.id);
                       location.href = "/";
@@ -328,17 +333,13 @@ function moreMenu(e: MouseEvent): void {
       },
       "Delete review",
     ),
+    h("div", { class: "item", onclick: () => pickTheme(box) }, themeLabel()),
     h(
       "div",
       { class: "item muted" },
       kind() === "review"
         ? `base ${r.pins.base.slice(0, 12)} · head ${r.pins.head.slice(0, 12)}`
         : `commit ${r.pins.head.slice(0, 12)}`,
-    ),
-    h(
-      "div",
-      { class: "item muted" },
-      `theme: ${state.data!.theme?.name ?? "default"}${state.data!.theme?.source ? ` (${state.data!.theme.source})` : ""}`,
     ),
   );
   import("./dom.js").then(({ popover }) => popover(box, { x: e.pageX - 200, y: e.pageY + 10 }));
@@ -490,7 +491,6 @@ async function reviewPage(id: string): Promise<void> {
   document.title = `${state.data.review.title} · thurview`;
   if (state.params.get("side") === "threads") state.side = { kind: "threads" };
   on("data", () => {
-    applyTheme();
     renderTopbar();
     renderBanner();
     renderCenter();
