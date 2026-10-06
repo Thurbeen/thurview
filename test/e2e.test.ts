@@ -564,6 +564,10 @@ check
     doc.anchors.login.peek.lines = doc.anchors.login.peek.lines.map(
       (l: string) => `<span style="color:#E0E0E0">${l.replace(/<[^>]+>/g, "")}</span>`,
     );
+    // and one whose file can no longer be read keeps its text, but not a colour
+    // that may be unreadable on the reader's ground
+    doc.anchors.check.peek.file = "src/gone.ts";
+    doc.anchors.check.peek.lines = ['<span style="color:#0A3069;font-style:italic">x</span>'];
     await writeFile(sealed, JSON.stringify(doc));
     const old = await api<{ document: { anchors: Record<string, { peek: { lines: string[] } }> } }>(
       `/api/reviews/${reviewId}`,
@@ -572,6 +576,9 @@ check
     const oldLines = old.document.anchors["login"]!.peek.lines.join("");
     expect(oldLines).not.toMatch(/#E0E0E0/i);
     expect(oldLines).toMatch(/color:var\(--code-keyword\)/);
+    const gone = old.document.anchors["check"]!.peek.lines.join("");
+    expect(gone).toContain(">x</span>");
+    expect(gone).not.toMatch(/#0A3069/i);
     expect(p.review.title).toBe("Audit every login");
     const types = p.document.blocks.map((b) => b.type);
     expect(types).toEqual(

@@ -102,7 +102,11 @@ async function rehighlightPeeks(document: unknown, worktree: string, pins: Pins)
     if (!peek) continue;
     const commit = peek.graph === "base" ? pins.base : pins.head;
     const text = await showFile(worktree, commit, peek.file);
-    if (text === null) continue;
+    if (text === null) {
+      // the commit is gone: keep the text, drop a colour picked for another ground
+      peek.lines = peek.lines.map((l) => l.replace(/color:#[0-9a-f]{3,8};?/gi, ""));
+      continue;
+    }
     const all = await highlightLines(text, peek.lang, `${commit}:${peek.file}`);
     peek.lines = all.slice(peek.from - 1, peek.to);
   }

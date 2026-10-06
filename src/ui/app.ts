@@ -274,7 +274,7 @@ function pickTheme(item: HTMLElement): void {
   try {
     localStorage.setItem("thurview.theme", next);
   } catch {}
-  (window as unknown as { thurviewTheme?: () => void }).thurviewTheme?.();
+  (window as unknown as { thurviewTheme?: (pick: string) => void }).thurviewTheme?.(next);
   const label = [...item.querySelectorAll(".item")].find((e) => e.textContent?.startsWith("Theme"));
   if (label) label.textContent = themeLabel();
 }

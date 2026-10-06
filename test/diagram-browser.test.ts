@@ -260,6 +260,10 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
     expect((await seen()).bg).toBe(system.bg);
     expect(await pick()).toBe("system");
     expect((await seen()).theme).toBe("dark");
+    // with site data blocked the pick still applies, for this page
+    await p.evaluate(`Storage.prototype.setItem = () => { throw new Error("blocked"); }`);
+    await pick();
+    expect((await seen()).theme).toBe("light");
     p.close();
   }, 30_000);
 });

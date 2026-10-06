@@ -9,16 +9,18 @@
       // reader's pick from the menu wins, and "system" follows the OS, live.
       (() => {
         const os = matchMedia("(prefers-color-scheme: dark)");
-        const apply = () => {
-          let pick = "system";
-          try {
-            pick = localStorage.getItem("thurview.theme") || "system";
-          } catch {}
+        // `chosen` is the menu's pick, so it applies even where storage is blocked
+        const apply = (chosen) => {
+          let pick = typeof chosen === "string" ? chosen : "system";
+          if (typeof chosen !== "string")
+            try {
+              pick = localStorage.getItem("thurview.theme") || "system";
+            } catch {}
           const root = document.documentElement;
           root.dataset.themePick = pick;
           root.dataset.theme = pick === "system" ? (os.matches ? "dark" : "light") : pick;
         };
-        os.addEventListener("change", apply);
+        os.addEventListener("change", () => apply(document.documentElement.dataset.themePick));
         window.thurviewTheme = apply;
         apply();
       })();
