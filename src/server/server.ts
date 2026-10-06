@@ -93,7 +93,7 @@ type SealedPeek = {
 /**
  * A sealed peek carries its excerpt highlighted inline, in the palette of the
  * thurview that sealed it. Highlight it again from the pinned commit so every
- * revision, however old, reads in the one theme.
+ * revision, however old, reads in the reader's palette.
  */
 async function rehighlightPeeks(document: unknown, worktree: string, pins: Pins): Promise<void> {
   const anchors = (document as { anchors?: Record<string, { peek?: SealedPeek }> } | null)?.anchors;

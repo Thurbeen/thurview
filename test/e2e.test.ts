@@ -152,7 +152,7 @@ describe("thurview end to end", () => {
     expect(r.base).toBe(base.trim());
     expect(ev["change"].files).toBe(2);
     expect(ev["help"].length).toBeGreaterThan(0);
-    // one theme: nothing for the agent to restyle, so no theme.yaml to fill in
+    // thurview's own theme: nothing for the agent to restyle, so no theme.yaml to fill in
     expect(ev["files"]?.theme).toBeUndefined();
     await expect(readFile(join(reviewDir, "theme.yaml"), "utf8")).rejects.toThrow(/ENOENT/);
     const home = await cli([]);
@@ -529,7 +529,7 @@ check
     expect(out["published"].interfaces).toBe("2 added.");
     expect(out["diagnostics"]).toHaveLength(1);
     expect(out["diagnostics"][0].level).toBe("warning");
-    expect(out["diagnostics"][0].message).toContain("thurview has one theme");
+    expect(out["diagnostics"][0].message).toContain("no longer restyles");
   }, 20_000);
 
   it("serves the compiled document, diffs, files, symbols and map", async () => {
@@ -557,7 +557,7 @@ check
     expect(ifaces.verdict).toBe("2 added.");
     expect(p.review.status).toBe("awaiting-review");
     expect(p.theme).toBeUndefined();
-    // a revision sealed under the old dark palette is read back in the one theme
+    // a revision sealed under the old dark palette is read back in the reader's palette
     const sealed = join(home, "reviews", reviewId, "revisions", "1", "document.json");
     const original = await readFile(sealed, "utf8");
     const doc = JSON.parse(original);
@@ -571,7 +571,7 @@ check
     await writeFile(sealed, original);
     const oldLines = old.document.anchors["login"]!.peek.lines.join("");
     expect(oldLines).not.toMatch(/#E0E0E0/i);
-    expect(oldLines).toMatch(/color:#a40e26/i);
+    expect(oldLines).toMatch(/color:var\(--code-keyword\)/);
     expect(p.review.title).toBe("Audit every login");
     const types = p.document.blocks.map((b) => b.type);
     expect(types).toEqual(
@@ -652,7 +652,7 @@ check
       `/api/reviews/${reviewId}/diff?path=src/auth.ts`,
     );
     expect(d.hunks[0]!.rows.filter((r) => r.type === "add")).toHaveLength(3);
-    expect(d.hunks[0]!.rows.map((r) => r.html).join("")).toMatch(/color:#a40e26/i);
+    expect(d.hunks[0]!.rows.map((r) => r.html).join("")).toMatch(/color:var\(--code-keyword\)/);
     const f = await api<{ total: number; lines: string[] }>(
       `/api/reviews/${reviewId}/file?path=src/auth.ts&graph=base&from=1&to=3`,
     );

@@ -264,6 +264,21 @@ function renderTopbar(): void {
   append(topbar, [identity, actions]);
 }
 
+const THEME_PICKS = ["system", "light", "dark"] as const;
+const themeLabel = () => `Theme: ${document.documentElement.dataset["themePick"] ?? "system"}`;
+
+/** Cycle system -> light -> dark; index.html's boot script applies the pick. */
+function pickTheme(item: HTMLElement): void {
+  const now = document.documentElement.dataset["themePick"] ?? "system";
+  const next = THEME_PICKS[(THEME_PICKS.indexOf(now as never) + 1) % THEME_PICKS.length]!;
+  try {
+    localStorage.setItem("thurview.theme", next);
+  } catch {}
+  (window as unknown as { thurviewTheme?: () => void }).thurviewTheme?.();
+  const label = [...item.querySelectorAll(".item")].find((e) => e.textContent?.startsWith("Theme"));
+  if (label) label.textContent = themeLabel();
+}
+
 function moreMenu(e: MouseEvent): void {
   const r = state.data!.review;
   const box = h(
@@ -318,6 +333,7 @@ function moreMenu(e: MouseEvent): void {
       },
       "Delete review",
     ),
+    h("div", { class: "item", onclick: () => pickTheme(box) }, themeLabel()),
     h(
       "div",
       { class: "item muted" },

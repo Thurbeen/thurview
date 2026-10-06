@@ -1,8 +1,9 @@
-/* thurview's one theme: light and neutral, one calm blue accent, quiet chrome.
-   Light because a review is long reading and is printed: dark text on a white
-   ground reads best for hours and prints as it looks. Every text colour holds
-   WCAG AA on every ground (test/one-theme.test.ts). Bars, buttons and panels
-   stay out of the way; body copy and code carry the page. */
+/* thurview's theme: neutral, one calm blue accent, quiet chrome, in two
+   palettes - light below, dark under :root[data-theme="dark"]. index.html's
+   boot script sets data-theme from the reader's pick in the menu, or from the
+   OS until they make one. Every text and code colour holds WCAG AA on every
+   ground in both (test/theme.test.ts). Bars, buttons and panels stay out of
+   the way; body copy and code carry the page. */
 
 @font-face {
   font-family: Inter;
@@ -43,11 +44,54 @@
   --accent-bg: rgb(29 78 216 / 0.08);
   --shadow: 0 1px 2px rgb(16 24 40 / 0.06);
   --shadow-lg: 0 12px 32px rgb(16 24 40 / 0.14);
+  --code-fg: #1f2328;
+  --code-keyword: #a40e26;
+  --code-string: #0a3069;
+  --code-function: #6639ba;
+  --code-type: #953800;
+  --code-variable: #0550ae;
+  --code-number: #0550ae;
+  --code-comment: #5f6773;
+  --code-punctuation: #57606a;
+  --code-tag: #116329;
   --font-display: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
   --font-body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --transition: 150ms ease;
   --radius: 6px;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1114;
+  --bg2: #161920;
+  --bg3: #1e222a;
+  --bg-code: #0b0d10;
+  --fg: #e6e8eb;
+  --fg2: #a9afb8;
+  --muted: #8a919c;
+  --line: #272c35;
+  --line2: #1e232b;
+  --accent: #6ea8fe;
+  --ok: #4cc38a;
+  --warn: #e5b454;
+  --del: #f06a6a;
+  --on-fill: #0b1220;
+  --add-bg: rgb(76 195 138 / 0.1);
+  --del-bg: rgb(240 106 106 / 0.12);
+  --sel: rgb(229 180 84 / 0.14);
+  --accent-bg: rgb(110 168 254 / 0.14);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.45);
+  --code-fg: #e6e8eb;
+  --code-keyword: #ff7b72;
+  --code-string: #a5d6ff;
+  --code-function: #d2a8ff;
+  --code-type: #ffa657;
+  --code-variable: #79c0ff;
+  --code-number: #79c0ff;
+  --code-comment: #8b949e;
+  --code-punctuation: #8b949e;
+  --code-tag: #7ee787;
 }
 * {
   box-sizing: border-box;
@@ -73,7 +117,7 @@ a:hover {
   text-decoration: underline;
 }
 ::selection {
-  background: rgb(29 78 216 / 0.18);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 button {

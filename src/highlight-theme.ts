@@ -1,19 +1,23 @@
 import type { ThemeRegistration } from "shiki";
 
-/** Code palette of the one UI theme: the `--bg-code` ground, every token at WCAG AA on it. */
+/**
+ * Code palette as the UI theme's tokens, not colours: app.css defines each
+ * `--code-*` once per palette, so a highlighted excerpt - sealed in a revision
+ * or served live - reads in whichever palette the reader has.
+ */
 const c = {
-  bg: "#f6f8fa",
-  fg: "#1f2328",
-  keyword: "#a40e26",
-  string: "#0a3069",
-  function: "#6639ba",
-  type: "#953800",
-  variable: "#0550ae",
-  number: "#0550ae",
-  comment: "#5f6773",
-  punctuation: "#57606a",
-  operator: "#a40e26",
-  tag: "#116329",
+  bg: "var(--bg-code)",
+  fg: "var(--code-fg)",
+  keyword: "var(--code-keyword)",
+  string: "var(--code-string)",
+  function: "var(--code-function)",
+  type: "var(--code-type)",
+  variable: "var(--code-variable)",
+  number: "var(--code-number)",
+  comment: "var(--code-comment)",
+  punctuation: "var(--code-punctuation)",
+  operator: "var(--code-keyword)",
+  tag: "var(--code-tag)",
 };
 
 export const theme: ThemeRegistration = {

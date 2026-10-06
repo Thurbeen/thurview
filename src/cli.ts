@@ -1113,7 +1113,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         level: "warning",
         file: "theme.yaml",
         message:
-          "ignored: thurview has one theme, and a review no longer restyles it; delete the file",
+          "ignored: a review no longer restyles thurview's own light and dark theme; delete the file",
       });
     const kind = kindOf(review);
     const doc = await compileDocument({

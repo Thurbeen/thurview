@@ -263,10 +263,10 @@ repository's Pages folder.
   claims a reader is there when none is: a question asked with no agent
   attached is queued, not lost, and reaches the agent the next time it checks.
 - **Revisions**: every publish is sealed; switch back to earlier ones.
-- **One theme**: light, chosen for hours of reading and for printing, with
-  every text colour at WCAG AA contrast. Every review looks the same, so the
-  reader learns one page; it does not follow the project or the system's
-  dark mode.
+- **Light and dark**: the page follows your system's light or dark mode until
+  you pick one under the ⋯ menu's _Theme_, which the browser remembers. Every
+  text and code colour holds WCAG AA contrast in both, and every review looks
+  the same - it does not restyle itself after the project it reviews.
 
 Everything runs locally against your checkout. The server listens on
 loopback and, when present, your Tailscale address, so a phone or another

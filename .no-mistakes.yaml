@@ -103,11 +103,13 @@ review:
         and side events. Every surface the reader can point at - a document
         block, a diff line or range, a map node - must offer a comment with an
         "Add to review" or "Ask now" choice, and pins must stay attached to
-        their target across re-renders. There is one theme, light, defined
-        once as the custom properties in app.css's :root: a rule takes its
-        colours and fonts from them, never a literal, and nothing follows
-        prefers-color-scheme. test/one-theme.test.ts holds every text colour
-        to WCAG AA on every ground.
+        their target across re-renders. There is one theme in two palettes,
+        the custom properties in app.css's :root (light) and
+        :root[data-theme="dark"]: a rule takes its colours and fonts from
+        them, never a literal, and code is highlighted with their --code-*
+        tokens. Only index.html's boot script reads prefers-color-scheme or
+        the reader's pick. test/theme.test.ts holds every text and code colour
+        to WCAG AA on every ground, in both palettes.
         Verify async views with scripts/browser-check.mjs rather than
         Chromium's one-shot --screenshot, which fires before fetches resolve.
     - path: "skills/**"

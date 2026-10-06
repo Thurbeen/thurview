@@ -4,6 +4,25 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>thurview</title>
+    <script>
+      // Before first paint, so the page never flashes the other palette: the
+      // reader's pick from the menu wins, and "system" follows the OS, live.
+      (() => {
+        const os = matchMedia("(prefers-color-scheme: dark)");
+        const apply = () => {
+          let pick = "system";
+          try {
+            pick = localStorage.getItem("thurview.theme") || "system";
+          } catch {}
+          const root = document.documentElement;
+          root.dataset.themePick = pick;
+          root.dataset.theme = pick === "system" ? (os.matches ? "dark" : "light") : pick;
+        };
+        os.addEventListener("change", apply);
+        window.thurviewTheme = apply;
+        apply();
+      })();
+    </script>
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
