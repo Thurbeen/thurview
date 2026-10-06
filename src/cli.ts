@@ -218,6 +218,8 @@ async function reviewRow(r: ReviewState, fields: Set<string>): Promise<Out> {
   if (fields.has("all") || fields.has("dismissed")) row["dismissed"] = r.dismissed;
   if (fields.has("all") || fields.has("updatedAt")) row["updatedAt"] = r.updatedAt;
   if (fields.has("all") || fields.has("uuid")) row["uuid"] = r.id;
+  if (fields.has("all") || fields.has("staticSnapshot"))
+    row["staticSnapshot"] = r.staticSnapshot ?? null;
   return row;
 }
 
@@ -635,7 +637,7 @@ const SPECS: Record<
       all: { kind: "boolean", help: "every review, not only this worktree" },
       fields: {
         kind: "string",
-        help: "extra columns: binding,pins,worktree,inSync,dismissed,updatedAt,uuid or all",
+        help: "extra columns: binding,pins,worktree,inSync,dismissed,updatedAt,uuid,staticSnapshot or all",
       },
     },
     examples: ["thurview info", "thurview info --all --fields pins,inSync"],
@@ -665,13 +667,17 @@ const SPECS: Record<
     examples: ["thurview open", "thurview open --review <id> --view map --no-browser"],
   },
   "publish-static": {
-    description: "Render a read-only snapshot, optionally deploy the retained archive to Cloudflare",
+    description:
+      "Render a read-only snapshot, optionally deploy the retained archive to Cloudflare",
     args: "[<review>]",
     flags: {
       review: { kind: "string", help: "document id or unique prefix" },
       out: { kind: "string", help: "render locally to this directory without deploying" },
       to: { kind: "string", help: "deployment target (cloudflare)" },
-      config: { kind: "string", help: "Cloudflare target JSON (default: THURVIEW_HOME/cloudflare.json)" },
+      config: {
+        kind: "string",
+        help: "Cloudflare target JSON (default: THURVIEW_HOME/cloudflare.json)",
+      },
     },
     examples: [
       "thurview publish-static <id> --out snapshot",
@@ -1371,8 +1377,9 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       ]);
     try {
       return {
-        snapshot: out ? await renderStatic(review, resolve(out)) :
-          await publishStatic(review, str(p, "config") ?? join(home(), "cloudflare.json")),
+        snapshot: out
+          ? await renderStatic(review, resolve(out))
+          : await publishStatic(review, str(p, "config") ?? join(home(), "cloudflare.json")),
         help: ["Run `thurview publish-static <id> --to cloudflare` to refresh the public snapshot"],
       };
     } catch (e) {

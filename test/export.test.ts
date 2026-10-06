@@ -22,6 +22,7 @@ let repo: string;
 let reviewId: string;
 let withThreads: string;
 let withoutThreads: string;
+let staticPage: string;
 
 // The built command, the one a user runs: the export inlines the bundled UI.
 async function cli(args: string[]) {
@@ -147,6 +148,8 @@ beforeAll(async () => {
 
   withThreads = join(tmp, "out", "review.html");
   withoutThreads = join(tmp, "out", "bare");
+  staticPage = join(tmp, "static", "index.html");
+  await cli(["publish-static", reviewId, "--out", join(tmp, "static")]);
   await cli(["export", "--review", reviewId, "--out", withThreads]);
   await cli(["export", "--review", reviewId, "--out", withoutThreads, "--no-threads"]);
 }, 120_000);
@@ -282,8 +285,36 @@ describe.skipIf(!browserBin)("an exported document in a browser, offline", () =>
         setTimeout(wait, 100);
       })();
     })`);
-    return { evaluate, requests, errors, close: () => ws.close() };
+    return { evaluate, requests, errors, call, close: () => ws.close() };
   }
+
+  it("opens the static snapshot offline with its banner, anchors and Markdown download", async () => {
+    const p = await open(staticPage, "", `document.querySelector("svg.seq")`);
+    try {
+      const text = await p.evaluate<string>("document.body.innerText");
+      expect(text).toContain("Snapshot of revision 1 at");
+      expect(text).toContain("comments are made on the live review");
+      for (const snippet of SNIPPETS) expect(text).toContain(snippet);
+      const links = await p.evaluate<string[]>(
+        `[...document.querySelectorAll(".banner a")].map(a => a.getAttribute("href"))`,
+      );
+      expect(links).toEqual(["feedback.md"]);
+      await p.call("Emulation.setDeviceMetricsOverride", {
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      const fits = await p.evaluate<boolean>(
+        `document.querySelector(".banner a").getBoundingClientRect().right <= innerWidth`,
+      );
+      expect(fits).toBe(true);
+      expect(p.errors).toEqual([]);
+      expect(p.requests.filter((u) => !/^(file|data):/.test(u))).toEqual([]);
+    } finally {
+      p.close();
+    }
+  }, 30_000);
 
   it("renders every section, snippet and diagram, and asks the network for nothing", async () => {
     const p = await open(withThreads, "", `document.querySelector("svg.seq")`);

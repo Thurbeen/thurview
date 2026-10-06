@@ -122,81 +122,6 @@ afterAll(async () => {
 });
 
 describe("thurview end to end", () => {
-  it("renders a self-contained read-only static snapshot and deploys the archive", async () => {
-    const fixture = await cli(["scaffold", "--new"]);
-    const id = fixture.review.uuid;
-    const dir = fixture.review.dir;
-    const output = join(home, "static-test");
-    const draft = await cli(["publish-static", id, "--out", output], { expectCode: 2 });
-    expect(draft.error).toContain("published revision");
-    await writeFile(join(dir, "review.md"), "# Snapshot fixture\n\n[Login](anchor:login) checks the user.\n");
-    await writeFile(join(dir, "data.yaml"), "anchors:\n  login: { title: Login, peek: { file: src/auth.ts, from: 3, to: 5 } }\n");
-    await writeFile(join(dir, "map.yaml"), "nodes:\n  - { id: auth, kind: component, label: Authentication, anchor: login, files: [src/auth.ts] }\nedges: []\n");
-    await cli(["publish", "--review", id]);
-    const thread = await post(`/api/reviews/${id}/threads`, {
-      kind: "question", mode: "ask", target: { type: "review" }, body: "Snapshot question",
-    }) as Out;
-    await cli(["threads", "reply", thread.id, "--review", id, "--body", "Snapshot answer"]);
-    await cli(["publish-static", id, "--out", output]);
-    const html = await readFile(join(output, "index.html"), "utf8");
-    expect(html).toContain("Snapshot of revision 1 at");
-    expect(html).toContain("comments are made on the live review");
-    const match = /<script type="application\/json" id="thurview-snapshot">([\s\S]*?)<\/script>/.exec(html)!;
-    const snapshot = JSON.parse(match[1]!);
-    expect(snapshot.payload.document.anchors.login.peek.file).toBe("src/auth.ts");
-    expect(snapshot.files["head:src/auth.ts"].lines.join("")).toContain("audit");
-    expect(snapshot.banner.revision).toBe(1);
-    expect(html).toContain("audit");
-    expect(html).toContain("Authentication");
-    expect(html).toContain("Files");
-    expect(html).toContain("Snapshot question");
-    expect(html).toContain("Snapshot answer");
-    expect(html).toContain("default-src 'none'");
-    expect(html).not.toMatch(/src="https?:|url\("https?:/i);
-    expect(snapshot.payload.review.worktree).toBe("");
-    expect(html).not.toContain(repo);
-
-    expect(await readFile(join(output, "feedback.md"), "utf8")).toContain("Snapshot answer");
-    const config = join(home, "cloudflare.json");
-    await writeFile(config, JSON.stringify({ name: "review-fixtures", publicUrl: "https://reviews.example.com" }));
-    const bin = join(home, "bin");
-    await mkdir(bin);
-    await writeFile(join(bin, "wrangler"), `#!/usr/bin/env node
-const fs = require("node:fs");
-const args = process.argv.slice(2);
-const c = JSON.parse(fs.readFileSync(args[args.indexOf("--config") + 1], "utf8"));
-if (args[0] !== "deploy" || !c.assets.directory || c.name !== "review-fixtures") process.exit(1);
-fs.writeFileSync(${JSON.stringify(join(home, "deployment.json"))}, JSON.stringify(c));
-if (fs.existsSync(${JSON.stringify(join(home, "fail-deploy"))})) process.exit(1);
-`);
-    await chmod(join(bin, "wrangler"), 0o755);
-    const savedPath = process.env["PATH"];
-    process.env["PATH"] = bin + ":" + savedPath;
-    try {
-      const first = await cli(["publish-static", id, "--to", "cloudflare", "--config", config]);
-      expect(first.snapshot.url).toMatch(/^https:\/\/reviews.example.com\/r\/[^/]+\/[^/]+\/[a-f0-9]{32}\/$/);
-      const deployed = JSON.parse(await readFile(join(home, "deployment.json"), "utf8"));
-      const relative = new URL(first.snapshot.url).pathname;
-      const firstPage = join(deployed.assets.directory, relative, "index.html");
-      expect(await readFile(firstPage, "utf8")).toContain("Snapshot fixture");
-      const secondFixture = await cli(["scaffold", "--new"]);
-      await cli(["publish", "--review", secondFixture.review.uuid]);
-      await cli(["publish-static", secondFixture.review.uuid, "--to", "cloudflare", "--config", config]);
-      expect(await readFile(firstPage, "utf8")).toContain("Snapshot fixture");
-      const again = await cli(["publish-static", id, "--to", "cloudflare", "--config", config]);
-      expect(again.snapshot.url).toBe(first.snapshot.url);
-      const stored = JSON.parse(await readFile(join(dir, "review.json"), "utf8"));
-      expect(stored.staticSnapshot.url).toBe(first.snapshot.url);
-      await writeFile(join(home, "fail-deploy"), "");
-      const failed = await cli(["publish-static", id, "--to", "cloudflare", "--config", config], { expectCode: 2 });
-      expect(failed.error).toContain("wrangler deploy failed");
-      await rm(join(home, "fail-deploy"));
-    } finally {
-      process.env["PATH"] = savedPath;
-    }
-  }, 60_000);
-
-
   it("shows a definitive empty state and a home view", async () => {
     const empty = await cli([]);
     expect(empty["bin"]).toMatch(/main\.ts$/);
@@ -1642,4 +1567,128 @@ check
       expect((await passFile(out)).verdict).toBe("comment");
     }, 30_000);
   });
+});
+
+describe("static snapshots", () => {
+  it("renders a self-contained read-only static snapshot and deploys the archive", async () => {
+    const fixture = await cli(["scaffold", "--new"]);
+    const id = fixture.review.uuid;
+    const dir = fixture.review.dir;
+    const output = join(home, "static-test");
+    const draft = await cli(["publish-static", id, "--out", output], { expectCode: 2 });
+    expect(draft.error).toContain("published revision");
+    await writeFile(
+      join(dir, "review.md"),
+      "# Snapshot fixture\n\n[Login](anchor:login) checks the user.\n",
+    );
+    await writeFile(
+      join(dir, "data.yaml"),
+      "anchors:\n  login: { title: Login, peek: { file: src/auth.ts, from: 3, to: 5 } }\n",
+    );
+    await writeFile(
+      join(dir, "map.yaml"),
+      "nodes:\n  - { id: auth, kind: component, label: Authentication, anchor: login, files: [src/auth.ts] }\nedges: []\n",
+    );
+    await cli(["publish", "--review", id]);
+    const thread = (await post(`/api/reviews/${id}/threads`, {
+      kind: "question",
+      mode: "ask",
+      target: { type: "review" },
+      body: "Snapshot question",
+    })) as Out;
+    await cli(["threads", "reply", thread.id, "--review", id, "--body", "Snapshot answer"]);
+    await cli(["publish-static", id, "--out", output]);
+    const html = await readFile(join(output, "index.html"), "utf8");
+    expect(html.includes("Snapshot of revision")).toBe(true);
+    expect(html).toContain("comments are made on the live review");
+    const match =
+      /<script type="application\/json" id="thurview-snapshot">([\s\S]*?)<\/script>/.exec(html)!;
+    const snapshot = JSON.parse(match[1]!);
+    expect(snapshot.payload.document.anchors.login.peek.file).toBe("src/auth.ts");
+    expect(snapshot.files["head:src/auth.ts"].lines.join("")).toContain("audit");
+    expect(snapshot.banner.revision).toBe(1);
+    expect(html).toContain("audit");
+    expect(html).toContain("Authentication");
+    expect(html).toContain("Files");
+    expect(html).toContain("Snapshot question");
+    expect(html).toContain("Snapshot answer");
+    expect(html).toContain("default-src 'none'");
+    expect(html).not.toMatch(/src="https?:|url\("https?:/i);
+    expect(snapshot.payload.review.worktree).toBe("");
+    expect(html).not.toContain(repo);
+
+    expect(await readFile(join(output, "feedback.md"), "utf8")).toContain("Snapshot answer");
+    const config = join(home, "cloudflare.json");
+    await writeFile(
+      config,
+      JSON.stringify({ name: "review-fixtures", publicUrl: "https://reviews.example.com" }),
+    );
+    const bin = join(home, "bin");
+    await mkdir(bin);
+    await writeFile(
+      join(bin, "wrangler"),
+      `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+const c = JSON.parse(fs.readFileSync(args[args.indexOf("--config") + 1], "utf8"));
+if (args[0] !== "deploy" || !c.assets.directory || c.name !== "review-fixtures") process.exit(1);
+fs.writeFileSync(${JSON.stringify(join(home, "deployment.json"))}, JSON.stringify(c));
+if (fs.existsSync(${JSON.stringify(join(home, "edit-during-deploy"))})) {
+  const file = ${JSON.stringify(join(dir, "review.json"))};
+  const review = JSON.parse(fs.readFileSync(file, "utf8"));
+  review.title = "Edited during deployment";
+  fs.writeFileSync(file, JSON.stringify(review));
+}
+if (fs.existsSync(${JSON.stringify(join(home, "fail-deploy"))})) process.exit(1);
+`,
+    );
+    await chmod(join(bin, "wrangler"), 0o755);
+    const savedPath = process.env["PATH"];
+    process.env["PATH"] = bin + ":" + savedPath;
+    try {
+      const first = await cli(["publish-static", id, "--to", "cloudflare", "--config", config]);
+      expect(first.snapshot.url).toMatch(
+        /^https:\/\/reviews.example.com\/r\/[^/]+\/[^/]+\/[a-f0-9]{32}\/$/,
+      );
+      const deployed = JSON.parse(await readFile(join(home, "deployment.json"), "utf8"));
+      const relative = new URL(first.snapshot.url).pathname;
+      const firstPage = join(deployed.assets.directory, relative, "index.html");
+      expect(await readFile(firstPage, "utf8")).toContain("Snapshot fixture");
+      const secondFixture = await cli(["scaffold", "--new"]);
+      await cli(["publish", "--review", secondFixture.review.uuid]);
+      await cli([
+        "publish-static",
+        secondFixture.review.uuid,
+        "--to",
+        "cloudflare",
+        "--config",
+        config,
+      ]);
+      expect(await readFile(firstPage, "utf8")).toContain("Snapshot fixture");
+      await writeFile(join(home, "edit-during-deploy"), "");
+      const again = await cli(["publish-static", id, "--to", "cloudflare", "--config", config]);
+      expect(again.snapshot.url).toBe(first.snapshot.url);
+      const stored = JSON.parse(await readFile(join(dir, "review.json"), "utf8"));
+      expect(stored.staticSnapshot.url).toBe(first.snapshot.url);
+      expect(stored.title).toBe("Edited during deployment");
+      const info = await cli(["info", "--fields", "uuid,staticSnapshot"]);
+      expect(info.reviews.find((r: Out) => r.uuid === id).staticSnapshot).toEqual(
+        stored.staticSnapshot,
+      );
+      await writeFile(join(home, "fail-deploy"), "");
+      const failed = await cli(["publish-static", id, "--to", "cloudflare", "--config", config], {
+        expectCode: 2,
+      });
+      expect(failed.error).toContain("wrangler deploy failed");
+      await rm(join(home, "fail-deploy"));
+      await rm(firstPage);
+      const incomplete = await cli(
+        ["publish-static", secondFixture.review.uuid, "--to", "cloudflare", "--config", config],
+        { expectCode: 2 },
+      );
+      expect(incomplete.error).toContain("archive is incomplete");
+    } finally {
+      process.env["PATH"] = savedPath;
+    }
+  }, 60_000);
 });

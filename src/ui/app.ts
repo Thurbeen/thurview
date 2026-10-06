@@ -382,11 +382,19 @@ function renderBanner(): void {
   if (published) {
     banner.hidden = false;
     const snapshot = published.banner;
-    banner.append(snapshot
-      ? `Snapshot of revision ${snapshot.revision} at ${snapshot.sha}; comments are made on the live review.`
-      : `Published copy of revision ${d.review.revision}, ${d.review.status}. Read only: nothing here reaches the agent.`);
-    if (snapshot?.liveUrl) banner.append(" ", h("a", { href: snapshot.liveUrl }, "Open live review"));
-    if (published.markdown) banner.append(" ", h("a", { href: published.markdown, download: "" }, "Download Markdown"));
+    banner.append(
+      h(
+        "span",
+        { class: "snapshot-notice" },
+        snapshot
+          ? `Snapshot of revision ${snapshot.revision} at ${snapshot.sha}; comments are made on the live review.`
+          : `Published copy of revision ${d.review.revision}, ${d.review.status}. Read only: nothing here reaches the agent.`,
+      ),
+    );
+    if (snapshot?.liveUrl)
+      banner.append(" ", h("a", { href: snapshot.liveUrl }, "Open live review"));
+    if (published.markdown)
+      banner.append(" ", h("a", { href: published.markdown, download: "" }, "Download Markdown"));
   } else if (state.viewingRevision !== null) {
     banner.hidden = false;
     banner.append(
