@@ -21,7 +21,7 @@ commit, and what it did not.
 | Tab      | Review                              | Explainer                                                    |
 | -------- | ----------------------------------- | ------------------------------------------------------------ |
 | Review   | the walkthrough, with the delta     | **Explainer**: the document, with coverage                   |
-| Files    | split diff of the changed files     | absent                                                       |
+| Files    | split diff of the changed files     | full files in scope at the pinned commit                     |
 | Commits  | base..head                          | absent                                                       |
 | Map      | parts, marked added/changed/removed | parts at the pinned commit                                   |
 | Coverage | absent                              | **what the document reached, and what it did not**           |
