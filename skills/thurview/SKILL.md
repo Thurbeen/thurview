@@ -253,6 +253,18 @@ Then open it for the reader, unless step 2 already did:
 thurview open --review <id>            # prints url; --view files|commits|map
 ```
 
+When a Cloudflare target is configured, also publish the read-only copy after
+serving and after each revision or answer you want reflected publicly:
+
+```sh
+thurview publish-static <id> --to cloudflare
+```
+
+Use `snapshot.url` for the shareable review link and in the change request's
+summary comment. Keep the live URL for the reader's comments. The static page
+has no live-host link unless the target explicitly enables it. Configuration
+and retention are in [Lifecycle](references/lifecycle.md).
+
 ### 7. Hand over
 
 Tell the user, in a few lines and nothing more:
