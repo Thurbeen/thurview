@@ -50,6 +50,10 @@ locally.
   the closed category set, and the follow loop, all on the forge seam.
 - `skills/thurview-pr-review/`: the skill that reviews a change request on
   the forge and follows it until it merges or closes.
+- `skills/thurview-publish/`: the skill that uploads `thurview export`'s page
+  to the user's own Azure, S3, Cloud Storage or Cloudflare Pages account with
+  the user's own CLI login, and signs an expiring link. It is commands, not
+  code; `test/publish-skill.test.ts` holds them to that contract.
 - `test/e2e.test.ts`: the suite, driving the CLI and the server end to end.
 - `test/forge.test.ts`: the same, with a fake `gh` and `glab` on PATH, so both
   forge adapters are driven rather than asserted.
@@ -67,11 +71,12 @@ nothing outside a temporary directory. Re-record it when the UI changes.
 
 ## The skills and the command
 
-`skills/` holds five skills - `thurview`, `thurview-explain` and
+`skills/` holds six skills - `thurview`, `thurview-explain` and
 `thurview-design` author and publish one document kind each,
-`thurview-fix` reviews a change and commits the fixes that pass, and
+`thurview-fix` reviews a change and commits the fixes that pass,
 `thurview-pr-review` reviews a change request on the forge and follows it
-until it merges. Each is
+until it merges, and `thurview-publish` uploads an exported document to the
+user's own cloud. Each is
 installed three ways, and only one of them keeps the
 skill and the command in step:
 

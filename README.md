@@ -46,7 +46,7 @@ npx skills@latest add https://github.com/Thurbeen/thurview \
   --skill '*' --agent universal claude-code --global --yes
 ```
 
-`--skill '*'` takes all four; quote the star so your shell does not expand it
+`--skill '*'` takes all six; quote the star so your shell does not expand it
 against the current directory. The skills reach the `thurview` command through
 `npx`, so the requirements are Node 22 or later and git (`gh` for pull
 requests, `glab` for merge requests). Then, in any repository, ask your agent:
@@ -56,9 +56,9 @@ Use the thurview skill to review my current branch against up-to-date main
 and open it.
 ```
 
-## The four skills
+## The six skills
 
-Three kinds of document, and one companion that writes none:
+Three kinds of document, and three companions that write none:
 
 - **`thurview`** - a change that is already written: a branch, a pull request,
   a commit range. The document carries the diff, the commits and the interface
@@ -76,6 +76,9 @@ Three kinds of document, and one companion that writes none:
   optionally as inline comments on the change request.
 - **`thurview-pr-review`** - reviews a change request on the forge and follows
   it to merge: one summary edited in place, one resolvable thread per finding.
+- **`thurview-publish`** - puts a published document in your own Azure,
+  S3, Cloud Storage or Cloudflare Pages account with your own login, and hands
+  back a link that expires; public only when you confirm it.
 
 <details>
 <summary><b>Other ways to install</b> - one skill at a time, pin to a release,
@@ -86,12 +89,12 @@ from an older install</summary>
 `universal` puts the one real copy of each skill under `~/.agents/skills/`,
 the directory no single agent owns, and every other agent you name gets a
 symlink to it - `~/.claude/skills/thurview` →
-`../../.agents/skills/thurview`, and the same for the other three - so an
+`../../.agents/skills/thurview`, and the same for the other five - so an
 update lands everywhere at once. Swap `claude-code` for any agent the skills
 CLI supports, but keep `universal` and at least one more: with `--yes` and a
 single target, the CLI copies instead of linking.
 
-`--skill` also takes names, one or several, when you do not want all four:
+`--skill` also takes names, one or several, when you do not want all six:
 `--skill thurview`, or `--skill thurview thurview-fix`.
 
 The untagged URL above tracks this repository's default branch:
@@ -142,7 +145,7 @@ what is stale has to go.
 `thurview-explain` used to be a second kind inside the `thurview` skill, so an
 install made before the split does not have it. Under the `skills` CLI,
 updating `thurview` adds no second skill; run the install command above, which
-takes all four. Under `thurview setup skill`, update the command first -
+takes all six. Under `thurview setup skill`, update the command first -
 `thurview update`, or pull and rebuild the checkout you linked from - and run
 `thurview setup skill` again: it links every skill the installed command
 carries, so it picks the new one up on its own.
