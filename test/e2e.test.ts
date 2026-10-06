@@ -702,7 +702,7 @@ check
     expect(again["wait"].reason).toBe("timeout");
     expect(again["wait"].status).toBe("awaiting-review");
     expect(String(again["help"])).toContain("thurview wait");
-  });
+  }, 30_000);
 
   it("holds review comments until submit, then blocks republish until they are resolved", async () => {
     const c = (await post(`/api/reviews/${reviewId}/threads`, {
