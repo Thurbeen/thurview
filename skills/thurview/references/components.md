@@ -92,7 +92,7 @@ security:                                 # a review only; omit until you have l
 searches:                                 # an explainer only
   spawnCallers:
     pattern: '\bspawnPty *\('            # git grep -E, re-run at the pinned commit
-    paths: ["src/**"]                     # optional; the whole commit when left out
+    paths: ["src/"]                       # optional git pathspecs; the whole commit when left out
     why: who opens a PTY                  # optional; the question it answered
 ```
 
@@ -166,7 +166,9 @@ nothing is listed too, since that zero is what a claim of absence rests on.
 
 - **`pattern`** is a POSIX extended regular expression, as `git grep -E` reads
   it. One git refuses fails the publish with git's own message.
-- **`paths`** are globs to search under; the whole commit when left out.
+- **`paths`** are git pathspecs to search under, read exactly as your own
+  `git grep` reads them, so `*test*` reaches into every directory; the whole
+  commit when left out.
   Coverage counts only the files inside the explainer's scope either way.
 - **`why`** is the question the search answered, in a sentence.
 

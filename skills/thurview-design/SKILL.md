@@ -110,7 +110,7 @@ reader can re-run:
 ```sh
 git ls-tree -d -r --name-only <commit> -- <scope>   # the parts the design has to fit
 git grep -n -E -e '\bname *\(' <commit> --          # who depends on what you plan to change
-git grep -n -w -e 'name' <commit> -- '*test*'       # what tests would have to move with it
+git grep -n -E -e '\bname\b' <commit> -- '*test*'       # what tests would have to move with it
 ```
 
 A search finds names, not meaning: open each hit before you count it, and put

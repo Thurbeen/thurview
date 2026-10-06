@@ -69,4 +69,16 @@ describe("computeCoverage", () => {
       expect.objectContaining({ explained: ["src/a.ts"], uncovered: ["src/b.ts"] }),
     );
   });
+
+  it("keeps the files at the top of a scope apart from a directory of the same name", () => {
+    const cov = computeCoverage({
+      commit: "deadbeef",
+      scope: "src",
+      allFiles: ["src/x.ts", "src/src/y.ts"],
+      anchored: [],
+      owners: [],
+      searches: [],
+    });
+    expect(cov.clusters.map((c) => c.label).sort()).toEqual(["src", "src/"]);
+  });
 });

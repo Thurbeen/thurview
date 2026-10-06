@@ -32,7 +32,7 @@ export type FileState =
 export interface SearchRecord {
   key: string;
   pattern: string;
-  /** the globs it searched under; empty is the whole commit */
+  /** the git pathspecs it searched under; empty is the whole commit */
   paths: string[];
   why?: string;
   /** matching lines, over every file it matched */
@@ -43,7 +43,7 @@ export interface SearchRecord {
 
 export interface ClusterCoverage {
   id: string;
-  /** the directory under the scope; the scope's own directory, or `.`, for the files directly in it */
+  /** the directory under the scope; the scope's own (`src/`), or `.`, for the files directly in it */
   label: string;
   files: number;
   explained: string[];
@@ -138,8 +138,9 @@ export function computeCoverage(input: CoverageInput): Coverage {
   const byDir = new Map<string, string[]>();
   for (const f of files) {
     const rest = f.startsWith(root) ? f.slice(root.length) : f;
-    // files directly in a scoped directory are named by it; directly in the repository, `.`
-    const dir = rest.includes("/") ? rest.slice(0, rest.indexOf("/")) : root.slice(0, -1) || ".";
+    // files directly in a scoped directory are named by it, with its slash so a
+    // subdirectory of the same name stays apart; directly in the repository, `.`
+    const dir = rest.includes("/") ? rest.slice(0, rest.indexOf("/")) : root || ".";
     byDir.set(dir, [...(byDir.get(dir) ?? []), f]);
   }
   const clusters: ClusterCoverage[] = [...byDir]

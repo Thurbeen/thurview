@@ -305,7 +305,7 @@ nothing is pushed unless you ask.
 
 ```sh
 git grep -n -E -e '\bdiscount *\(' <head> --              # every call site of one symbol
-git grep -n -w -e 'discount' <head> -- '*test*' '*spec*'  # the tests that name it
+git grep -n -E -e '\bdiscount\b' <head> -- '*test*' '*spec*'  # the tests that name it
 ```
 
 Each finding carries the search behind it, so "no other caller" is a line you

@@ -141,7 +141,7 @@ those yourself, at the pinned commits, with the recipes in
 ```sh
 git grep -n -E -e '\bname *\(' <head> --       # who calls it now
 git grep -n -E -e '\bname *\(' <base> --       # who called it before: a removed symbol's callers are only here
-git grep -n -w -e 'name' <head> -- '*test*'      # what tests name it
+git grep -n -E -e '\bname\b' <head> -- '*test*'      # what tests name it
 ```
 
 Start with the interfaces: what the change added to, changed in or removed

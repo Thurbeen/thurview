@@ -26,19 +26,23 @@ clean; when either is not true, use `git grep`.
 Swap the name in; each one is a starting point, so read the hits before you
 trust the count.
 
-| Question                    | Search                                                                    |
-| --------------------------- | ------------------------------------------------------------------------- |
-| callers of a function       | `git grep -n -E -e '\bname *\(' <commit> --`                              |
-| every reference to a symbol | `git grep -n -w -e 'name' <commit> --`                                    |
-| callers before the change   | the same at `<base>`: a removed symbol has no callers left at head        |
+| Question                    | Search                                                                     |
+| --------------------------- | -------------------------------------------------------------------------- |
+| callers of a function       | `git grep -n -E -e '\bname *\(' <commit> --`                               |
+| every reference to a symbol | `git grep -n -E -e '\bname\b' <commit> --`                                 |
+| callers before the change   | the same at `<base>`: a removed symbol has no callers left at head         |
 | importers of a module       | `git grep -n -E -e "['\"][./]*path/to/module(\.[a-z]+)?['\"]" <commit> --` |
-| tests that touch a file     | `git grep -l -w -e 'a name it exports' <commit> -- '*test*' '*spec*'`     |
-| tests that name a symbol    | `git grep -n -w -e 'name' <commit> -- '*test*' '*spec*'`                  |
-| the directories in a scope  | `git ls-tree -d -r --name-only <commit> -- <scope>`                       |
-| the files in a scope        | `git ls-tree -r --name-only <commit> -- <scope>`                          |
+| tests that touch a file     | `git grep -l -E -e '\bexportedName\b' <commit> -- '*test*' '*spec*'`       |
+| tests that name a symbol    | `git grep -n -E -e '\bname\b' <commit> -- '*test*' '*spec*'`               |
+| the directories in a scope  | `git ls-tree -d -r --name-only <commit> -- <scope>`                        |
+| the files in a scope        | `git ls-tree -r --name-only <commit> -- <scope>`                           |
 
-`\b` is a GNU extension to `-E`; where git refuses it, use `-P` with the same
-pattern.
+Every recipe is one `-E` pattern, with `\b` for a word boundary rather than
+`-w`, so an explainer can record it under `searches` exactly as you ran it -
+publish re-runs it with `-E` and nothing else. `\b` is a GNU extension: check
+it on the platform once (`git grep -c -E -e '\bname\b' <commit> --` must match
+what `-w -e name` matches) and use `[[:<:]]name[[:>:]]` where git's regex
+library reads that instead.
 
 The import recipe is written for JavaScript and TypeScript. Use the language's
 own form elsewhere: `^import .*module` in Python and Go, `use crate::module` in

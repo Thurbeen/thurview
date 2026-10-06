@@ -370,7 +370,7 @@ const TEMPLATE_EXPLAIN_DATA = `# Typed inputs for the explainer: actors, anchors
 # nothing is stated too.
 #
 # searches:
-#   dispatchCallers: { pattern: '\\bdispatch\\(', paths: ["src/**"], why: who routes a request }
+#   dispatchCallers: { pattern: '\\bdispatch\\(', paths: ["src/"], why: who routes a request }
 actors: {}
 anchors: {}
 stores: {}

@@ -69,7 +69,7 @@ git diff --stat <base> <head>                              # the files
 git diff <base> <head>                                     # the change
 git grep -n -E -e '\bname *\(' <head> --                   # who calls a changed symbol now
 git grep -n -E -e '\bname *\(' <base> --                   # who called it before; a removed one's callers are only here
-git grep -n -w -e 'name' <head> -- '*test*' '*spec*'       # which tests name it
+git grep -n -E -e '\bname\b' <head> -- '*test*' '*spec*'       # which tests name it
 ```
 
 What to look for:

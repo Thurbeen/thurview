@@ -121,7 +121,7 @@ function fileList(files: string[], cls: string): HTMLElement | null {
 /** The line a reader runs to check a search: the same one publish ran. */
 function command(cov: Coverage, s: SearchRecord): string {
   const quote = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`;
-  const paths = s.paths.map((p) => ` ${quote(`:(glob)${p}`)}`).join("");
+  const paths = s.paths.map((p) => ` ${quote(p)}`).join("");
   return `git grep -I -n -E -e ${quote(s.pattern)} ${cov.commit.slice(0, 12)} --${paths}`;
 }
 

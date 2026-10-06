@@ -76,7 +76,7 @@ export const SearchSchema = z
   .object({
     /** a POSIX extended regular expression, as `git grep -E` reads it */
     pattern: z.string().min(1),
-    /** globs to search under; the whole commit when left out, though coverage counts only files in scope */
+    /** git pathspecs to search under, as `git grep` reads them; the whole commit when left out, though coverage counts only files in scope */
     paths: z.array(z.string().min(1)).optional(),
     /** the question the search answered, in the agent's words */
     why: z.string().min(1).optional(),
