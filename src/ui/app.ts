@@ -1,4 +1,5 @@
 import { api, published } from "./api.js";
+import { exportDialog } from "./export.js";
 import { h, append, clear, dialog, timeAgo } from "./dom.js";
 import {
   state,
@@ -235,6 +236,7 @@ function renderTopbar(): void {
       ),
     ),
     h("span", { class: "spacer" }),
+    !published ? h("button", { onclick: () => void exportDialog() }, "Export for agent") : null,
     h(
       "button",
       {

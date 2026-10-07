@@ -282,6 +282,14 @@ the rail and the split diff give way to one column, the peek and the threads
 panel become full-screen sheets, and the tabs and the decision stay on the
 bar.
 
+The reader's **Export for agent** action produces one portable Markdown
+handoff: pins, verdicts, anchored feedback, answers and an unresolved checklist.
+Copy it or download it as `.md`; agents can fetch the same document with
+`thurview export <id> --format md --out feedback.md`. The full contract is in
+[Markdown export](skills/thurview/references/agent-export.md).
+
+![Export for agent dialog with Markdown preview, copy and download](./media/review-export.png)
+
 ## CLI
 
 | Command                                                 | Purpose                                                               |
@@ -301,6 +309,7 @@ bar.
 | `thurview serve` / `thurview stop`                      | Run the server in the foreground / stop the background one            |
 | `thurview setup hooks\|skill\|status`                   | Session hooks, agent skill, install state                             |
 | `thurview update`                                       | Self-update from npm                                                  |
+| `thurview export [ID] --format md [--out feedback.md]`  | Export reader feedback and unresolved checklist as Markdown           |
 
 thurview is an [AXI](https://axi.md): built for agents that drive it through a
 shell. Output is [TOON](https://toonformat.dev) on stdout, errors are
