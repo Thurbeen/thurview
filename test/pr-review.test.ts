@@ -370,7 +370,9 @@ describe("following the change request", () => {
     expect(ev.event).toBe(state);
     const body = forge.summaries()[0]!.body;
     expect(body).toContain(`"state":"${state}"`);
-    expect(body.split("\n")[1]).toBe(`Review ended: ${state} at ${SHA(1).slice(0, 7)}.`);
+    expect(body.split("\n")[1]).toBe(
+      `Review ended: ${state} at ${SHA(1).slice(0, 7)}. · **Confidence 4/5**`,
+    );
     expect(forge.summaries()).toHaveLength(1);
   });
 

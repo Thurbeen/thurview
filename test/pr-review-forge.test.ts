@@ -778,3 +778,73 @@ describe("compact summary golden Markdown", { timeout: 30_000 }, () => {
     );
   });
 });
+
+describe("compact summary lifecycle", { timeout: 30_000 }, () => {
+  it.each(["github", "gitlab"] as const)(
+    "retains confidence through stop, resume, merge and close on %s",
+    async (provider) => {
+      const original = await readFile(
+        join(ROOT, "test/fixtures/pr-summary/first-github.md"),
+        "utf8",
+      );
+      let body = original.trimEnd();
+      const content = body.split("\n").slice(2);
+      for (const state of ["stopped", "active", "merged", "closed"] as const) {
+        if (provider === "github") {
+          await fixtures([
+            { cli: "gh", match: ["issues/comments/9", "PATCH"], body: {} },
+            {
+              cli: "gh",
+              match: ["issues/7/comments", "--paginate"],
+              body: [[{ id: 9, user: { login: "bot" }, body }]],
+            },
+            { cli: "gh", match: ["graphql"], body: NO_THREADS },
+            {
+              cli: "gh",
+              match: ["repos/acme/web/pulls/7"],
+              body: PULL({
+                state: state === "merged" || state === "closed" ? "closed" : "open",
+                merged: state === "merged",
+              }),
+            },
+            { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+          ]);
+        } else {
+          await fixtures([
+            { cli: "glab", match: ["merge_requests/7/notes/9", "PUT"], body: {} },
+            {
+              cli: "glab",
+              match: ["merge_requests/7/notes?", "--paginate"],
+              body: ndjson({ id: 9, body, author: { username: "bot" } }),
+            },
+            { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
+            { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+            {
+              cli: "glab",
+              match: ["projects/acme%2Fweb/merge_requests/7"],
+              body: { ...MR, state: state === "merged" || state === "closed" ? state : "opened" },
+            },
+            { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+            { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+          ]);
+        }
+        await rm(log, { force: true });
+        const command = state === "stopped" ? "stop" : state === "active" ? "start" : "wait";
+        await cli(["pr-review", command, "--change", "7"], provider === "github" ? github : gitlab);
+        const edits = (await calls()).filter((c) =>
+          c.args.includes(provider === "github" ? "PATCH" : "PUT"),
+        );
+        expect(edits).toHaveLength(1);
+        body =
+          provider === "github"
+            ? JSON.parse(edits[0]!.body).body
+            : edits[0]!.args.find((a) => a.startsWith("body="))!.slice(5);
+        expect(body.split("\n")[0]).toContain(`"state":"${state}"`);
+        expect(body.split("\n")[1]).toContain("**Confidence 2/5**");
+        expect(body.split("\n")[1]).not.toContain("do not merge; fix");
+        expect(body.match(/Confidence 2\/5/g)).toHaveLength(1);
+        expect(body.split("\n").slice(2)).toEqual(content);
+      }
+    },
+  );
+});

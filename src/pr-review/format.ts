@@ -321,10 +321,12 @@ export function renderSummary(
   return parts.join("\n\n");
 }
 
-/** The same summary under a new marker and opening line; the rest is kept as written. */
+/** Status changes keep the reviewed confidence, without the previous next action. */
 export function restate(body: string, m: SummaryMarker, opening: string): string {
   const lines = body.split("\n");
-  return [marker(SUMMARY_TAG, m), opening, ...lines.slice(2)].join("\n");
+  const confidence = lines[1]?.match(/\bConfidence [1-5]\/5\b/)?.[0];
+  const line = confidence ? `${opening} · **${confidence}**` : opening;
+  return [marker(SUMMARY_TAG, m), line, ...lines.slice(2)].join("\n");
 }
 
 export function bareSummary(m: SummaryMarker, opening: string): string {
