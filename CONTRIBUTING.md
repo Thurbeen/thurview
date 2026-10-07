@@ -106,8 +106,8 @@ skill and the command in step:
 | `thurview setup skill`                             | the installed command     |
 
 Both `skills` routes take `--agent universal claude-code --global --yes`, as the
-README shows: one real copy in `~/.agents/skills`, symlinked into each other
-agent. `test/install-docs.test.ts` holds the README's commands to that form.
+README and `docs/INSTALL.md` show: one real copy in `~/.agents/skills`, symlinked into each other
+agent. `test/install-docs.test.ts` holds both files' commands to that form.
 
 The skills CLI has no notion of a skill version: its lock file records a hash
 of the folder's contents, plus the `ref` when one was given. So a change here

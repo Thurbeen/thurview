@@ -30,7 +30,7 @@ pin the skills to a release instead, install from the tag, which the skill
 lock records and later updates keep:
 
 ```sh
-npx skills@latest add https://github.com/Thurbeen/thurview/tree/v0.15.0 \
+npx skills@latest add https://github.com/Thurbeen/thurview/tree/v0.25.0 \
   --skill '*' --agent universal claude-code --global --yes
 ```
 

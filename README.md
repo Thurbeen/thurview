@@ -15,10 +15,13 @@ show are found by `git grep` searches you can run again.
 ![thurview demo: the reader follows an anchor into the code, comments on a line
 range in the diff, reads the agent's answer and requests changes](./media/thurview-demo.gif)
 
+_The reader's half of it; the agent is working off camera._
+
 ## Install
 
-Every skill, for any agent that reads the Agent Skills format, through the
-[skills](https://github.com/vercel-labs/skills) CLI:
+Every skill, through the [skills](https://github.com/vercel-labs/skills) CLI,
+for Claude Code, Codex, Cursor, OpenCode or any agent that reads the Agent
+Skills format:
 
 ```sh
 npx skills@latest add https://github.com/Thurbeen/thurview \
@@ -78,7 +81,7 @@ decision, and the queue on the home page) is in [docs/READER.md](docs/READER.md)
 | `thurview open [--review ID] [--view T]`                    | Start the server if needed and open the browser                                     |
 | `thurview wait [--review ID] [--timeout S]`                 | Block until the reader needs the agent                                              |
 | `thurview threads list\|get\|reply\|resolve`                | Read and answer threads                                                             |
-| `thurview export [<id>] --out PATH [--format md]`           | Write the published revision as one HTML file, or the reader's feedback as Markdown |
+| `thurview export [<id>] [--out PATH] [--format md]`         | Write the published revision as one HTML file, or the reader's feedback as Markdown |
 | `thurview publish-static --check --to cloudflare`           | Check the Cloudflare target, login and project, uploading nothing                   |
 | `thurview publish-static <id> --out DIR \| --to cloudflare` | Render a read-only snapshot, or deploy it to Cloudflare                             |
 | `thurview forge status\|prior\|pass\|submit\|reply`         | Read a change request, and post a review back to it                                 |
@@ -95,7 +98,8 @@ current directory's state. `thurview <command> --help` lists every flag.
 ## Configuration
 
 Everything lives under `~/.thurview` (or `$THURVIEW_HOME`) and runs against
-your checkout; the server listens on loopback and your Tailscale address.
+your checkout; the server listens on loopback and, when present, your
+Tailscale address.
 
 - **Agent guidance**: `~/.thurview/THURVIEW.md` for you, `THURVIEW.md` at a
   repository root for that repository.

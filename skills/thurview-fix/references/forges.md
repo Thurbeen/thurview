@@ -28,7 +28,8 @@ cancelled job shows no failure while asserting nothing. `ci.trustworthy` is
 the only field that means the tests really passed.
 
 `pass` turns a review a reader submitted in the browser into the file `submit`
-takes; [lifecycle.md](../../thurview/references/lifecycle.md) has its rules.
+takes; [lifecycle.md](../../thurview/references/lifecycle.md#carrying-a-submitted-review-to-the-change-request)
+has its rules.
 
 `submit` takes one JSON file so a human can read the pass before it is posted,
 refuses an `approve` without `--confirm`, and warns about comments too long to

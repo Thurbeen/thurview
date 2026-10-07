@@ -21,6 +21,7 @@ describe("no code graph", () => {
     const shipped = [
       "README.md",
       "CONTRIBUTING.md",
+      ...(await files("docs")),
       ...(await files("skills")),
       ...(await files("src")),
     ];

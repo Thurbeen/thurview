@@ -130,6 +130,8 @@ spawn
 Use the smallest range that proves the claim. Read the range from the pinned
 commit before you anchor it. `publish` rejects an anchor whose file or lines
 do not exist at that commit, and an anchor link to an anchor with no `peek`.
+It also refuses a storage operation on an unknown field, a map edge to an
+unknown node, and an explainer that anchors nothing at all.
 
 A claim you cannot anchor is a question, not a fact. Write it as one.
 

@@ -223,7 +223,8 @@ Only `assets/` is uploaded. A directory lock serializes deployments from this
 store, and an unreadable index or incomplete archive blocks the upload.
 Keep one store per Worker and back it up: another store cannot reconstruct
 its existing public assets. A stale lock requires verifying the publisher
-has stopped before removing it. Public copies persist independently of local
+has stopped before removing it. This uses Workers static assets, with no other service or runtime Worker.
+Public copies persist independently of local
 review deletion.
 
 ## Exporting reader feedback
