@@ -11,8 +11,6 @@ import {
   renderSummary,
   restate,
   statusLine,
-  summaryWords,
-  SUMMARY_WORDS,
   type Finding,
   type OpenFinding,
   type Pass,
@@ -277,21 +275,15 @@ export async function sync(
       (f) => f.commit !== cr.head && decisions.get(f.id)?.status !== "fixed",
     ).length,
   };
-  const flagged = st.findings.filter((f) => !f.open && decisions.get(f.id)?.status !== "fixed");
-  const body = [
-    renderSummary({ ...pass, signoff: undefined }, marker, cr.author, open),
-    `Since last review: ${sinceLastReview.resolved} resolved, ${sinceLastReview.new} new, ${sinceLastReview.stillOpen} still open.`,
-    ...(flagged.length
-      ? [`Resolved on forge but still present: ${flagged.map((f) => f.id).join(", ")}.`]
-      : []),
-    ...(pass.signoff ? [pass.signoff.trim()] : []),
-  ].join("\n\n");
-  if (summaryWords(body) > SUMMARY_WORDS)
-    throw new AxiError(
-      `the summary is ${summaryWords(body)} words, over the ${SUMMARY_WORDS}-word budget`,
-      "VALIDATION_ERROR",
-      ["Cut reason, risk and change to leave room for counts and unresolved finding warnings"],
-    );
+  const update = {
+    first: !st.summary,
+    counts: sinceLastReview,
+    flagged: st.findings
+      .filter((f) => !f.open && decisions.get(f.id)?.status !== "fixed")
+      .map((f) => f.id),
+    reviewedAt: new Date().toISOString(),
+  };
+  const body = renderSummary(pass, marker, cr.author, open, update);
   const result: SyncResult = {
     summary: opts.dryRun ? "dry-run" : st.summary ? "edited" : "created",
     head: cr.head,
@@ -338,8 +330,9 @@ export async function sync(
       assessment.status === "fixed" && f.open,
     );
   }
-  if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, body);
-  else await forge.postNote(repo, cr, body);
+  result.body = renderSummary(pass, marker, cr.author, open, update);
+  if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, result.body);
+  else await forge.postNote(repo, cr, result.body);
   return result;
 }
 

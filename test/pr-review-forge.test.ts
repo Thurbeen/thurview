@@ -982,6 +982,22 @@ for (const provider of ["github", "gitlab"] as const) {
           !c.args.join(" ").includes("notes/9"),
       );
     }
+    it("renders reassessment counts inside the compact update fold", async () => {
+      await setup();
+      const out = await run("fixed");
+      const summary = (await calls()).find((c) =>
+        /issues\/comments\/9|notes\/9/.test(c.args.join(" ")),
+      )!;
+      const body =
+        provider === "github"
+          ? JSON.parse(summary.body).body
+          : summary.args.find((a) => a.startsWith("body="))!.slice(5);
+      expect(out.sinceLastReview).toEqual({ resolved: 1, new: 0, stillOpen: 0 });
+      expect(body).toContain(
+        "<details>\n<summary>Since this review: 1 resolved · 0 new · 0 still open</summary>",
+      );
+      expect(body).not.toContain("Since last review:");
+    });
     it("fixed-then-resolved replies with code evidence before resolving", async () => {
       await setup();
       const out = await run("fixed");
