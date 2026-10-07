@@ -54,6 +54,8 @@ export interface FindingState {
   open: boolean;
   thread: string;
   url?: string;
+  messages: { author: string; body: string }[];
+  commit?: string;
 }
 
 export interface ReviewState {
@@ -63,6 +65,24 @@ export interface ReviewState {
   stop: string | null;
   /** The newest note id on the change request. */
   newest: string;
+}
+
+function hasFixedAssessment(finding: FindingState): boolean {
+  return finding.messages.some(({ body }) => {
+    const match = /^<!-- thurview-assessment (\{.*?\}) -->/.exec(body);
+    if (!match) return false;
+    try {
+      const marker = JSON.parse(match[1]!);
+      return (
+        marker?.id === finding.id &&
+        marker.status === "fixed" &&
+        typeof marker.head === "string" &&
+        marker.head.length > 0
+      );
+    } catch {
+      return false;
+    }
+  });
 }
 
 function maxId(...ids: string[]): string {
@@ -105,6 +125,8 @@ export async function readState(ctx: Ctx): Promise<ReviewState> {
       open: !t.resolved,
       thread: t.id,
       ...(t.url ? { url: t.url } : {}),
+      messages: t.messages.filter((m) => m.author === me),
+      ...(t.commit ? { commit: t.commit } : {}),
     });
   }
   const seen = summary?.marker.seen ?? "0";
@@ -165,31 +187,62 @@ export async function sync(
       "CONFLICT",
       [`Run \`thurview pr-review start --change ${cr.number}\` if the reader asked to resume`],
     );
-  // A finding resolved already - by an earlier run of this same pass, or by
-  // hand - is done; only an id never posted is a mistake.
-  const fixed = (pass.fixed ?? []).filter((id) => st.findings.some((x) => x.id === id && x.open));
-  for (const id of pass.fixed ?? []) {
-    if (!st.findings.some((x) => x.id === id))
-      throw new AxiError(`no open finding ${id} on this change request`, "NOT_FOUND", [
-        `The open ones: ${
-          st.findings
-            .filter((x) => x.open)
-            .map((x) => x.id)
-            .join(", ") || "none"
-        }`,
-        "Run `thurview pr-review status` for their ids",
+  const assessments = pass.assessments ?? [];
+  const decisions = new Map<string, (typeof assessments)[number]>();
+  for (const assessment of assessments) {
+    if (!st.findings.some((f) => f.id === assessment.id))
+      throw new AxiError(`no own finding ${assessment.id} on this change request`, "NOT_FOUND", [
+        "Run `thurview pr-review status` for the findings to reassess",
       ]);
+    if (decisions.has(assessment.id) || !assessment.evidence.trim())
+      throw new AxiError(
+        `finding ${assessment.id} needs one assessment with evidence`,
+        "VALIDATION_ERROR",
+        [
+          "Recheck the code and tests at pass.head; supply fixed, still-present or partial with evidence",
+        ],
+      );
+    decisions.set(assessment.id, assessment);
   }
+  for (const id of pass.fixed ?? []) {
+    if (decisions.get(id)?.status !== "fixed")
+      throw new AxiError(
+        `finding ${id} needs a fixed assessment with evidence`,
+        "VALIDATION_ERROR",
+        ["Replace the fixed ID list with assessments after checking the current head"],
+      );
+  }
+  for (const finding of st.findings) {
+    // A failed pass may already have posted its new findings at this head.
+    // Replaying those same findings is itself a still-present assessment.
+    const replayed = (pass.findings ?? []).find((f) => findingId(f) === finding.id);
+    if (!decisions.has(finding.id) && finding.commit === cr.head && replayed)
+      decisions.set(finding.id, {
+        id: finding.id,
+        status: "still-present",
+        evidence: replayed.body || replayed.title,
+      });
+    if (!decisions.has(finding.id))
+      throw new AxiError(
+        `finding ${finding.id} has not been reassessed at ${cr.head}`,
+        "VALIDATION_ERROR",
+        [
+          "Recheck every own finding, including resolved threads, at pass.head and add its assessment",
+        ],
+      );
+  }
+  const fixed = st.findings
+    .filter((f) => decisions.get(f.id)?.status === "fixed" && (f.open || !hasFixedAssessment(f)))
+    .map((f) => f.id);
   const fresh: { id: string; f: Finding }[] = [];
   const duplicates: string[] = [];
   for (const f of pass.findings ?? []) {
     const id = findingId(f);
-    if (st.findings.some((x) => x.id === id && x.open) || fresh.some((x) => x.id === id))
-      duplicates.push(id);
+    if (st.findings.some((x) => x.id === id) || fresh.some((x) => x.id === id)) duplicates.push(id);
     else fresh.push({ id, f });
   }
   const open: OpenFinding[] = [
-    ...st.findings.filter((x) => x.open && !fixed.includes(x.id)),
+    ...st.findings.filter((x) => decisions.get(x.id)?.status !== "fixed"),
     ...fresh.map(({ id, f }) => ({ ...f, id })),
   ];
   const blocking = open.filter((x) => x.severity === "blocking").length;
@@ -207,14 +260,27 @@ export async function sync(
     state: "active",
     seen: maxId(st.newest, st.summary?.marker.seen ?? "0"),
   };
+  const tag = (id: string, status: string) =>
+    `<!-- thurview-assessment ${JSON.stringify({ id, head: cr.head, status })} -->`;
   const sinceLastReview = {
-    resolved: fixed.length,
-    new: fresh.length,
-    stillOpen: st.findings.filter((x) => x.open && !fixed.includes(x.id)).length,
+    resolved: st.findings.filter(
+      (f) =>
+        decisions.get(f.id)?.status === "fixed" &&
+        (f.open ||
+          !hasFixedAssessment(f) ||
+          f.messages.some((m) => m.body.startsWith(tag(f.id, "fixed")))),
+    ).length,
+    new: fresh.length + st.findings.filter((f) => f.commit === cr.head).length,
+    stillOpen: st.findings.filter(
+      (f) => f.commit !== cr.head && decisions.get(f.id)?.status !== "fixed",
+    ).length,
   };
   const update = {
     first: !st.summary,
     counts: sinceLastReview,
+    flagged: st.findings
+      .filter((f) => !f.open && decisions.get(f.id)?.status !== "fixed")
+      .map((f) => f.id),
     reviewedAt: new Date().toISOString(),
   };
   const body = renderSummary(pass, marker, cr.author, open, update);
@@ -231,6 +297,11 @@ export async function sync(
   };
   if (opts.dryRun) return result;
 
+  const latest = await forge.get(repo, cr.number);
+  if (latest.head !== cr.head || latest.state !== "open")
+    throw new AxiError("the change request moved while reading findings", "CONFLICT", [
+      "Fetch and review its new head, then create a fresh pass",
+    ]);
   for (const { id, f } of fresh) {
     const url = await forge.comment(repo, cr, {
       path: f.path,
@@ -241,15 +312,24 @@ export async function sync(
     });
     if (url) open.find((x) => x.id === id)!.url = url;
   }
-  const reply = `Fixed in ${cr.head.slice(0, 7)}.${pass.signoff ? `\n\n${pass.signoff}` : ""}`;
-  for (const id of fixed)
+
+  for (const f of st.findings) {
+    const assessment = decisions.get(f.id)!;
+    if (assessment.status === "still-present") continue;
+    const label = assessment.status === "fixed" ? "Fixed" : "Partly fixed; still open";
+    const reply = `${tag(f.id, assessment.status)}\n${label} at ${cr.head}: ${assessment.evidence.trim()}${pass.signoff ? `\n\n${pass.signoff}` : ""}`;
+    // A reply may have succeeded before resolution failed. Retry the resolution
+    // without posting the same evidence twice, even when the author replied.
+    const replied = f.messages.some((m) => m.body.startsWith(tag(f.id, assessment.status)));
+    if (assessment.status === "fixed" && !f.open && hasFixedAssessment(f)) continue;
     await forge.reply(
       repo,
       cr,
-      st.findings.find((x) => x.id === id && x.open)!.thread,
-      reply,
-      true,
+      f.thread,
+      replied ? undefined : reply,
+      assessment.status === "fixed" && f.open,
     );
+  }
   result.body = renderSummary(pass, marker, cr.author, open, update);
   if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, result.body);
   else await forge.postNote(repo, cr, result.body);

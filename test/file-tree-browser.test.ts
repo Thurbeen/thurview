@@ -193,6 +193,9 @@ describe.skipIf(!browserBin)("file explorer in the reader", { timeout: 30_000 },
     explainerSnapshot = join(scratch, "explainer.html");
     await cli(["export", "--review", explainer.id, "--out", explainerSnapshot]);
     browser = await launchBrowser(join(scratch, "profile"));
+    // Cold navigation can outlast a test's default readiness budget.
+    const ready = await page();
+    await ready.close();
   }, 150000);
   afterAll(async () => {
     await browser?.close();

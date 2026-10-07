@@ -68,6 +68,15 @@ const PassSchema = z.object({
   signoff: z.string().optional(),
   findings: z.array(Finding).default([]),
   fixed: z.array(z.string()).default([]),
+  assessments: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        status: z.enum(["fixed", "still-present", "partial"]),
+        evidence: z.string().trim().min(1),
+      }),
+    )
+    .default([]),
 });
 
 export type Finding = z.input<typeof Finding>;

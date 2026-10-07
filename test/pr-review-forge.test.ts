@@ -275,12 +275,21 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
     const file = join(bin, "pass.json");
     await writeFile(
       file,
-      JSON.stringify({ ...PASS, confidence: 5, findings: [], fixed: ["loop"] }),
+      JSON.stringify({
+        ...PASS,
+        confidence: 5,
+        findings: [],
+        assessments: [
+          { id: "loop", status: "fixed", evidence: "Checked the retry test at this head." },
+        ],
+      }),
     );
     const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
     expect(out["resolved"]).toEqual(["loop"]);
     const reply = (await calls()).find((c) => c.args.join(" ").includes("ThreadReply"))!;
-    expect(reply.args).toContain(`body=Fixed in ${HEAD.slice(0, 7)}.\n\n— the agent`);
+    expect(reply.args.join(" ")).toContain(
+      `Fixed at ${HEAD}: Checked the retry test at this head.`,
+    );
   });
 
   it("ends on a merge, and says so in the summary", async () => {
@@ -848,3 +857,315 @@ describe("compact summary lifecycle", { timeout: 30_000 }, () => {
     },
   );
 });
+
+for (const provider of ["github", "gitlab"] as const) {
+  describe(`finding reassessment on ${provider}`, { timeout: 30_000 }, () => {
+    async function setup(resolved = false, moved = false, previousReply?: string) {
+      const body =
+        '<!-- thurview-finding {"id":"loop","category":"bug","severity":"blocking"} -->\n**Bug · blocking:** Loops.';
+      const other = body.replace('"loop"', '"other"');
+      if (provider === "github") {
+        const thread = (id: string, author: string, text: string) => ({
+          id,
+          isResolved: resolved,
+          isOutdated: moved,
+          path: "src/upload.ts",
+          line: moved ? 62 : 42,
+          originalLine: 42,
+          diffSide: "RIGHT",
+          comments: {
+            nodes: [
+              { author: { login: author }, body: text, originalCommit: { oid: OLD }, url: "u" },
+              ...(previousReply && author === "bot"
+                ? [{ author: { login: "bot" }, body: previousReply, url: "u" }]
+                : []),
+              { author: { login: "dev" }, body: "Please check the fix.", url: "u" },
+            ],
+          },
+        });
+        await fixtures([
+          { cli: "gh", match: ["addPullRequestReviewThreadReply"], body: {} },
+          { cli: "gh", match: ["resolveReviewThread"], body: {} },
+          { cli: "gh", match: ["issues/comments/9", "PATCH"], body: {} },
+          {
+            cli: "gh",
+            match: ["issues/7/comments", "--paginate"],
+            body: [[{ id: 9, user: { login: "bot" }, body: SUMMARY(OLD) }]],
+          },
+          {
+            cli: "gh",
+            match: ["graphql"],
+            body: {
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviews: { nodes: [] },
+                    reviewThreads: {
+                      nodes: [thread("PRRT_1", "bot", body), thread("PRRT_2", "someone", other)],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+          { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+        ]);
+      } else {
+        const thread = (id: string, author: string, text: string) => ({
+          id,
+          notes: [
+            {
+              id: 20,
+              body: text,
+              system: false,
+              resolvable: true,
+              resolved,
+              author: { username: author },
+              position: { new_path: "src/upload.ts", new_line: moved ? 62 : 42, head_sha: OLD },
+            },
+            ...(previousReply && author === "bot"
+              ? [{ id: 22, body: previousReply, system: false, author: { username: "bot" } }]
+              : []),
+            { id: 21, body: "Please check the fix.", system: false, author: { username: "dev" } },
+          ],
+        });
+        await fixtures([
+          { cli: "glab", match: ["discussions/d1/notes", "POST"], body: {} },
+          { cli: "glab", match: ["discussions/d1", "PUT"], body: {} },
+          { cli: "glab", match: ["notes/9", "PUT"], body: {} },
+          { cli: "glab", match: ["auth", "status"], body: "" },
+          { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+          {
+            cli: "glab",
+            match: ["merge_requests/7/discussions?", "--paginate"],
+            body: ndjson(thread("d1", "bot", body), thread("d2", "someone", other)),
+          },
+          { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+          {
+            cli: "glab",
+            match: ["merge_requests/7/notes?", "--paginate"],
+            body: ndjson({ id: 9, body: SUMMARY(OLD), author: { username: "bot" } }),
+          },
+          { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+        ]);
+      }
+    }
+    async function run(status: string, extra: Record<string, unknown> = {}, code = 0) {
+      const file = join(bin, "pass.json");
+      await writeFile(
+        file,
+        JSON.stringify({
+          ...PASS,
+          findings: [],
+          confidence: status === "fixed" ? 5 : 2,
+          assessments: [
+            {
+              id: "loop",
+              status,
+              evidence: "src/upload.ts:62 returns on 4xx; checked the retry test at this head.",
+            },
+          ],
+          ...extra,
+        }),
+      );
+      return cli(
+        ["pr-review", "sync", "--change", "7", "--file", file],
+        provider === "github" ? github : gitlab,
+        code,
+      );
+    }
+    function mutations(logged: Awaited<ReturnType<typeof calls>>) {
+      return logged.filter(
+        (c) =>
+          /ThreadReply|resolveReviewThread|--method (POST|PUT)/.test(c.args.join(" ")) &&
+          !c.args.join(" ").includes("notes/9"),
+      );
+    }
+    it("renders reassessment counts inside the compact update fold", async () => {
+      await setup();
+      const out = await run("fixed");
+      const summary = (await calls()).find((c) =>
+        /issues\/comments\/9|notes\/9/.test(c.args.join(" ")),
+      )!;
+      const body =
+        provider === "github"
+          ? JSON.parse(summary.body).body
+          : summary.args.find((a) => a.startsWith("body="))!.slice(5);
+      expect(out.sinceLastReview).toEqual({ resolved: 1, new: 0, stillOpen: 0 });
+      expect(body).toContain(
+        "<details>\n<summary>Since this review: 1 resolved · 0 new · 0 still open</summary>",
+      );
+      expect(body).not.toContain("Since last review:");
+    });
+    it("fixed-then-resolved replies with code evidence before resolving", async () => {
+      await setup();
+      const out = await run("fixed");
+      expect(out.resolved).toEqual(["loop"]);
+      const changes = mutations(await calls());
+      expect(changes).toHaveLength(2);
+      expect(changes[0]!.args.join(" ")).toContain("src/upload.ts:62 returns on 4xx");
+      expect(changes[0]!.args.join(" ")).toContain(HEAD);
+      expect(changes[1]!.args.join(" ")).toMatch(/resolveReviewThread|resolved=true/);
+    });
+    it("confirms author-resolved findings once and retains same-head counts", async () => {
+      await setup(true);
+      const out = await run("fixed");
+      expect(out.resolved).toEqual(["loop"]);
+      expect(out.sinceLastReview).toEqual({ resolved: 1, new: 0, stillOpen: 0 });
+      const changes = mutations(await calls());
+      expect(changes).toHaveLength(1);
+      expect(changes[0]!.args.join(" ")).toContain("src/upload.ts:62 returns on 4xx");
+      expect(changes[0]!.args.join(" ")).toContain(HEAD);
+      expect(changes[0]!.args.join(" ")).not.toMatch(/resolveReviewThread|resolved=true/);
+      const reply = changes[0]!.args.find((a) => a.startsWith("body="))!.slice(5);
+      await setup(true, false, reply);
+      await rm(log, { force: true });
+      const retry = await run("fixed");
+      expect(mutations(await calls())).toHaveLength(0);
+      expect(retry.sinceLastReview).toEqual(out.sinceLastReview);
+      await setup(true, false, reply.replace(HEAD, OLD));
+      await rm(log, { force: true });
+      const later = await run("fixed");
+      expect(mutations(await calls())).toHaveLength(0);
+      expect(later.sinceLastReview).toEqual({ resolved: 0, new: 0, stillOpen: 0 });
+    });
+    it("a partial assessment cannot suppress confirmation of an author-resolved fix", async () => {
+      const partial = `<!-- thurview-assessment ${JSON.stringify({ id: "loop", head: OLD, status: "partial" })} -->\nPartly fixed; still open.`;
+      await setup(true, false, partial);
+      const out = await run("fixed");
+      expect(out.sinceLastReview).toEqual({ resolved: 1, new: 0, stillOpen: 0 });
+      expect(mutations(await calls())).toHaveLength(1);
+    });
+    it("retries resolution without a second evidence reply and retains counts", async () => {
+      await setup();
+      const table = JSON.parse(await readFile(responses, "utf8"));
+      const resolve = table.find(
+        (e: any) =>
+          e.match.includes(provider === "github" ? "resolveReviewThread" : "discussions/d1") &&
+          (provider === "github" || e.match.includes("PUT")),
+      );
+      resolve.fail = true;
+      await fixtures(table);
+      await run("fixed", {}, 1);
+      const logged = await calls();
+      expect(logged.some((c) => /issues\/comments\/9|notes\/9/.test(c.args.join(" ")))).toBe(false);
+      const reply = mutations(logged)[0]!
+        .args.find((a) => a.startsWith("body="))!
+        .slice(5);
+      await setup(false, false, reply);
+      await rm(log, { force: true });
+      const out = await run("fixed");
+      expect(mutations(await calls())).toHaveLength(1);
+      expect(out.sinceLastReview).toEqual({ resolved: 1, new: 0, stillOpen: 0 });
+      await setup(true, false, reply);
+      await rm(log, { force: true });
+      const retry = await run("fixed");
+      expect(mutations(await calls())).toHaveLength(0);
+      expect(retry.sinceLastReview).toEqual(out.sinceLastReview);
+    });
+    it("retries a first pass after posting its finding but failing its summary", async () => {
+      await setup();
+      const table = JSON.parse(await readFile(responses, "utf8"));
+      if (provider === "github") {
+        table.find((e: any) =>
+          e.match.includes("graphql"),
+        ).body.data.repository.pullRequest.reviewThreads.nodes[0].comments.nodes[0].originalCommit.oid =
+          HEAD;
+        table.find((e: any) => e.match.includes("issues/7/comments")).body = [[]];
+        table.unshift({
+          cli: "gh",
+          match: ["issues/7/comments", "POST"],
+          body: { id: 9, body: "", user: null },
+        });
+      } else {
+        const discussions = table.find((e: any) =>
+          e.match.includes("merge_requests/7/discussions?"),
+        );
+        discussions.body = discussions.body.replace(OLD, HEAD);
+        table.find((e: any) => e.match.includes("merge_requests/7/notes?")).body = "";
+        table.unshift({
+          cli: "glab",
+          match: ["merge_requests/7/notes", "POST"],
+          body: { id: 9, body: "", author: null },
+        });
+      }
+      await fixtures(table);
+      const out = await run("still-present", {
+        assessments: [],
+        findings: [{ ...PASS.findings[0], id: "loop" }],
+      });
+      expect(out.pass.open).toBe(1);
+      expect(out.sinceLastReview).toEqual({ resolved: 0, new: 1, stillOpen: 0 });
+      expect(out.posted).toBe("0 (no new finding)");
+      expect(
+        mutations(await calls()).filter((c) =>
+          /ThreadReply|discussions\/d1/.test(c.args.join(" ")),
+        ),
+      ).toHaveLength(0);
+    });
+    it("still-present-stays-open and counts the same pass", async () => {
+      await setup();
+      const out = await run("still-present", {});
+      expect(out.pass.open).toBe(1);
+      expect(out.sinceLastReview).toEqual({ resolved: 0, new: 0, stillOpen: 1 });
+      expect(mutations(await calls())).toHaveLength(0);
+    });
+    it("moved lines match the original finding thread despite replies", async () => {
+      await setup(false, true);
+      const out = await run("fixed");
+      expect(out.resolved).toEqual(["loop"]);
+      expect(
+        mutations(await calls())
+          .map((c) => c.args.join(" "))
+          .join("\n"),
+      ).toContain(provider === "github" ? "PRRT_1" : "discussions/d1");
+    });
+    it("partial fix replies with what remains and leaves the thread open", async () => {
+      await setup();
+      const out = await run("partial", {
+        assessments: [
+          {
+            id: "loop",
+            status: "partial",
+            evidence: "4xx returns now; the timeout path still retries forever.",
+          },
+        ],
+      });
+      expect(out.pass.open).toBe(1);
+      const changes = mutations(await calls());
+      expect(changes).toHaveLength(1);
+      expect(changes[0]!.args.join(" ")).toContain("timeout path still retries forever");
+    });
+    it("author-resolved but still broken is flagged in the summary", async () => {
+      await setup(true);
+      const out = await run("still-present");
+      expect(out.pass.open).toBe(1);
+      const edits = (await calls()).filter((c) =>
+        /issues\/comments\/9|notes\/9/.test(c.args.join(" ")),
+      );
+      expect(edits.map((c) => c.body || c.args.join(" ")).join("\n")).toContain(
+        "Resolved on forge but still present: loop",
+      );
+    });
+    it("threads from others are left alone even when their marker is copied", async () => {
+      await setup();
+      const out = await run(
+        "fixed",
+        {
+          assessments: [{ id: "other", status: "fixed", evidence: "Checked at head." }],
+          confidence: 2,
+        },
+        1,
+      );
+      expect(out.error).toContain("other");
+      expect(mutations(await calls())).toHaveLength(0);
+    });
+    it("rejects a follow pass that omits reassessment before writing", async () => {
+      await setup();
+      const out = await run("fixed", { assessments: [], confidence: 2 }, 2);
+      expect(out.error).toContain("loop");
+      expect(mutations(await calls())).toHaveLength(0);
+    });
+  });
+}

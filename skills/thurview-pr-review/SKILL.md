@@ -92,8 +92,13 @@ thurview pr-review status --change <ref>
 ```
 
 It prints the change request's head and base, the head the last pass reviewed
-(`review.reviewedHead`), every open finding with its `id`, and the categories
-and confidence scale below. A stopped review stays stopped: do not sync it.
+(`review.reviewedHead`), every open finding with its `id`, and `reassess`
+with all of this account's findings (including resolved threads). It also
+prints the categories and confidence scale below. If `reassess` is missing,
+run `thurview update` and retry once. If it is still missing, stop and report
+that this command does not support finding assessments; do not sync through
+an older command that could ignore them. A stopped review stays stopped:
+do not sync it.
 
 ## 2. Review only what moved
 
@@ -108,8 +113,14 @@ recipes in [Searching the code](../thurview/references/searching.md). The eviden
 a problem just as present at the base is not this change's finding, and a
 finding that rests on "no callers" says which search found none.
 
-Then decide each open finding against the new head: **fixed**, or **still
-valid** (do nothing - its thread stays open and is not posted again).
+On **every push**, recheck every own finding in `reassess` against the full
+new head, even if its lines moved, someone replied, or the author resolved
+its thread. Read the code at that commit and run the relevant reproducer or
+test; a changed line or a resolved flag alone is not evidence. Record one
+assessment per finding: **fixed**, **still-present**, or **partial**. Evidence
+names the code or test checked, what changed, and for partial fixes what
+remains. Never assess another account's thread. The CLI requires these
+assessments; it does not judge arbitrary source code itself.
 
 ## 3. Findings
 
@@ -191,8 +202,8 @@ push and publish again before syncing.
 
 ## 5. Sync
 
-Write `pass.json` for this head. `findings` holds only what is new; `fixed`
-holds the ids of open findings this push fixed:
+Write `pass.json` for this head. `findings` holds only what is new; `assessments`
+holds a decision and evidence for every own finding returned by `reassess`:
 
 ```json
 {
@@ -216,7 +227,13 @@ holds the ids of open findings this push fixed:
       "suggestion": "if (res.status < 500) return res;"
     }
   ],
-  "fixed": ["3f2a9c1b07"]
+  "assessments": [
+    {
+      "id": "3f2a9c1b07",
+      "status": "fixed",
+      "evidence": "src/upload.ts now returns on a 4xx; the retry test passes at this head."
+    }
+  ]
 }
 ```
 
@@ -248,6 +265,19 @@ holds the ids of open findings this push fixed:
   `sync` counts the inputs before rendering, so Markdown or HTML cannot hide
   words from the budget, and rejects excess prose before writing anything.
   Cut to what the author acts on.
+- `assessments` requires one entry per existing own finding, including
+  resolved ones, with nonempty `evidence`. `status` is `fixed`, `still-present`
+  or `partial`. Bare `fixed` IDs cannot resolve a thread. A fixed assessment
+  replies with the commit and evidence before resolving. An author-resolved
+  thread still receives its first fixed confirmation and counts as resolved.
+  A closed thread with an own fixed confirmation is not replied to again on
+  later heads; same-head retries retain its count. A partial assessment replies
+  with what remains and leaves the thread open.
+  Still-present findings stay open. Resolved threads whose findings persist
+  are flagged in the summary and still count against confidence. Resolution
+  failures leave the old summary intact; retrying does not duplicate replies.
+  Replaying a pass's new findings already posted at that same head supplies
+  their still-present decision, so a failed first pass can also be retried.
 - A finding's `title` is the claim in one line, `body` the fix. Title, body
   and sign-off together fit five lines. `suggestion` replaces the lines from
   `startLine` to `line` and is optional.

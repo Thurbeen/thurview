@@ -2252,13 +2252,20 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
               title: f.title,
             }))
           : "0 (no open finding)",
+        reassess: st.findings.map((f) => ({
+          id: f.id,
+          open: f.open,
+          thread: f.thread,
+          title: f.title,
+          at: f.path ? `${f.path}:${f.line ?? ""}` : "",
+        })),
         categories: Object.fromEntries(
           Object.entries(CATEGORIES).map(([k, v]) => [k, v.definition]),
         ),
         confidence: CONFIDENCE,
         help: [
           st.summary && st.summary.marker.head !== ctx.cr.head
-            ? `Review only \`git diff ${st.summary.marker.head.slice(0, 12)} ${ctx.cr.head.slice(0, 12)}\`, then decide each open finding: still valid, or fixed`
+            ? `Review only \`git diff ${st.summary.marker.head.slice(0, 12)} ${ctx.cr.head.slice(0, 12)}\`, then recheck every own finding, including resolved threads: fixed, still-present or partial with evidence`
             : `Review \`git diff ${ctx.cr.base.slice(0, 12)} ${ctx.cr.head.slice(0, 12)}\``,
           `Write the pass file and run \`thurview pr-review sync --change ${ctx.cr.number} --file <pass.json> --dry-run\``,
         ],
