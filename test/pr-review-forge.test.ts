@@ -781,4 +781,21 @@ describe("repository auto-merge opt-in", { timeout: 30_000 }, () => {
       expect((await calls()).some((c) => c.args.includes("--disable-auto"))).toBe(cancel);
     },
   );
+  it("keeps fixture responses readable while parallel CLI calls advance a sequence", async () => {
+    await fixtures([
+      {
+        cli: "gh",
+        match: ["api", "user"],
+        sequence: Array.from({ length: 20 }, () => ({ login: "bot" })),
+      },
+      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["unused"], body: "x".repeat(1_000_000) },
+    ]);
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () => cli(["pr-review", "status", "--change", "7"], github)),
+    );
+    expect(results.every((out) => out["change"].head === HEAD)).toBe(true);
+  });
 });
