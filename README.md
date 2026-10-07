@@ -287,6 +287,8 @@ bar.
 | `thurview info [--all]`                                 | Reviews, explainers and designs bound to this worktree                |
 | `thurview publish --review ID [--view T] [--open]`      | Validate the document and map, seal a revision                        |
 | `thurview open --review ID [--view T]`                  | Start the server if needed and open the browser                       |
+| `thurview publish-static <id> --out snapshot`           | Render HTML and downloadable reader feedback Markdown                 |
+| `thurview publish-static <id> --to cloudflare`          | Refresh a durable public snapshot and retain earlier links            |
 | `thurview export --review ID --out PATH [--no-threads]` | Write the published revision as one static HTML file, no server       |
 | `thurview wait --review ID [--timeout S]`               | Block until the reader needs the agent                                |
 | `thurview threads list\|get\|reply\|resolve`            | Read and answer threads                                               |
@@ -360,6 +362,50 @@ an unmatched host is refused rather than guessed. The differences that survive
 the seam - GitLab has no changes-requested state, no atomic review and no
 multi-line comment anchor - are listed in
 [skills/thurview-fix/references/forges.md](skills/thurview-fix/references/forges.md).
+
+## Cloudflare snapshots
+
+Create `~/.thurview/cloudflare.json` (or pass `--config <file>`):
+
+```json
+{
+  "name": "thurview-reviews",
+  "publicUrl": "https://thurview-reviews.thurbeen.workers.dev",
+  "allowLiveLink": false
+}
+```
+
+Install Wrangler and authenticate with `wrangler login`, or set
+`CLOUDFLARE_API_TOKEN`. An optional `account_id` belongs only in this local
+configuration; credentials never go in it.
+
+```sh
+thurview publish-static <id> --out snapshot
+thurview publish-static <id> --to cloudflare --initialize-archive
+```
+
+Use `--initialize-archive` once, only for a Worker with no existing snapshots.
+Later runs omit it. A lost archive must be restored; the command refuses to
+initialize when stored review URLs identify an existing publication.
+
+The HTML uses the same read-only UI as `export`, with walkthrough, diff,
+code peeks, Map and sent reader threads. `feedback.md` contains the Markdown
+exporter from PR #49, filtering unsubmitted drafts from public downloads.
+Shared threads from before the first publish are labelled as unpublished
+draft context. The banner names the sealed revision and commit.
+The live review link is omitted unless `allowLiveLink` is true.
+
+The command prints `snapshot.url` and records `staticSnapshot` in the review's
+separate `static.json`, so recording a URL never rewrites revision state.
+Repeating it updates the same random path. Read the recorded URL with
+`thurview info --fields staticSnapshot`. Back up `~/.thurview/static/`:
+each deployment uploads its complete retained asset archive through
+`wrangler deploy`. Keep one publishing store per Worker; do not deploy from
+a different machine or delete that archive. A local lock serializes deploys;
+a missing or incomplete archive refuses deployment. Changing the public
+hostname keeps the same archive and paths. Restore the archive after a lost
+store, and remove `deploy.lock` only after verifying its publisher has stopped.
+This uses Workers static assets, without another service or runtime Worker.
 
 ## Authoring format
 

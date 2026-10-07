@@ -38,6 +38,8 @@ export interface FileLines {
  * the page is served, which is every other time.
  */
 export interface Snapshot {
+  banner?: { revision: number; sha: string; liveUrl?: string };
+  markdown?: string;
   payload: Payload;
   commits: Commit[];
   diffs: Record<string, FileDiff>;

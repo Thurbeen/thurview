@@ -144,9 +144,16 @@ holds the ids of open findings this push fixed:
 - A finding's `title` is the claim in one line, `body` the fix. Title, body
   and sign-off together fit five lines. `suggestion` replaces the lines from
   `startLine` to `line` and is optional.
-- `reviewUrl` links the full rendered review. When the user has a publish
-  target - `thurview export --out <folder>` into a Pages folder or a static
-  host they serve - publish there and pass its URL. With none, leave it out.
+- `reviewUrl` links the full rendered review. After serving a thurview
+  document, run `thurview publish-static <id> --to cloudflare` when a
+  Cloudflare target is configured and use `snapshot.url` here. Refresh it
+  after each revision and any reader feedback you want to include. The
+  recorded `staticSnapshot.url` is reusable on later passes; read it with
+  `thurview info --all --fields staticSnapshot`. Never put a
+  private live-server hostname in a public summary. With another static
+  target, export and publish there; with none, leave it out. Configuration
+  and retention are in
+  [Lifecycle](../thurview/references/lifecycle.md).
 
 ```sh
 thurview pr-review sync --change <ref> --file pass.json --dry-run

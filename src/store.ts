@@ -44,6 +44,7 @@ export interface ReviewState {
   /** presented (sealed) revision number; 0 when nothing is published */
   revision: number;
   dismissed: boolean;
+  staticSnapshot?: { url: string; revision: number; target?: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -183,7 +184,13 @@ export function kindOf(r: Pick<ReviewState, "kind">): DocumentKind {
 }
 
 export async function readReview(id: string): Promise<ReviewState | null> {
-  return readJson<ReviewState>(join(reviewDir(id), "review.json"));
+  const review = await readJson<ReviewState>(join(reviewDir(id), "review.json"));
+  if (!review) return null;
+  const snapshot = await readJson<ReviewState["staticSnapshot"]>(
+    join(reviewDir(id), "static.json"),
+  );
+  if (snapshot) review.staticSnapshot = snapshot;
+  return review;
 }
 
 export async function writeReview(state: ReviewState): Promise<void> {

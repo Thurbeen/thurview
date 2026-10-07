@@ -1,3 +1,4 @@
+import { renderStatic, publishStatic } from "./static.js";
 import {
   runAxiCli,
   AxiError,
@@ -217,6 +218,8 @@ async function reviewRow(r: ReviewState, fields: Set<string>): Promise<Out> {
   if (fields.has("all") || fields.has("dismissed")) row["dismissed"] = r.dismissed;
   if (fields.has("all") || fields.has("updatedAt")) row["updatedAt"] = r.updatedAt;
   if (fields.has("all") || fields.has("uuid")) row["uuid"] = r.id;
+  if (fields.has("all") || fields.has("staticSnapshot"))
+    row["staticSnapshot"] = r.staticSnapshot ?? null;
   return row;
 }
 
@@ -634,7 +637,7 @@ const SPECS: Record<
       all: { kind: "boolean", help: "every review, not only this worktree" },
       fields: {
         kind: "string",
-        help: "extra columns: binding,pins,worktree,inSync,dismissed,updatedAt,uuid or all",
+        help: "extra columns: binding,pins,worktree,inSync,dismissed,updatedAt,uuid,staticSnapshot or all",
       },
     },
     examples: ["thurview info", "thurview info --all --fields pins,inSync"],
@@ -662,6 +665,29 @@ const SPECS: Record<
       },
     },
     examples: ["thurview open", "thurview open --review <id> --view map --no-browser"],
+  },
+  "publish-static": {
+    description:
+      "Render a read-only snapshot, optionally deploy the retained archive to Cloudflare",
+    args: "[<review>]",
+    flags: {
+      review: { kind: "string", help: "document id or unique prefix" },
+      out: { kind: "string", help: "render locally to this directory without deploying" },
+      to: { kind: "string", help: "deployment target (cloudflare)" },
+      "initialize-archive": {
+        kind: "boolean",
+        help: "initialize only a Worker with no existing snapshots; never use after losing an archive",
+      },
+      config: {
+        kind: "string",
+        help: "Cloudflare target JSON (default: THURVIEW_HOME/cloudflare.json)",
+      },
+    },
+    examples: [
+      "thurview publish-static <id> --out snapshot",
+      "thurview publish-static <id> --to cloudflare",
+      "thurview publish-static <id> --to cloudflare --initialize-archive",
+    ],
   },
   export: {
     description:
@@ -1344,6 +1370,38 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     };
   },
 
+  async "publish-static"(args) {
+    const p = parseFlags("publish-static", args, spec("publish-static").flags, 1);
+    const review = await resolveReview(str(p, "review") ?? p.positional[0], { terminal: true });
+    const out = str(p, "out");
+    const to = str(p, "to");
+    if (
+      (to && to !== "cloudflare") ||
+      (!out && !to) ||
+      (out && to) ||
+      (bool(p, "initialize-archive") && !to)
+    )
+      throw new AxiError("choose --out <directory> or --to cloudflare", "VALIDATION_ERROR", [
+        "thurview publish-static <id> --out snapshot",
+        "thurview publish-static <id> --to cloudflare",
+      ]);
+    try {
+      return {
+        snapshot: out
+          ? await renderStatic(review, resolve(out))
+          : await publishStatic(
+              review,
+              str(p, "config") ?? join(home(), "cloudflare.json"),
+              bool(p, "initialize-archive"),
+            ),
+        help: ["Run `thurview publish-static <id> --to cloudflare` to refresh the public snapshot"],
+      };
+    } catch (e) {
+      throw new AxiError((e as Error).message, "VALIDATION_ERROR", [
+        "Publish a revision first and configure THURVIEW_HOME/cloudflare.json; run `thurview publish-static --help`",
+      ]);
+    }
+  },
   async export(args) {
     const p = parseFlags("export", args, spec("export").flags);
     const out = str(p, "out");

@@ -7,7 +7,10 @@ import { readThreads, type ReviewState } from "./store.js";
 import { NOBODY } from "./presence.js";
 import { revisionData, fileDiff, fileLines } from "./server/server.js";
 
-const UI_DIR = join(dirname(fileURLToPath(import.meta.url)), "ui");
+const HERE = dirname(fileURLToPath(import.meta.url));
+const UI_DIR = existsSync(join(HERE, "ui", "app.js"))
+  ? join(HERE, "ui")
+  : resolve(HERE, "..", "dist", "ui");
 
 /**
  * Where an exported page goes. One local path today: a file, or a folder that
@@ -127,11 +130,19 @@ function escapeHtml(s: string): string {
  */
 export async function exportReview(
   review: ReviewState,
-  opts: { threads: boolean },
+  opts: {
+    threads: boolean;
+    banner?: { revision: number; sha: string; liveUrl?: string };
+    markdown?: string;
+  },
 ): Promise<string> {
   if (!existsSync(join(UI_DIR, "app.js")))
     throw new Error(`the bundled UI is missing at ${UI_DIR}; run \`pnpm build\``);
-  const snap = await snapshot(review, opts.threads);
+  const snap = {
+    ...(await snapshot(review, opts.threads)),
+    banner: opts.banner,
+    markdown: opts.markdown,
+  };
   const js = (await readFile(join(UI_DIR, "app.js"), "utf8"))
     .replace(/\n\/\/# sourceMappingURL=.*\s*$/, "\n")
     .replace(/<\/script/gi, "<\\/script");
