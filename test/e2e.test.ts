@@ -225,7 +225,7 @@ describe("thurview end to end", () => {
       body: "Please address the open item.",
     });
     const output = join(home, "feedback.md");
-    const exported = await cli(["export", "--format", "md", id, "--format", "md", "--out", output]);
+    const exported = await cli(["export", "--format", "md", id, "--out", output]);
     expect(exported.export.threads).toBe(2);
     const markdown = await readFile(output, "utf8");
     const normalize = (text: string) =>
@@ -243,7 +243,7 @@ describe("thurview end to end", () => {
     const http = await api<Out>(`/api/reviews/${id}/export?revision=1`);
     expect(http.markdown).toBe(markdown);
     expect((await cli(["export", "--format", "md", "--review", id])).markdown).toBe(markdown);
-    const bad = await cli(["export", "--format", "md", id, "--format", "pdf"], { expectCode: 2 });
+    const bad = await cli(["export", id, "--format", "pdf"], { expectCode: 2 });
     expect(bad.error).toContain("md");
     await cli(["delete", "--review", id]);
   }, 30_000);

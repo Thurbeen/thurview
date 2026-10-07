@@ -692,7 +692,7 @@ const SPECS: Record<
   },
   export: {
     description:
-      "Write a published document to one self-contained HTML file that opens with no server",
+      "Export a published document as self-contained HTML or reader feedback as Markdown",
     args: "[<review>]",
     flags: {
       format: { kind: "string", help: "export format (html or md)", default: "html" },
@@ -703,7 +703,7 @@ const SPECS: Record<
       },
       out: {
         kind: "string",
-        help: "a .html file, or a folder to write index.html into (a Pages folder works)",
+        help: "HTML file/folder, or Markdown file (omit for Markdown in TOON)",
       },
       threads: {
         kind: "boolean",
@@ -712,6 +712,7 @@ const SPECS: Record<
     },
     examples: [
       "thurview export --out review.html",
+      "thurview export <id> --format md --out feedback.md",
       "thurview export --review <id> --out docs/reviews/auth --no-threads",
     ],
   },
@@ -1420,7 +1421,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         );
       } catch (e) {
         throw new AxiError((e as Error).message, "VALIDATION_ERROR", [
-          "Publish the document first, then run `thurview export --review <id>`",
+          "Publish the document first, then run `thurview export --review <id> --format md`",
         ]);
       }
       const output = str(p, "out");
@@ -1440,7 +1441,9 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       };
     }
     if (format !== "html")
-      throw new AxiError("export format must be md or html", "VALIDATION_ERROR", []);
+      throw new AxiError("export format must be md or html", "VALIDATION_ERROR", [
+        "Run `thurview export <id> --format md --out feedback.md`",
+      ]);
     const out = str(p, "out");
     if (!out)
       throw new AxiError("--out is required", "VALIDATION_ERROR", [
@@ -1866,7 +1869,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       // or a review the reader finished last week shadows the one in hand.
       const review = await resolveReview(str(p, "review")).catch((e) => {
         if (e instanceof AxiError && e.code === "NOT_FOUND")
-          return resolveReview(str(p, "review") ?? p.positional[0], { terminal: true });
+          return resolveReview(str(p, "review"), { terminal: true });
         throw e;
       });
       const t = await readThreads(review.id);
