@@ -2,7 +2,8 @@
 
 `thurview pr-review` drives the same seam as `thurview forge`: `gh api` for
 GitHub and `glab api` for GitLab, a self-hosted host owned by whichever CLI is
-authenticated for it. The seam has no merge, close or push, so neither does
+authenticated for it. Native auto-merge is the only merge operation, gated
+by the user-owned repository opt-in; approval, close and push stay outside
 this command.
 
 ## What each forge does
@@ -46,3 +47,12 @@ and title, which is how the same finding found on the next push is recognised.
 - The CLI sync accepts `reviewUrl` and `markdownUrl` without publishing them.
   The `thurview-pr-review` workflow performs the preflight, publish and link
   checks before calling sync, on either forge.
+
+## Native auto-merge
+
+GitHub uses `gh pr merge --auto --squash --match-head-commit <head>` and
+`gh pr merge --disable-auto`. GitLab uses `PUT .../merge` with
+`auto_merge=true`, `squash=true` and `sha=<head>`, and
+`POST .../cancel_merge_when_pipeline_succeeds` to cancel. Both obey the
+forge's required checks. GitLab support is tested through a stub CLI;
+live instance behavior has not been verified.

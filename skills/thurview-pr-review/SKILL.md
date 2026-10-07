@@ -41,9 +41,9 @@ $ARGUMENTS
 
 ## Never
 
-- Never approve, merge, close or push to the change request. The verdict is
-  the summary's confidence. The command has no verb for any of those, and you
-  do not reach around it with `gh` or `glab`.
+- Never approve, close or push to the change request. Only the repository
+  opt-in below authorizes native auto-merge through `pr-review sync`; never
+  reach around it with an immediate merge or a `gh`/`glab` fallback.
 - Never post a second summary. `sync` edits the one it finds.
 - Never post a finding you are not sure of. Leave it out and say in a risk
   bullet that something was not confirmed.
@@ -84,6 +84,39 @@ A summary must have both links on the first pass and every update. Do not
 post a partial summary with a missing link or a `pending` placeholder. Keep
 the interactive live URL private, and leave `allowLiveLink: false` in the
 cloud configuration so the snapshot cannot disclose it either.
+
+## Repository auto-merge opt-in
+
+Native auto-merge defaults to off. In the existing user-owned
+`${THURVIEW_HOME:-$HOME/.thurview}/publish.yaml` (beside the publish targets
+and their `allow_remotes`/`deny_remotes`), add:
+
+```yaml
+auto_merge:
+  method: squash
+  repositories: [] # exact host/owner/repo names; no globs
+```
+
+Only repositories explicitly listed here may enable auto-merge. Publishing
+scope does not grant merge authority; do not add repositories on the agent's
+own initiative. Squash is the only supported method. This setting also
+applies when snapshots use the separate `cloudflare.json` target.
+
+For a listed, open, non-draft change request, `sync` enables the forge's
+native auto-merge only at confidence 5/5 on the current head, with no open
+blocking or non-blocking findings of its own and no unresolved threads from
+any reviewer (including nits). It re-reads the head and threads before acting
+and guards the enable call with the reviewed commit. The forge still enforces
+its required checks; if its requirements are already met it may merge at once.
+A later pass below 5/5 disables existing auto-merge. `wait` also cancels it
+on a new head, unresolved thread or stop request. Cancellation happens when
+the CLI observes the change, so keep following while auto-merge is armed.
+Drafts and unlisted repositories receive no merge action.
+
+The summary's opening line states `auto-merge enabled at 5/5` or
+`auto-merge held: <reason>`; CLI sync returns the decision as
+`pass.autoMerge`. `--dry-run` previews it and changes nothing. If the forge
+rejects the request, stop and report the CLI error; never merge manually.
 
 ## 1. Where the review stands
 

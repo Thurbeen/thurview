@@ -106,6 +106,12 @@ Tailscale address.
 - **Cloudflare snapshots**: `~/.thurview/cloudflare.json`; see
   [setup](skills/thurview-pr-review/references/cloudflare-setup.md) and
   [public static snapshots](skills/thurview/references/lifecycle.md#public-static-snapshots).
+- **Auto-merge**: opt in by exact repository name in the user-owned
+  `publish.yaml`: `auto_merge: { method: squash, repositories: [] }`.
+  A listed repository enables native auto-merge only at confidence 5/5 on
+  the current head with no unresolved threads; later pushes, lower scores
+  or new threads cancel it when the CLI observes them. Drafts stay untouched.
+  See [the review workflow](skills/thurview-pr-review/SKILL.md#repository-auto-merge-opt-in).
 - **Your own cloud**: credentials, permissions and link expiry per provider are in
   [thurview-publish](skills/thurview-publish/SKILL.md).
 

@@ -74,7 +74,9 @@ environment sets them; the skill never does.
 
 The settings live in `${THURVIEW_HOME:-$HOME/.thurview}/publish.yaml`, the
 user's own file beside thurview's review store - never in a repository, and
-never in the exported page. Read it before anything else. When it is missing,
+never in the exported page. `auto_merge`, when present, is the independent repository opt-in owned by
+`thurview-pr-review`; preserve it when updating publish records. Read the file
+before anything else. When it is missing,
 ask the user for their target and its scope, write it, and show it to them.
 
 A user can have several targets - a personal one, a work one - each with its
