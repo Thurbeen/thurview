@@ -228,7 +228,9 @@ holds the ids of open findings this push fixed:
   anything touching security, data, infra or a public API; `change` is two or
   three sentences.
 - The compact summary opens with the next action and confidence on one line,
-  followed by the public review and Markdown links. Its two-column findings
+  followed by the public review and Markdown links. Stop, resume, merge and
+  close replace the action while keeping the reviewed confidence score. Its
+  two-column findings
   table lists severity, category and title beside a `file:line` thread link,
   blocking first. With zero findings it says `No open findings.` and omits
   the table. Full finding detail stays in the inline thread and review page.
