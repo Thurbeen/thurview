@@ -69,6 +69,24 @@ export interface ReviewState {
   newest: string;
 }
 
+function hasFixedAssessment(finding: FindingState): boolean {
+  return finding.messages.some(({ body }) => {
+    const match = /^<!-- thurview-assessment (\{.*?\}) -->/.exec(body);
+    if (!match) return false;
+    try {
+      const marker = JSON.parse(match[1]!);
+      return (
+        marker?.id === finding.id &&
+        marker.status === "fixed" &&
+        typeof marker.head === "string" &&
+        marker.head.length > 0
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
 function maxId(...ids: string[]): string {
   return ids.reduce((a, b) => (Number(b) > Number(a) ? b : a), "0");
 }
@@ -216,7 +234,7 @@ export async function sync(
       );
   }
   const fixed = st.findings
-    .filter((f) => f.open && decisions.get(f.id)?.status === "fixed")
+    .filter((f) => decisions.get(f.id)?.status === "fixed" && (f.open || !hasFixedAssessment(f)))
     .map((f) => f.id);
   const fresh: { id: string; f: Finding }[] = [];
   const duplicates: string[] = [];
@@ -250,7 +268,9 @@ export async function sync(
     resolved: st.findings.filter(
       (f) =>
         decisions.get(f.id)?.status === "fixed" &&
-        (f.open || f.messages.some((m) => m.body.startsWith(tag(f.id, "fixed")))),
+        (f.open ||
+          !hasFixedAssessment(f) ||
+          f.messages.some((m) => m.body.startsWith(tag(f.id, "fixed")))),
     ).length,
     new: fresh.length + st.findings.filter((f) => f.commit === cr.head).length,
     stillOpen: st.findings.filter(
@@ -309,13 +329,13 @@ export async function sync(
     // A reply may have succeeded before resolution failed. Retry the resolution
     // without posting the same evidence twice, even when the author replied.
     const replied = f.messages.some((m) => m.body.startsWith(tag(f.id, assessment.status)));
-    if (assessment.status === "fixed" && !f.open) continue;
+    if (assessment.status === "fixed" && !f.open && hasFixedAssessment(f)) continue;
     await forge.reply(
       repo,
       cr,
       f.thread,
       replied ? undefined : reply,
-      assessment.status === "fixed",
+      assessment.status === "fixed" && f.open,
     );
   }
   if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, body);

@@ -992,6 +992,35 @@ for (const provider of ["github", "gitlab"] as const) {
       expect(changes[0]!.args.join(" ")).toContain(HEAD);
       expect(changes[1]!.args.join(" ")).toMatch(/resolveReviewThread|resolved=true/);
     });
+    it("confirms author-resolved findings once and retains same-head counts", async () => {
+      await setup(true);
+      const out = await run("fixed");
+      expect(out.resolved).toEqual(["loop"]);
+      expect(out.sinceLastReview).toEqual({ resolved: 1, new: 0, stillOpen: 0 });
+      const changes = mutations(await calls());
+      expect(changes).toHaveLength(1);
+      expect(changes[0]!.args.join(" ")).toContain("src/upload.ts:62 returns on 4xx");
+      expect(changes[0]!.args.join(" ")).toContain(HEAD);
+      expect(changes[0]!.args.join(" ")).not.toMatch(/resolveReviewThread|resolved=true/);
+      const reply = changes[0]!.args.find((a) => a.startsWith("body="))!.slice(5);
+      await setup(true, false, reply);
+      await rm(log, { force: true });
+      const retry = await run("fixed");
+      expect(mutations(await calls())).toHaveLength(0);
+      expect(retry.sinceLastReview).toEqual(out.sinceLastReview);
+      await setup(true, false, reply.replace(HEAD, OLD));
+      await rm(log, { force: true });
+      const later = await run("fixed");
+      expect(mutations(await calls())).toHaveLength(0);
+      expect(later.sinceLastReview).toEqual({ resolved: 0, new: 0, stillOpen: 0 });
+    });
+    it("a partial assessment cannot suppress confirmation of an author-resolved fix", async () => {
+      const partial = `<!-- thurview-assessment ${JSON.stringify({ id: "loop", head: OLD, status: "partial" })} -->\nPartly fixed; still open.`;
+      await setup(true, false, partial);
+      const out = await run("fixed");
+      expect(out.sinceLastReview).toEqual({ resolved: 1, new: 0, stillOpen: 0 });
+      expect(mutations(await calls())).toHaveLength(1);
+    });
     it("retries resolution without a second evidence reply and retains counts", async () => {
       await setup();
       const table = JSON.parse(await readFile(responses, "utf8"));
