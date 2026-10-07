@@ -139,7 +139,15 @@ function ctx(forge: MemoryForge) {
 }
 
 async function pass(forge: MemoryForge, p: Partial<Pass>) {
-  return sync({ forge, repo: REPO, cr: await forge.get() }, { ...base, head: forge.cr.head, ...p });
+  const assessments = (await readState(ctx(forge))).findings.map((f) => ({
+    id: f.id,
+    status: p.fixed?.includes(f.id) ? ("fixed" as const) : ("still-present" as const),
+    evidence: "Checked the retry test at this head.",
+  }));
+  return sync(
+    { forge, repo: REPO, cr: await forge.get() },
+    { ...base, head: forge.cr.head, assessments, ...p },
+  );
 }
 
 describe("the summary", () => {
@@ -269,7 +277,9 @@ describe("inline findings", () => {
     await pass(forge, { fixed: [id] });
     const t = forge.threads[0]!;
     expect(t.resolved).toBe(true);
-    expect(t.messages.at(-1)!.body).toBe(`Fixed in ${SHA(2).slice(0, 7)}.`);
+    expect(t.messages.at(-1)!.body).toContain(
+      `Fixed at ${SHA(2)}: Checked the retry test at this head.`,
+    );
     expect(forge.summaries()[0]!.body).toContain("No open findings.");
   });
 
@@ -465,17 +475,18 @@ describe("what the review found against itself", () => {
     expect(forge.notesList.filter((n) => n.author === "bot")).toHaveLength(1);
   });
 
-  it("fixes the open thread of a finding that came back after it was resolved", async () => {
+  it("flags a finding that came back after the author resolved it", async () => {
     const forge = new MemoryForge();
     await pass(forge, { confidence: 2, findings: [UNBOUNDED] });
     forge.threads[0]!.resolved = true;
     forge.push(2);
     await pass(forge, { confidence: 2, findings: [UNBOUNDED] });
-    expect(forge.threads).toHaveLength(2);
+    expect(forge.threads).toHaveLength(1);
+    expect(forge.summaries()[0]!.body).toContain("Resolved on forge but still present:");
     const id = (await readState(ctx(forge))).findings[0]!.id;
     forge.push(3);
     await pass(forge, { fixed: [id] });
-    expect(forge.threads[1]!.resolved).toBe(true);
+    expect(forge.threads[0]!.resolved).toBe(true);
   });
 
   it("re-runs a pass whose fixed thread is already resolved", async () => {
@@ -543,5 +554,32 @@ describe("markers from other accounts", () => {
     const forge = new MemoryForge();
     await pass(forge, { signoff: "— the agent\n" });
     await expect(pass(forge, { reason: "x\r| " + "word ".repeat(300) })).rejects.toThrow(/reason/);
+  });
+});
+
+describe("retrying finding assessments", () => {
+  it("keeps resolved counts when the summary write is retried", async () => {
+    const forge = new MemoryForge();
+    await pass(forge, { confidence: 2, findings: [UNBOUNDED] });
+    const id = (await readState(ctx(forge))).findings[0]!.id;
+    forge.push(2);
+    await pass(forge, { fixed: [id] });
+    const retry = await pass(forge, { fixed: [id] });
+    expect(retry.sinceLastReview).toEqual({ resolved: 1, new: 0, stillOpen: 0 });
+  });
+  it("replies once per head and decision even if evidence wording changes", async () => {
+    const forge = new MemoryForge();
+    await pass(forge, { confidence: 2, findings: [UNBOUNDED] });
+    const id = (await readState(ctx(forge))).findings[0]!.id;
+    forge.push(2);
+    await pass(forge, {
+      confidence: 2,
+      assessments: [{ id, status: "partial", evidence: "4xx stops; timeout still loops." }],
+    });
+    await pass(forge, {
+      confidence: 2,
+      assessments: [{ id, status: "partial", evidence: "Timeout still loops after the 4xx fix." }],
+    });
+    expect(forge.threads[0]!.messages).toHaveLength(2);
   });
 });
