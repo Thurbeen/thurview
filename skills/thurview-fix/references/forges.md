@@ -11,6 +11,32 @@ when `gh auth status --hostname <host>` or `glab auth status --hostname
 lives. `GH_HOST` and `GITLAB_HOST` are honoured. A host no adapter claims is
 **refused**, not guessed at; pass `--forge github|gitlab` to name it.
 
+## The commands
+
+```sh
+thurview forge status --change 123    # what CI actually did, and whether it is a gate at all
+thurview forge prior  --change 123    # the previous pass, thread by thread
+thurview forge pass   --review <id>   # the reader's submitted threads, as the file below takes
+thurview forge submit --change 123 --file pass.json --dry-run
+thurview forge reply <threadId> --change 123 --body "<answer>" --resolve --at <head>
+```
+
+`status` counts passed, failed, cancelled, skipped and running checks
+separately, and compares them against what the target branch's own tip runs -
+a change request from a fork typically runs a fraction of them, and a
+cancelled job shows no failure while asserting nothing. `ci.trustworthy` is
+the only field that means the tests really passed.
+
+`pass` turns a review a reader submitted in the browser into the file `submit`
+takes; [lifecycle.md](../../thurview/references/lifecycle.md#carrying-a-submitted-review-to-the-change-request)
+has its rules.
+
+`submit` takes one JSON file so a human can read the pass before it is posted,
+refuses an `approve` without `--confirm`, and warns about comments too long to
+be read. `reply --resolve` takes `--at <sha>` and refuses any commit but the
+current head, so a thread is never closed against code nobody looked at. There
+is no merge, close or push command, deliberately.
+
 ## What differs, and what the CLI does about it
 
 | Behaviour              | GitHub                                    | GitLab                                                                                      |

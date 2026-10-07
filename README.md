@@ -3,6 +3,11 @@
 **Your coding agent writes the review; you read it in the browser, anchored to
 the code, and approve it or send it back.**
 
+Every claim links to an exact file and line range at a pinned commit, and
+`publish` refuses evidence that does not hold there. You ask in the document,
+the agent answers in the same thread, and callers and tests the diff cannot
+show are found by `git grep` searches you can run again.
+
 [![CI](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml/badge.svg)](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/thurview)](https://www.npmjs.com/package/thurview)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -12,496 +17,117 @@ range in the diff, reads the agent's answer and requests changes](./media/thurvi
 
 _The reader's half of it; the agent is working off camera._
 
-- **Every claim is anchored to code.** The prose links to an exact file and
-  line range at a pinned commit, and the reader opens that code beside the
-  text — no hunting for what a sentence is about.
-- **You read it in your browser, not in a comment thread.** An argument in the
-  order somebody chose to make it, with the code, the diff between the pinned
-  commits and the system around it one click away — instead of forty remarks
-  in the order they happened to be written.
-- **You ask, and the agent answers in the document.** A question goes to the
-  agent — at once if one is listening, queued if not — and the answer lands
-  in the same thread; a comment waits for your decision. Then you approve the
-  change or send it back with the comments attached.
-- **The agent searches what the diff cannot show.** Who calls the symbol that
-  moved, which tests reach it, what imports the module it touched: the skills
-  give the agent `git grep` recipes run at the pinned commits, in any language,
-  and every claim that rests on a search carries the search, so you can run it
-  again.
-- **The evidence is checked, not taken on trust.** An anchor whose lines
-  do not exist at the pinned commit, a call stack frame asserting a call the
-  diff does not show, an interface entry anchored on lines the change never
-  moved, a trust boundary crossing that resolves to nothing — publishing
-  rejects each one rather than rendering it.
-
 ## Install
 
-One command gives your agent every skill this repository ships, through the
-[skills](https://github.com/vercel-labs/skills) CLI - it works with Claude
-Code, Codex, Cursor, OpenCode and every agent that reads the Agent Skills
-format:
+Every skill, through the [skills](https://github.com/vercel-labs/skills) CLI,
+for Claude Code, Codex, Cursor, OpenCode or any agent that reads the Agent
+Skills format:
 
 ```sh
 npx skills@latest add https://github.com/Thurbeen/thurview \
   --skill '*' --agent universal claude-code --global --yes
 ```
 
-`--skill '*'` takes all six; quote the star so your shell does not expand it
-against the current directory. The skills reach the `thurview` command through
-`npx`, so the requirements are Node 22 or later and git (`gh` for pull
-requests, `glab` for merge requests). Then, in any repository, ask your agent:
+You need Node 22 or later and git, plus `gh` for pull requests or `glab` for
+merge requests. Pinning a release, installing the command from npm, session
+hooks and upgrading an older install are in [docs/INSTALL.md](docs/INSTALL.md).
+
+## Quick start
+
+In any repository, ask your agent:
 
 ```text
 Use the thurview skill to review my current branch against up-to-date main
 and open it.
 ```
 
-For an opened PR or MR, ask: `Use thurview-pr-review to review <URL>`. That
-one skill checks cloud setup, authors and serves the review, publishes its
-public snapshot and Markdown export, then edits one linked summary on every
-new push. Setup is saved once; see
-[Cloudflare setup](skills/thurview-pr-review/references/cloudflare-setup.md).
-
-## The six skills
-
-Four authoring workflows, and two companions:
-
-- **`thurview`** - a local change that is already written: a branch or
-  commit range. The document carries the diff, the commits and the interface
-  delta, and the reader approves it or sends it back.
-- **`thurview-explain`** - a codebase, or one subsystem of it, at a single
-  pinned commit. No diff and nothing to approve: it surfaces the architecture
-  well enough for the reader to spot design problems, and states what it did
-  not examine.
-- **`thurview-design`** - a change that is not written yet: a design, an
-  architecture proposal, an implementation plan. It anchors on the code as it
-  stands and declares what it would build as proposals, each attached to the
-  code it lands in today.
-- **`thurview-fix`** - no browser and no reader. It reviews, fixes what it is
-  sure of behind the repository's own tests and lint, and reports the rest -
-  optionally as inline comments on the change request.
-- **`thurview-pr-review`** - the entrypoint for an opened PR/MR: publishing
-  preflight, an anchored browser page, a public snapshot and Markdown export,
-  then one summary with both links edited on every push and resolvable finding
-  threads. Follows until merge, close or stop.
-- **`thurview-publish`** - puts a published document in your own Azure,
-  S3, Cloud Storage or Cloudflare Pages account with your own login, and hands
-  back a link that expires; public only when you confirm it.
-
-<details>
-<summary><b>Other ways to install</b> - one skill at a time, pin to a release,
-install the command from npm, run from a checkout, session hooks, and coming
-from an older install</summary>
-
-`--global` installs for your user, so one install covers every repository.
-`universal` puts the one real copy of each skill under `~/.agents/skills/`,
-the directory no single agent owns, and every other agent you name gets a
-symlink to it - `~/.claude/skills/thurview` →
-`../../.agents/skills/thurview`, and the same for the other five - so an
-update lands everywhere at once. Swap `claude-code` for any agent the skills
-CLI supports, but keep `universal` and at least one more: with `--yes` and a
-single target, the CLI copies instead of linking.
-
-`--skill` also takes names, one or several, when you do not want all six:
-`--skill thurview`, or `--skill thurview thurview-fix`.
-
-The untagged URL above tracks this repository's default branch:
-`skills update` takes whatever `main` holds, which can be ahead of the
-released command. To pin the skills to a release instead, install from the
-tag, which the skill lock records and later updates keep:
-
-```sh
-npx skills@latest add https://github.com/Thurbeen/thurview/tree/v0.15.0 \
-  --skill '*' --agent universal claude-code --global --yes
-```
-
-Releases tag without committing, so nothing moves the tag above: swap in the
-[latest release](https://github.com/Thurbeen/thurview/releases/latest).
-
-The npm package ships the same skills, so `thurview setup skill` links the
-copies that match the command you have installed. Use that when you want the
-two to move together.
-
-Install the command itself, rather than leaving the skills to reach it through
-`npx` on every run:
-
-```sh
-npm install -g thurview     # or: pnpm add -g thurview
-```
-
-Nothing else needs installing beyond `git`: callers, tests and importers are
-found by the agent's own search at the pinned commits.
-
-To run from a checkout instead:
-
-```sh
-pnpm install
-pnpm build
-npm link                    # puts `thurview` on PATH
-```
-
-Optional, for ambient context: `thurview setup hooks` installs a
-SessionStart hook for Claude Code, Codex and OpenCode, so every session opens
-with the reviews of its working directory. `thurview setup skill` links the
-skills from this checkout instead of the `skills` CLI copies; use one or the
-other.
-
-**Coming from an older install.** A skill name is an address, so nothing
-renames or splits one in place - the command above adds what is missing, and
-what is stale has to go.
-
-`thurview-explain` used to be a second kind inside the `thurview` skill, so an
-install made before the split does not have it. Under the `skills` CLI,
-updating `thurview` adds no second skill; run the install command above, which
-takes all six. Under `thurview setup skill`, update the command first -
-`thurview update`, or pull and rebuild the checkout you linked from - and run
-`thurview setup skill` again: it links every skill the installed command
-carries, so it picks the new one up on its own.
-
-`thurview-fix` was called `review-fix`, and an install made before the rename
-keeps answering to `/review-fix` from a copy that will never change again.
-Remove it:
-
-```sh
-npx skills@latest remove --global review-fix
-```
-
-For a `thurview setup skill` install, delete the stale link -
-`~/.agents/skills/review-fix` and the same path under `~/.claude` and
-`~/.cursor` - and run `thurview setup skill` again.
-
-</details>
-
-## How it works
-
-thurview validates every anchor against the pinned commits, seals a revision,
-and serves it in your browser: the walkthrough, live code peeks, the diff,
-commits, and a software map. You ask questions, leave anchored comments, and
-approve or request changes. The agent answers and republishes.
-
-An explainer and a design run the same loop over a different unit. An
-explainer pins one commit instead of a range, so it has no diff and nothing to
-approve. A design pins the commit it argues from: its anchors land on the code
-as it stands, never on code that does not exist yet, and what it would build
-rides beside them as proposals.
-
-The document does not review the code for you. It helps you understand the
-code fast enough to judge it yourself.
+For an opened PR or MR, ask `Use thurview-pr-review to review <URL>`: it
+checks the cloud setup, authors and publishes the review, and keeps one linked
+summary on the change request up to date on every push.
 
 ```mermaid
 flowchart LR
   A[Branch, PR or range] --> B[Agent pins base and head]
-  B --> C[Agent authors review.md + data.yaml + map.yaml]
+  B --> C[Agent writes review.md, data.yaml, map.yaml]
   C --> D[thurview publish: validate, seal revision]
   D --> E[You read, ask, comment in the browser]
   E -->|Request changes| C
   E -->|Approve| F[Done]
 ```
 
-## What the reader sees
+What the reader gets (the walkthrough, the diff, the map, threads, the
+decision, and the queue on the home page) is in [docs/READER.md](docs/READER.md).
 
-The home page is a queue: every review, explainer and design, grouped by
-repository and ordered by whose turn it is - a decision not yet posted to its
-change request first, then documents waiting for your reading, then ones whose
-change request moved past the pin, then ones waiting for the agent, then ones
-not published yet. A row bound to a change request also says whether the pin is
-still the head, what you decided and whether it reached the forge, and whether
-CI is a real gate there, as of the last `forge` command and with that age on
-screen. The browser never calls the forge; explainers and designs carry those
-columns empty.
+## Skills
 
-Prose with every claim anchored to code, opened beside the text:
-
-![The review document, with a call stack diff, a storage view and an anchored
-peek open in the side panel](./media/review-review.png)
-
-The diff at the pinned commits, commenting on a selected line range:
-
-![The Files tab, split diff, with a comment on lines 9 to 12 of
-src/auth.ts](./media/review-files.png)
-
-The software map: where the change landed in the system, and what sits next to
-it — the question the diff cannot answer:
-
-![The Map tab: the parts the change touched, drawn first, the links between
-them, and the selected node's files, code and neighbours](./media/review-map.png)
-
-Threads: a question the agent already answered, and a comment held for the
-decision:
-
-![The threads panel, one answered question and one pending
-comment](./media/review-threads.png)
-
-Approve, or send it back with the comments:
-
-![The submit dialog, one pending comment, Approve or Request
-changes](./media/review-decision.png)
-
-To share a document with someone who will not run thurview,
-`thurview export --out review.html` writes the published revision as one HTML
-file: the same page, read only, with every snippet, diagram and diff resolved
-at the pinned commits and the reader's threads shown as notes (`--no-threads`
-leaves them out). It opens from disk, fetches nothing, and names no server and
-no local path. Point `--out` at a folder for `<folder>/index.html`, such as a
-repository's Pages folder.
-
-## What's in a review
-
-- **Interface delta**: above the document, what the change added to, changed
-  in or removed from the surfaces other code can reach - exported functions
-  and types, CLI flags, routes, config keys and formats. The agent declares
-  each one, and publish holds it to an anchor on lines the diff really moved,
-  so an entry cannot invent a feature the change did not deliver.
-- **Review**: the document with a table of contents. Anchor links open the
-  exact code beside the text; peeks show it inline. Sequence diagrams, call
-  stack diffs and storage views are clickable down to the line.
-- **Files**: split or unified diff of every changed file at the pinned
-  commits, with expandable context. Click a line number to comment on it.
-  Click an identifier to see where it is defined at that commit; Ctrl-click
-  jumps there. Explainers and designs show full files at their pinned commit.
-  A file tree sits beside Files, Commits and Coverage: compact folder chains,
-  change statuses and line totals, comment and anchor markers, and a path
-  filter. Use arrows to move, Left/Right to fold, Enter to open, or the expand
-  and collapse all buttons. Drag the divider to resize it; the width and folds
-  are remembered. On a narrow screen, use Files to open the drawer.
-- **Commits**: the commits between base and head.
-- **Coverage** (explainers): every file in scope at the pinned commit, in one
-  of four states - anchored in the document, placed on the map only, matched
-  by a search the agent recorded, or not examined - grouped by directory, with
-  each search and what it matched. Derived at publish, which re-runs every
-  recorded search with `git grep` at the pinned commit, so what the explainer
-  skipped is a stated fact rather than something the reader has to infer.
-- **Map**: systems, containers, components and code, with what the change
-  added, removed or touched, linked to files and code.
-- **Threads**: _Send to the agent_ delivers a question at once and the answer
-  lands in the same thread. _Add to the review_ holds a comment until you
-  submit with _Approve_ or _Request changes_. _Close_ ends the review without
-  approving it. Each thread says where it stands - held, queued, delivered or
-  answered - and the panel says whether an agent is listening at all. Nothing
-  claims a reader is there when none is: a question asked with no agent
-  attached is queued, not lost, and reaches the agent the next time it checks.
-- **Revisions**: every publish is sealed; switch back to earlier ones.
-- **Theme**: light or dark, following the system until you pick one in the ⋯ menu.
-
-Everything runs locally against your checkout. The server listens on
-loopback and, when present, your Tailscale address, so a phone or another
-machine on the tailnet can open the same URL. The layout follows: below 900px
-the rail and the split diff give way to one column, the peek and the threads
-panel become full-screen sheets, and the tabs and the decision stay on the
-bar.
-
-The reader's **Export for agent** action produces one portable Markdown
-handoff: pins, verdicts, anchored feedback, answers and an unresolved checklist.
-Copy it or download it as `.md`; agents can fetch the same document with
-`thurview export <id> --format md --out feedback.md`. The full contract is in
-[Markdown export](skills/thurview/references/agent-export.md).
-
-![Export for agent dialog with Markdown preview, copy and download](./media/review-export.png)
+| Skill                                                      | For                                                                                                         |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| [`thurview`](skills/thurview/SKILL.md)                     | A local change already written: a branch or commit range. Approve or send back.                             |
+| [`thurview-explain`](skills/thurview-explain/SKILL.md)     | A codebase or subsystem at one commit, with what it did not examine.                                        |
+| [`thurview-design`](skills/thurview-design/SKILL.md)       | A change not written yet, its proposals anchored to the code they land in.                                  |
+| [`thurview-fix`](skills/thurview-fix/SKILL.md)             | Review, commit the fixes that pass your tests and lint, report the rest. No browser.                        |
+| [`thurview-pr-review`](skills/thurview-pr-review/SKILL.md) | An opened PR or MR: a review page, a public snapshot and one summary on the forge, followed until merge.    |
+| [`thurview-publish`](skills/thurview-publish/SKILL.md)     | Put a document in your own Azure, S3, Cloud Storage or Cloudflare Pages account behind a link that expires. |
 
 ## CLI
 
-| Command                                                 | Purpose                                                               |
-| ------------------------------------------------------- | --------------------------------------------------------------------- |
-| `thurview scaffold [--pr N \| --base R --head R]`       | Create a review pinned to exact commits (`--update` re-pins)          |
-| `thurview explain [<path>] [--commit R]`                | Create a code explainer of a codebase or subsystem at one commit      |
-| `thurview design [<path>] [--commit R]`                 | Create a design of what to build, pinned to the commit it argues from |
-| `thurview info [--all]`                                 | Reviews, explainers and designs bound to this worktree                |
-| `thurview publish --review ID [--view T] [--open]`      | Validate the document and map, seal a revision                        |
-| `thurview open --review ID [--view T]`                  | Start the server if needed and open the browser                       |
-| `thurview publish-static --check --to cloudflare`       | Check target, login and project before authoring                      |
-| `thurview publish-static <id> --out snapshot`           | Render HTML and downloadable reader feedback Markdown                 |
-| `thurview publish-static <id> --to cloudflare`          | Refresh a durable public snapshot and retain earlier links            |
-| `thurview export --review ID --out PATH [--no-threads]` | Write the published revision as one static HTML file, no server       |
-| `thurview wait --review ID [--timeout S]`               | Block until the reader needs the agent                                |
-| `thurview threads list\|get\|reply\|resolve`            | Read and answer threads                                               |
-| `thurview forge status\|prior\|pass\|submit\|reply`     | Read a change request through its forge, and post the review back     |
-| `thurview serve` / `thurview stop`                      | Run the server in the foreground / stop the background one            |
-| `thurview setup hooks\|skill\|status`                   | Session hooks, agent skill, install state                             |
-| `thurview update`                                       | Self-update from npm                                                  |
-| `thurview export [ID] --format md [--out feedback.md]`  | Export reader feedback and unresolved checklist as Markdown           |
+| Command                                                     | Purpose                                                                             |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `thurview scaffold [--pr N \| --base R --head R]`           | Create a review pinned to exact commits (`--update` re-pins)                        |
+| `thurview explain [<path>] [--commit R]`                    | Create an explainer of a codebase or subsystem at one commit                        |
+| `thurview design [<path>] [--commit R]`                     | Create a design, pinned to the commit it argues from                                |
+| `thurview info [--all]`                                     | Documents bound to this worktree                                                    |
+| `thurview publish [--review ID] [--view T] [--open]`        | Validate the document and map, seal a revision                                      |
+| `thurview open [--review ID] [--view T]`                    | Start the server if needed and open the browser                                     |
+| `thurview wait [--review ID] [--timeout S]`                 | Block until the reader needs the agent                                              |
+| `thurview threads list\|get\|reply\|resolve`                | Read and answer threads                                                             |
+| `thurview export [<id>] [--out PATH] [--format md]`         | Write the published revision as one HTML file, or the reader's feedback as Markdown |
+| `thurview publish-static --check --to cloudflare`           | Check the Cloudflare target, login and project, uploading nothing                   |
+| `thurview publish-static <id> --out DIR \| --to cloudflare` | Render a read-only snapshot, or deploy it to Cloudflare                             |
+| `thurview forge status\|prior\|pass\|submit\|reply`         | Read a change request, and post a review back to it                                 |
+| `thurview pr-review status\|sync\|wait\|stop\|start`        | Follow a change request until it merges                                             |
+| `thurview delete --review ID`                               | Delete a document and what is stored for it                                         |
+| `thurview serve` / `thurview stop`                          | Run the server in the foreground / stop the background one                          |
+| `thurview setup hooks\|skill\|status`                       | Session hooks, agent skills, install state                                          |
+| `thurview update`                                           | Self-update from npm                                                                |
 
-thurview is an [AXI](https://axi.md): built for agents that drive it through a
-shell. Output is [TOON](https://toonformat.dev) on stdout, errors are
-structured on stdout with an actionable `help`, exit code 2 marks a usage error
-(an unknown flag fails loudly and lists the valid ones), lists carry counts and
-definitive empty states, long bodies are truncated with a `--full` escape
-hatch, every result ends with `help[]` next steps, and `thurview` with no
-arguments shows live state for the current directory instead of a manual.
-`thurview <command> --help` is the fallback. Progress and diagnostics go to
-stderr.
+thurview is an [AXI](https://axi.md): output is [TOON](https://toonformat.dev),
+errors carry a `help` to act on, and `thurview` with no arguments shows the
+current directory's state. `thurview <command> --help` lists every flag.
 
-## Review and fix
+## Configuration
 
-The `thurview-fix` skill reviews a branch, a commit range or a pull or merge
-request, fixes what it is sure of and reports the rest, with no browser and no
-approval step. For each changed symbol it searches, at the pinned commits, who
-calls it and which tests name it, so a finding can name a caller the diff never
-shows.
-Fixes that pass the repository's own tests and lint land as one local commit;
-nothing is pushed unless you ask.
+Everything lives under `~/.thurview` (or `$THURVIEW_HOME`) and runs against
+your checkout; the server listens on loopback and, when present, your
+Tailscale address.
 
-```sh
-git grep -n -E -e '\bdiscount *\(' <head> --              # every call site of one symbol
-git grep -n -E -e '\bdiscount\b' <head> -- '*test*' '*spec*'  # the tests that name it
-```
+- **Agent guidance**: `~/.thurview/THURVIEW.md` for you, `THURVIEW.md` at a
+  repository root for that repository.
+- **Cloudflare snapshots**: `~/.thurview/cloudflare.json`; see
+  [setup](skills/thurview-pr-review/references/cloudflare-setup.md) and
+  [public static snapshots](skills/thurview/references/lifecycle.md#public-static-snapshots).
+- **Your own cloud**: credentials, permissions and link expiry per provider are in
+  [thurview-publish](skills/thurview-publish/SKILL.md).
 
-Each finding carries the search behind it, so "no other caller" is a line you
-can run.
+## Documentation
 
-With `--post`, the skill posts the findings it did not fix as inline comments
-on the change request, through `thurview forge`:
+- [docs/READER.md](docs/READER.md): every tab, threads, the decision, sharing.
+- [Markdown export](skills/thurview/references/agent-export.md): the feedback handoff to an agent.
+- [docs/INSTALL.md](docs/INSTALL.md): other install routes and upgrades.
+- The document format: [authoring](skills/thurview/references/document-authoring.md),
+  [components](skills/thurview/references/components.md),
+  [software map](skills/thurview/references/software-map.md),
+  [lifecycle](skills/thurview/references/lifecycle.md).
+- Forges: [commands and differences](skills/thurview-fix/references/forges.md).
 
-```sh
-thurview forge status --change 123    # what CI actually did, and whether it is a gate at all
-thurview forge prior  --change 123    # the previous pass, thread by thread
-thurview forge pass   --review <id>   # the reader's submitted threads, as the file below takes
-thurview forge submit --change 123 --file pass.json --dry-run
-thurview forge reply <threadId> --change 123 --body "<answer>" --resolve --at <head>
-```
+## Contributing
 
-`status` counts passed, failed, cancelled, skipped and running checks
-separately, and compares them against what the target branch's own tip runs -
-a change request from a fork typically runs a fraction of them, and a
-cancelled job shows no failure while asserting nothing. `ci.trustworthy` is
-the only field that means the tests really passed.
-
-`pass` goes the other way, from a review a reader submitted in the browser to
-that same file: one inline comment per thread anchored to a line, questions and
-resolved threads left out, and threads with no line - a document block, a map
-node, a whole file - gathered into the summary and named in the output, so
-nobody assumes their comment was posted where they wrote it. The verdict comes
-from the reader's decision, `close` becomes a `comment`, and an approve with
-threads still open is refused rather than quietly downgraded.
-
-`submit` takes one JSON file so a human can read the pass before it is posted,
-refuses an `approve` without `--confirm`, and warns about comments too long to
-be read. `reply --resolve` takes `--at <sha>` and refuses any commit but the
-current head, so a thread is never closed against code nobody looked at. There
-is no merge, close or push command, deliberately.
-
-GitHub goes through `gh`, GitLab through `glab`; hosts other than github.com
-and gitlab.com are matched against what those CLIs are authenticated for, and
-an unmatched host is refused rather than guessed. The differences that survive
-the seam - GitLab has no changes-requested state, no atomic review and no
-multi-line comment anchor - are listed in
-[skills/thurview-fix/references/forges.md](skills/thurview-fix/references/forges.md).
-
-## Cloudflare snapshots
-
-Create `~/.thurview/cloudflare.json` (or pass `--config <file>`):
-
-```json
-{
-  "name": "thurview-reviews",
-  "publicUrl": "https://thurview-reviews.thurbeen.workers.dev",
-  "allowLiveLink": false
-}
-```
-
-Install the registry-checked stable Wrangler and authenticate with
-`wrangler login --device` for remote sessions, or set
-`CLOUDFLARE_API_TOKEN`. An optional `account_id` belongs only in this local
-configuration; credentials never go in it.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the hooks, the gate, commits and releases.
 
 ```sh
-thurview publish-static --check --to cloudflare
-thurview publish-static <id> --out snapshot
-thurview publish-static <id> --to cloudflare --initialize-archive
+pnpm install && pnpm build && pnpm check
 ```
-
-The read-only `--check` validates configuration, login and project access
-before a review exists; it does not upload. Setup and project creation have
-one home in the [PR/MR setup reference](skills/thurview-pr-review/references/cloudflare-setup.md).
-The managed summary pass accepts `reviewUrl` and `markdownUrl`; the PR/MR
-workflow supplies both on every pass.
-
-Use `--initialize-archive` once, only for a Worker with no existing snapshots.
-Later runs omit it. A lost archive must be restored; the command refuses to
-initialize when stored review URLs identify an existing publication.
-
-The HTML uses the same read-only UI as `export`, with walkthrough, diff,
-code peeks, Map and sent reader threads. `feedback.md` contains the Markdown
-exporter from PR #49, filtering unsubmitted drafts from public downloads.
-Shared threads from before the first publish are labelled as unpublished
-draft context. The banner names the sealed revision and commit.
-The live review link is omitted unless `allowLiveLink` is true.
-
-The command prints `snapshot.url` and records `staticSnapshot` in the review's
-separate `static.json`, so recording a URL never rewrites revision state.
-Repeating it updates the same random path. Read the recorded URL with
-`thurview info --fields staticSnapshot`. Back up `~/.thurview/static/`:
-each deployment uploads its complete retained asset archive through
-`wrangler deploy`. Keep one publishing store per Worker; do not deploy from
-a different machine or delete that archive. A local lock serializes deploys;
-a missing or incomplete archive refuses deployment. Changing the public
-hostname keeps the same archive and paths. Restore the archive after a lost
-store, and remove `deploy.lock` only after verifying its publisher has stopped.
-This uses Workers static assets, without another service or runtime Worker.
-
-## Authoring format
-
-The agent writes three files in `~/.thurview/reviews/<id>/`:
-
-- `review.md`: Markdown. `[text](anchor:id)` links prose to code. Fenced
-  blocks `peek`, `sequence`, `flow`, `callstack` and `database` add components.
-  `## Heading {collapsed}` folds a section by default.
-- `data.yaml`: typed inputs: `actors`, `anchors` (file, from, to, graph),
-  `stores`, `interfaces` (one entry per interface the change moved, each
-  anchored on the lines that moved it), `security`, where a review says where
-  the change lets input cross a trust boundary, and `searches`, where an
-  explainer records what it searched for its Coverage tab.
-- `map.yaml`: the software map at head, optionally at base. In an explainer it
-  carries the breadth the prose has no room for, and a node's `files` globs are
-  what let a file count as placed rather than not examined.
-
-`security` is a review's own dimension, shown to the reader under the interface
-delta rather than left to a section the agent might not write. It is
-`security: none` when the change crosses no trust boundary, or one entry per
-place it does — a sentence and the head anchor the reader opens. Left out, it
-publishes as "not assessed", so a review that has not looked and one that looked
-and found nothing are never the same page. What counts as a trust boundary is
-defined in one place — the `thurview-fix` skill's finding rules — and
-nothing else restates it.
-
-An explainer writes the same files, minus `interfaces` and `security`: there is
-no change to take a delta from or to carry input across a boundary, and
-`graph: base` on an anchor is an error because there is one commit.
-
-A design writes the same files, and `interfaces` means something else in it:
-each entry is a **proposal** — what the design would add, change or remove,
-with the anchor of the code that proposal lands in, replaces or plugs into
-today. `graph: base` and `security` are errors for the same reason as in an
-explainer, `searches` is an error because a design has no Coverage tab, and a
-design that proposes nothing is refused: that document is an explainer. In its
-`map.yaml`, `base` is the structure as it stands and `nodes` the structure it
-proposes, so a proposed part may own files that do not exist yet while a `base`
-node may not.
-
-`thurview publish` rejects an anchor whose file or lines do not exist at the
-pinned commit, a call stack frame that claims an added or removed call the
-diff does not show, a storage operation on an unknown field, a map edge
-to an unknown node, an interface annotation for a symbol the change did not
-move, a declared interface whose anchor holds no added or deleted line, a trust
-boundary crossing whose anchor resolves to nothing or reads the base commit, and
-an explainer that anchors nothing at all, and a design that proposes nothing or
-whose proposal names no site in the code as it stands. The full format is in
-[skills/thurview/references](skills/thurview/references).
-
-Optional guidance for the agent: `~/.thurview/THURVIEW.md` for you,
-`THURVIEW.md` at a repository root for that repository.
-
-## Development
-
-```sh
-pnpm check     # type-check server and UI, run the end-to-end tests
-pnpm build
-pnpm dev -- scaffold
-node scripts/browser-check.mjs <url> [seconds] [shot.png]   # console errors + screenshot of a view
-scripts/demo/record.sh                                       # re-record media/thurview-demo.{mp4,gif}
-```
-
-Set `THURVIEW_HOME` to keep state elsewhere than `~/.thurview`.
 
 ## License
 
-MIT
+MIT, see [LICENSE](LICENSE).

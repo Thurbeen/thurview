@@ -16,8 +16,11 @@ async function installCommands(file: string): Promise<string[]> {
 
 describe("install docs", () => {
   it("installs the skills as one universal copy symlinked into another agent", async () => {
-    const commands = await installCommands("README.md");
-    expect(commands.length).toBeGreaterThan(0);
+    const readme = await installCommands("README.md");
+    const install = await installCommands("docs/INSTALL.md");
+    expect(readme.length).toBeGreaterThan(0);
+    expect(install.length).toBeGreaterThan(0);
+    const commands = [...readme, ...install];
     for (const command of commands) {
       expect(command).toMatch(/^npx skills@latest add /);
       // With --yes and a single agent the CLI copies instead of linking, so

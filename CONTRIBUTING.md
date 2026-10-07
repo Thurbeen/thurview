@@ -12,6 +12,13 @@ prek install        # git hooks: commit message, format, types, tests, shell, ma
 Tools the hooks and the gate expect on PATH: `cog` (cocogitto), `prek`,
 `shellcheck`, `rumdl`, `bats`, `chromium` for `scripts/browser-check.mjs`.
 
+```sh
+pnpm dev -- scaffold                                         # run the CLI from source
+node scripts/browser-check.mjs <url> [seconds] [shot.png]    # console errors + screenshot of a view
+```
+
+Set `THURVIEW_HOME` to keep state elsewhere than `~/.thurview`.
+
 ## Commits and pull requests
 
 Commits follow the conventional-commit spec as configured in `cog.toml`; the
@@ -26,6 +33,9 @@ locally.
 
 ## Layout
 
+- `README.md`: the introduction, install, skills and CLI table; `docs/` the
+  detail behind them - `INSTALL.md` the other install routes, `READER.md` what
+  the reader sees.
 - `src/cli.ts`: the AXI command surface; `src/flags.ts` the flag parser.
 - `src/document/`: schema, parser and compiler for `review.md` and
   `data.yaml`.
@@ -96,8 +106,8 @@ skill and the command in step:
 | `thurview setup skill`                             | the installed command     |
 
 Both `skills` routes take `--agent universal claude-code --global --yes`, as the
-README shows: one real copy in `~/.agents/skills`, symlinked into each other
-agent. `test/install-docs.test.ts` holds the README's commands to that form.
+README and `docs/INSTALL.md` show: one real copy in `~/.agents/skills`, symlinked into each other
+agent. `test/install-docs.test.ts` holds both files' commands to that form.
 
 The skills CLI has no notion of a skill version: its lock file records a hash
 of the folder's contents, plus the `ref` when one was given. So a change here
