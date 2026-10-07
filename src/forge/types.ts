@@ -173,5 +173,6 @@ export interface Forge {
   notes(repo: RepoId, cr: ChangeRequest): Promise<Note[]>;
   postNote(repo: RepoId, cr: ChangeRequest, body: string): Promise<Note>;
   editNote(repo: RepoId, cr: ChangeRequest, id: string, body: string): Promise<void>;
-  comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<void>;
+  /** The new thread URL, when the forge returns one. */
+  comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<string | void>;
 }

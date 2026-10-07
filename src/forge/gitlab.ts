@@ -263,6 +263,7 @@ export class GitLabForge implements Forge {
         // against is the only signal, and `prior` compares it in the CLI.
         outdated: false,
         ...(first.position?.head_sha ? { commit: first.position.head_sha } : {}),
+        url: `${cr.url}#note_${first.id}`,
         messages: notes.map((n) => ({ author: n.author?.username ?? "unknown", body: n.body })),
       });
     }
@@ -342,7 +343,7 @@ export class GitLabForge implements Forge {
     cr: ChangeRequest,
     refs: NonNullable<RestMr["diff_refs"]>,
     c: InlineComment,
-  ): Promise<void> {
+  ): Promise<string | void> {
     const position = {
       position_type: "text",
       base_sha: refs.base_sha,
@@ -352,7 +353,7 @@ export class GitLabForge implements Forge {
       old_path: c.path,
       ...(c.side === "base" ? { old_line: c.line } : { new_line: c.line }),
     };
-    await runJson<unknown>(
+    const posted = await runJson<{ notes?: { id: number }[] }>(
       "glab",
       this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/discussions`, [
         "--method",
@@ -364,10 +365,12 @@ export class GitLabForge implements Forge {
       ]),
       { input: JSON.stringify({ body: c.body, position }) },
     );
+    const note = posted.notes?.[0];
+    return note ? `${cr.url}#note_${note.id}` : undefined;
   }
 
   /** A diff comment anchors at one line here; a range is anchored at its last. */
-  async comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<void> {
+  async comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<string | void> {
     const mr = await runJson<RestMr>(
       "glab",
       this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}`),
@@ -376,7 +379,7 @@ export class GitLabForge implements Forge {
       throw new AxiError("this merge request reports no diff refs", "FORGE_ERROR", [
         "Retry once the merge request has a diff",
       ]);
-    await this.discussion(repo, cr, mr.diff_refs, c);
+    return this.discussion(repo, cr, mr.diff_refs, c);
   }
 
   /**

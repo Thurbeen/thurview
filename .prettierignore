@@ -6,3 +6,6 @@ skills/thurview/references/
 .rumdl_cache/
 media/
 scripts/demo/review/
+
+# Byte-exact forge comment fixtures; the marker and opening must remain adjacent.
+test/fixtures/pr-summary/

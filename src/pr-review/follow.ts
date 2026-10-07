@@ -12,6 +12,7 @@ import {
   restate,
   statusLine,
   type Finding,
+  type OpenFinding,
   type Pass,
   type ReviewStatus,
   type SummaryMarker,
@@ -52,6 +53,7 @@ export interface FindingState {
   line?: number;
   open: boolean;
   thread: string;
+  url?: string;
 }
 
 export interface ReviewState {
@@ -102,6 +104,7 @@ export async function readState(ctx: Ctx): Promise<ReviewState> {
       ...(t.line ? { line: t.line } : {}),
       open: !t.resolved,
       thread: t.id,
+      ...(t.url ? { url: t.url } : {}),
     });
   }
   const seen = summary?.marker.seen ?? "0";
@@ -125,6 +128,7 @@ export interface SyncResult {
   open: number;
   blocking: number;
   body: string;
+  sinceLastReview: { resolved: number; new: number; stillOpen: number };
 }
 
 /**
@@ -184,9 +188,9 @@ export async function sync(
       duplicates.push(id);
     else fresh.push({ id, f });
   }
-  const open = [
+  const open: OpenFinding[] = [
     ...st.findings.filter((x) => x.open && !fixed.includes(x.id)),
-    ...fresh.map(({ f }) => ({ category: f.category, severity: f.severity })),
+    ...fresh.map(({ id, f }) => ({ ...f, id })),
   ];
   const blocking = open.filter((x) => x.severity === "blocking").length;
   if (blocking && pass.confidence >= 3)
@@ -203,7 +207,17 @@ export async function sync(
     state: "active",
     seen: maxId(st.newest, st.summary?.marker.seen ?? "0"),
   };
-  const body = renderSummary(pass, marker, cr.author, open);
+  const sinceLastReview = {
+    resolved: fixed.length,
+    new: fresh.length,
+    stillOpen: st.findings.filter((x) => x.open && !fixed.includes(x.id)).length,
+  };
+  const update = {
+    first: !st.summary,
+    counts: sinceLastReview,
+    reviewedAt: new Date().toISOString(),
+  };
+  const body = renderSummary(pass, marker, cr.author, open, update);
   const result: SyncResult = {
     summary: opts.dryRun ? "dry-run" : st.summary ? "edited" : "created",
     head: cr.head,
@@ -213,17 +227,20 @@ export async function sync(
     open: open.length,
     blocking,
     body,
+    sinceLastReview,
   };
   if (opts.dryRun) return result;
 
-  for (const { f } of fresh)
-    await forge.comment(repo, cr, {
+  for (const { id, f } of fresh) {
+    const url = await forge.comment(repo, cr, {
       path: f.path,
       line: f.line,
       ...(f.startLine && f.startLine < f.line ? { startLine: f.startLine } : {}),
       ...(f.side ? { side: f.side } : {}),
       body: renderFinding(f, pass.signoff, forge.id),
     });
+    if (url) open.find((x) => x.id === id)!.url = url;
+  }
   const reply = `Fixed in ${cr.head.slice(0, 7)}.${pass.signoff ? `\n\n${pass.signoff}` : ""}`;
   for (const id of fixed)
     await forge.reply(
@@ -233,8 +250,9 @@ export async function sync(
       reply,
       true,
     );
-  if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, body);
-  else await forge.postNote(repo, cr, body);
+  result.body = renderSummary(pass, marker, cr.author, open, update);
+  if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, result.body);
+  else await forge.postNote(repo, cr, result.body);
   return result;
 }
 

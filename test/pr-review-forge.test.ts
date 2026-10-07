@@ -215,7 +215,7 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
         (await calls()).find((c) => c.args.join(" ").includes("issues/comments/9 --method PATCH"))!
           .body,
       ).body,
-    ).toContain("[Full review](https://reviews.example.com/r/7/)");
+    ).toContain("[**Full review**](https://reviews.example.com/r/7/)");
     expect(
       JSON.parse(
         (await calls()).find((c) => c.args.join(" ").includes("issues/comments/9 --method PATCH"))!
@@ -426,7 +426,7 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
     const body = logged
       .find((c) => c.args.join(" ").includes("notes/9 --method PUT"))!
       .args.find((a) => a.startsWith("body="))!;
-    expect(body).toContain("[Full review](https://reviews.example.com/r/7/)");
+    expect(body).toContain("[**Full review**](https://reviews.example.com/r/7/)");
     expect(body).toContain("[Markdown export](https://reviews.example.com/r/7/feedback.md)");
     expect(body).toContain(HEAD);
   });
@@ -494,5 +494,287 @@ describe("GitLab notes and threads", { timeout: 30_000 }, () => {
     const out = await cli(["pr-review", "status", "--change", "7"], gitlab);
     expect(out["review"].reviewedHead).toBe(OLD);
     expect(out["open"][0]).toMatchObject({ id: "loop" });
+  });
+});
+
+const GOLDENS = join(ROOT, "test", "fixtures", "pr-summary");
+const PUBLIC_LINKS = {
+  reviewUrl: "https://reviews.example.com/r/7/",
+  markdownUrl: "https://reviews.example.com/r/7/feedback.md",
+};
+
+// Assert the Markdown sent by the real CLI, not only the formatter's return value.
+describe("compact summary golden Markdown", { timeout: 30_000 }, () => {
+  async function setup(provider: "github" | "gitlab", edited = false) {
+    const url =
+      provider === "github"
+        ? "https://github.com/acme/web/pull/7#discussion_r101"
+        : "https://gitlab.example.com/acme/web/-/merge_requests/7#note_101";
+    const previous = [
+      {
+        id: "loop",
+        title: "The retry loop never stops on a 4xx.",
+        severity: "blocking",
+        category: "bug",
+        path: "src/upload.ts",
+        line: 42,
+      },
+      {
+        id: "keep",
+        title: "Timeouts lose the upload.",
+        severity: "non-blocking",
+        category: "reliability",
+        path: "src/timeout.ts",
+        line: 8,
+      },
+    ];
+    const marked = (f: (typeof previous)[number]) =>
+      `<!-- thurview-finding ${JSON.stringify({ id: f.id, category: f.category, severity: f.severity })} -->\n**${f.category === "bug" ? "Bug" : "Reliability"} · ${f.severity}:** ${f.title}`;
+    if (provider === "github") {
+      await fixtures([
+        { cli: "gh", match: ["pulls/7/comments", "POST"], body: { id: 101, html_url: url } },
+        { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9, body: "", user: null } },
+        { cli: "gh", match: ["issues/comments/9", "PATCH"], body: {} },
+        { cli: "gh", match: ["addPullRequestReviewThreadReply"], body: {} },
+        { cli: "gh", match: ["resolveReviewThread"], body: {} },
+        {
+          cli: "gh",
+          match: ["issues/7/comments", "--paginate"],
+          body: [edited ? [{ id: 9, user: { login: "bot" }, body: SUMMARY(OLD) }] : []],
+        },
+        {
+          cli: "gh",
+          match: ["graphql"],
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  reviews: { nodes: [] },
+                  reviewThreads: {
+                    nodes: edited
+                      ? previous.map((f, i) => ({
+                          id: `PRRT_${f.id}`,
+                          isResolved: false,
+                          isOutdated: false,
+                          path: f.path,
+                          line: f.line,
+                          diffSide: "RIGHT",
+                          comments: {
+                            nodes: [
+                              {
+                                author: { login: "bot" },
+                                body: marked(f),
+                                url: url.replace("101", String(201 + i)),
+                                originalCommit: { oid: OLD },
+                              },
+                            ],
+                          },
+                        }))
+                      : [],
+                  },
+                },
+              },
+            },
+          },
+        },
+        { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+        { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+      ]);
+    } else {
+      await fixtures([
+        {
+          cli: "glab",
+          match: ["merge_requests/7/discussions", "POST"],
+          body: { id: "d101", notes: [{ id: 101 }] },
+        },
+        {
+          cli: "glab",
+          match: ["merge_requests/7/notes", "POST"],
+          body: { id: 9, body: "", author: null },
+        },
+        { cli: "glab", match: ["merge_requests/7/notes/9", "PUT"], body: {} },
+        { cli: "glab", match: ["discussions/dloop/notes", "POST"], body: {} },
+        { cli: "glab", match: ["discussions/dloop", "PUT"], body: { resolved: true } },
+        {
+          cli: "glab",
+          match: ["merge_requests/7/notes?", "--paginate"],
+          body: edited ? ndjson({ id: 9, body: SUMMARY(OLD), author: { username: "bot" } }) : "",
+        },
+        {
+          cli: "glab",
+          match: ["merge_requests/7/discussions?"],
+          body: edited
+            ? ndjson(
+                ...previous.map((f, i) => ({
+                  id: `d${f.id}`,
+                  notes: [
+                    {
+                      id: 201 + i,
+                      body: marked(f),
+                      system: false,
+                      resolvable: true,
+                      resolved: false,
+                      author: { username: "bot" },
+                      position: { new_path: f.path, new_line: f.line, head_sha: OLD },
+                    },
+                  ],
+                })),
+              )
+            : "",
+        },
+        { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+        { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+        { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+        { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+      ]);
+    }
+  }
+
+  async function run(provider: "github" | "gitlab", p: Record<string, unknown>, code = 0) {
+    const file = join(bin, "golden-pass.json");
+    await writeFile(file, JSON.stringify({ ...PASS, ...PUBLIC_LINKS, ...p }));
+    return cli(
+      ["pr-review", "sync", "--change", "7", "--file", file],
+      provider === "github" ? github : gitlab,
+      code,
+    );
+  }
+
+  async function golden(name: string, out: Out, provider: "github" | "gitlab", edited = false) {
+    const sent = (await calls()).find((c) =>
+      c.args
+        .join(" ")
+        .includes(
+          provider === "github"
+            ? edited
+              ? "issues/comments/9 --method PATCH"
+              : "issues/7/comments --method POST"
+            : edited
+              ? "notes/9 --method PUT"
+              : "notes --method POST",
+        ),
+    )!;
+    const body: string =
+      provider === "github"
+        ? JSON.parse(sent.body).body
+        : sent.args.find((a) => a.startsWith("body="))!.slice(5);
+
+    expect(body.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, "REVIEWED_AT") + "\n").toBe(
+      await readFile(join(GOLDENS, `${name}.md`), "utf8"),
+    );
+    expect(
+      (await calls()).filter((c) =>
+        /issues\/7\/comments --method POST|merge_requests\/7\/notes --method POST/.test(
+          c.args.join(" "),
+        ),
+      ),
+    ).toHaveLength(edited ? 0 : 1);
+  }
+
+  it.each(["github", "gitlab"] as const)("first review on %s", async (provider) => {
+    await setup(provider);
+    const out = await run(provider, {});
+    await golden(`first-${provider}`, out, provider);
+  });
+
+  it.each(["github", "gitlab"] as const)("edited pass counts on %s", async (provider) => {
+    await setup(provider, true);
+    const out = await run(provider, {
+      findings: [
+        {
+          ...PASS.findings[0],
+          id: "new",
+          startLine: undefined,
+          severity: "non-blocking",
+          category: "tests",
+          path: "test/upload.ts",
+          line: 12,
+          title: "The retry limit is untested.",
+        },
+      ],
+      confidence: 4,
+      reason: "The blocking retry bug is fixed.",
+      fixed: ["loop"],
+      assessments: [
+        { id: "loop", status: "fixed", evidence: "The 4xx test passes at this head." },
+        {
+          id: "keep",
+          status: "still-present",
+          evidence: "The timeout test still fails at this head.",
+        },
+      ],
+    });
+    await golden(`edited-${provider}`, out, provider, true);
+    expect(out.sinceLastReview).toEqual({ resolved: 1, new: 1, stillOpen: 1 });
+    expect(out.pass.open).toBe(2);
+  });
+
+  it("dry run shows pending locations without inventing thread URLs", async () => {
+    await setup("github");
+    const file = join(bin, "golden-pass.json");
+    await writeFile(file, JSON.stringify({ ...PASS, ...PUBLIC_LINKS }));
+    const out = await cli(
+      ["pr-review", "sync", "--change", "7", "--file", file, "--dry-run"],
+      github,
+    );
+    expect(out.body).toContain(
+      "| **Blocking · Bug:** The retry loop never stops on a 4xx. | `src/upload.ts:42` |",
+    );
+    expect(out.body).not.toContain("#discussion_");
+    expect(out.sinceLastReview).toEqual({ resolved: 0, new: 1, stillOpen: 0 });
+    expect((await calls()).some((c) => c.args.includes("POST") || c.args.includes("PATCH"))).toBe(
+      false,
+    );
+  });
+
+  it("zero findings omits the table", async () => {
+    await setup("github");
+    const out = await run("github", {
+      confidence: 5,
+      findings: [],
+      reason: "The upload checks pass.",
+    });
+    await golden("zero", out, "github");
+  });
+
+  it("many findings puts blockers first and escapes table cells", async () => {
+    await setup("github");
+    const findings = Array.from({ length: 12 }, (_, i) => ({
+      ...PASS.findings[0],
+      startLine: undefined,
+      id: `f${i}`,
+      line: i + 1,
+      severity: i % 3 === 0 ? "nit" : i % 3 === 1 ? "non-blocking" : "blocking",
+      title: `Finding ${i} uses a | pipe.`,
+    }));
+    const out = await run("github", { findings, reason: "Four blocking bugs." });
+    await golden("many", out, "github");
+  });
+
+  it("keeps unusual file paths literal in linked code locations", async () => {
+    await setup("github");
+    await run("github", { findings: [{ ...PASS.findings[0], path: "src/<upload>&.ts" }] });
+    const note = (await calls()).find((c) =>
+      c.args.join(" ").includes("issues/7/comments --method POST"),
+    )!;
+    expect(JSON.parse(note.body).body).toContain("[`src/<upload>&.ts:42`]");
+  });
+
+  it("counts 120 authored prose words even in folds, independently of generated rows", async () => {
+    await setup("github");
+    // reason + risk + signoff consume ten words; the remaining 110 belong to change.
+    const prose = {
+      reason: "One blocking bug.",
+      risk: ["Uploads retry on a 4xx."],
+      signoff: "the agent",
+      change: "word ".repeat(110).trim(),
+    };
+    await run("github", prose);
+    await rm(log, { force: true });
+    const out = await run("github", { ...prose, change: "word ".repeat(111).trim() }, 2);
+    expect(out.error).toMatch(/121 words.*120-word/);
+    expect((await calls()).some((c) => c.args.includes("POST") || c.args.includes("PATCH"))).toBe(
+      false,
+    );
   });
 });

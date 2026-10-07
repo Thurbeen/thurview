@@ -2,7 +2,8 @@
 # The agent-tooling dirs. Their files follow each CLI's own skill/command
 # conventions — frontmatter first, no leading h1 — which this linter's
 # document rules reject (MD041) without anything being wrong with them.
-exclude = [".git", ".claude", ".pi", ".opencode", "node_modules", "dist", "skills", "scripts/demo/review"]
+# Comment goldens are byte-exact forge output, not repository documentation.
+exclude = [".git", ".claude", ".pi", ".opencode", "node_modules", "dist", "skills", "scripts/demo/review", "test/fixtures/pr-summary"]
 
 [MD013]
 line_length = 100

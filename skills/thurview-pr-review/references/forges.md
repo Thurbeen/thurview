@@ -20,6 +20,14 @@ this command.
 
 ## Where the state lives
 
+The summary uses the same compact Markdown on both forges: a verdict, two
+public links, a two-column findings table (blocking first), folded update
+counts and folded change/risks. GitHub links each location to its review
+comment; GitLab links to the discussion's first note. A new finding gains its
+link from the forge's posting response; a dry run has no new thread yet and
+shows the location without inventing a URL. Older threads without a reported
+URL also show an unlinked location.
+
 The summary carries
 `<!-- thurview-pr-review {"head":"<sha>","state":"active","seen":"<note id>"} -->`
 and each finding's first comment
