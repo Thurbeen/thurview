@@ -9,8 +9,8 @@ Never commit either file, print account details in a forge comment or ask the
 user to paste a token into chat.
 
 1. **Install the checked stable Wrangler.** Run `npm view wrangler version`
-   first. At writing, npm reports `4.147.0`; the checked install command is
-   `npm install -g wrangler@4.147.0`. If the registry reports a newer stable
+   first. At writing, npm reports `4.148.0`; the checked install command is
+   `npm install -g wrangler@4.148.0`. If the registry reports a newer stable
    version, substitute that exact result and check its command help. Check
    `wrangler --version`; the snapshot CLI invokes that executable on PATH.
 2. **Log in on the publishing host.** Run `wrangler login --device` in remote
