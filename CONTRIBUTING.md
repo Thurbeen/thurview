@@ -35,6 +35,8 @@ locally.
 - `src/server/`: the HTTP API, SSE and static UI.
 - `src/export.ts`: `thurview export` - the same UI and a published revision's
   data, answered in advance, written as one HTML file that needs no server.
+- `src/export-markdown.ts`: the feedback serializer shared by CLI, reader exports
+  and public static snapshots.
 - `src/ui/`: the browser app, vanilla TypeScript bundled by esbuild.
 - `skills/thurview/`: the agent skill for a review, and the references the
   other skills draw on - the document, `data.yaml` and `map.yaml` shapes, the

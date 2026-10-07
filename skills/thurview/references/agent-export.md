@@ -6,11 +6,11 @@ bar. The dialog previews the Markdown and offers **Copy to clipboard** and
 for manual copying. Exports also work after approval or closure, and while
 viewing an earlier revision.
 
-Without a browser:
+Without a browser (`--format md` selects feedback; HTML remains the default):
 
 ```sh
 thurview export <id> --format md --out feedback.md
-thurview export --review <id> --revision 1 --out feedback.md
+thurview export --review <id> --format md --revision 1 --out feedback.md
 ```
 
 An id may be a unique prefix. With no id, the command selects the worktree's

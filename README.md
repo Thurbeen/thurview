@@ -309,7 +309,7 @@ Copy it or download it as `.md`; agents can fetch the same document with
 | `thurview serve` / `thurview stop`                      | Run the server in the foreground / stop the background one            |
 | `thurview setup hooks\|skill\|status`                   | Session hooks, agent skill, install state                             |
 | `thurview update`                                       | Self-update from npm                                                  |
-| `thurview export [ID] --format md [--out feedback.md]`                | Export reader feedback and unresolved checklist as Markdown           |
+| `thurview export [ID] --format md [--out feedback.md]`  | Export reader feedback and unresolved checklist as Markdown           |
 
 thurview is an [AXI](https://axi.md): built for agents that drive it through a
 shell. Output is [TOON](https://toonformat.dev) on stdout, errors are
