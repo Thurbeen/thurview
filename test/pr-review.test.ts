@@ -191,6 +191,39 @@ describe("the summary", () => {
     expect(lines[1]).toBe("Next: @dev — fix the 1 blocking finding.");
   });
 
+  describe("says merge only at confidence 5", () => {
+    const opening = async (p: Partial<Pass>) => {
+      const forge = new MemoryForge();
+      await pass(forge, p);
+      return forge.summaries()[0]!.body.split("\n")[1];
+    };
+    const minor = { ...UNBOUNDED, severity: "non-blocking" as const, title: "Log the retry." };
+    const nit = { ...UNBOUNDED, severity: "nit" as const, category: "docs" as const };
+
+    it("5 merges", async () => {
+      expect(await opening({ confidence: 5 })).toBe("Next: merge");
+    });
+
+    it("4 with non-blocking findings open asks for a look at them", async () => {
+      expect(await opening({ confidence: 4, findings: [minor, nit] })).toBe(
+        "Next: @dev — look at the non-blocking findings.",
+      );
+    });
+
+    it("4 with no non-blocking finding open asks for the risk", async () => {
+      expect(await opening({ confidence: 4 })).toBe("Next: @dev — answer the risk below.");
+      expect(await opening({ confidence: 4, findings: [nit] })).toBe(
+        "Next: @dev — answer the risk below.",
+      );
+    });
+
+    it("an open blocking finding asks for its fix", async () => {
+      expect(await opening({ confidence: 2, findings: [UNBOUNDED, minor] })).toBe(
+        "Next: @dev — fix the 1 blocking finding.",
+      );
+    });
+  });
+
   it("links the full review only when there is one", async () => {
     const forge = new MemoryForge();
     await pass(forge, {});
@@ -288,6 +321,12 @@ describe("the categories", () => {
     const skill = readFileSync(join(ROOT, "skills/thurview-pr-review/SKILL.md"), "utf8");
     for (const [id, c] of Object.entries(CATEGORIES))
       expect(skill.replace(/ {2,}/g, " ")).toContain(`| \`${id}\` | ${c.definition} |`);
+  });
+
+  it("score confidence as the skill documents", () => {
+    const skill = readFileSync(join(ROOT, "skills/thurview-pr-review/SKILL.md"), "utf8");
+    for (const [score, meaning] of Object.entries(CONFIDENCE))
+      expect(skill.replace(/ {2,}/g, " ")).toContain(`| ${score} | ${meaning} |`);
   });
 });
 

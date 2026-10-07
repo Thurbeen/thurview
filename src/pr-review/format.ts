@@ -217,7 +217,9 @@ function headline(p: Pass, author: string, open: OpenFinding[]): string {
   const blocking = open.filter((f) => f.severity === "blocking").length;
   if (blocking)
     return `Next: @${author} — fix the ${blocking} blocking finding${blocking === 1 ? "" : "s"}.`;
-  if (p.confidence >= 4) return "Next: merge";
+  if (p.confidence === 5) return "Next: merge";
+  if (p.confidence === 4 && open.some((f) => f.severity === "non-blocking"))
+    return `Next: @${author} — look at the non-blocking findings.`;
   return `Next: @${author} — answer the risk below.`;
 }
 
