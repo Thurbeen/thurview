@@ -233,7 +233,9 @@ holds the ids of open findings this push fixed:
   blocking first. With zero findings it says `No open findings.` and omits
   the table. Full finding detail stays in the inline thread and review page.
 - A first pass says `First review`. An edited pass folds `Since this review`
-  with resolved, new and still-open counts from that pass. Change and risks
+  with resolved, new and still-open counts from that pass. The CLI returns
+  them as `sinceLastReview` (`resolved`, `new`, `stillOpen`), not lifetime
+  totals. Change and risks
   are folded separately; the reviewed head and UTC sync timestamp stay small
   below them. The sign-off is last. Both forges use ordinary Markdown tables
   and HTML `details`/`summary`, with blank lines around their Markdown.
