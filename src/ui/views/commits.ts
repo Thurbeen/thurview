@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { fileLayout } from "../file-tree.js";
 import { h } from "../dom.js";
 import { state, navigate } from "../state.js";
 
@@ -6,6 +7,12 @@ export async function renderCommits(root: HTMLElement): Promise<void> {
   const el = h("div", { class: "commits" }, h("div", { class: "muted" }, "Loading…"));
   root.appendChild(el);
   const commits = await api.commits(state.id);
+  if (!el.isConnected) return;
+  const files = [...new Set(commits.flatMap((c) => c.files))].map(
+    (path) => state.data?.changes.find((c) => c.path === path) ?? { path },
+  );
+  const tree = fileLayout(files, el, (path) => navigate("files", { path }));
+  root.appendChild(tree.element);
   el.innerHTML = "";
   const r = state.data!.review;
   el.appendChild(

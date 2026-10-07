@@ -4,18 +4,14 @@ import type { DocumentKind, Thread, ThreadTarget } from "../store.js";
 export type View = "review" | "commits" | "files" | "map" | "coverage";
 
 /**
- * The tabs a document kind has. A review is a CHANGE, so the diff, the commits
- * and the interface delta all mean something. An explainer is a CODEBASE at one
- * commit: those three would render an empty claim about a change that does not
- * exist, so they are absent, and Coverage - what the document reached and what
- * it did not - takes their place. A design is a change that is NOT WRITTEN YET:
- * there is no diff to show and no coverage to state, so it keeps the document
- * and the map, where its proposed structure sits beside today's.
+ * Reviews show a change; explainers and designs browse files at one pinned
+ * commit instead of showing a diff or commits. Coverage states an explainer's
+ * scope, while a design's map places the proposed structure beside today's.
  */
 export const VIEWS: Record<DocumentKind, View[]> = {
   review: ["review", "commits", "files", "map"],
-  explainer: ["review", "map", "coverage"],
-  design: ["review", "map"],
+  explainer: ["review", "files", "map", "coverage"],
+  design: ["review", "files", "map"],
 };
 
 export function kind(): DocumentKind {

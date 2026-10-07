@@ -250,7 +250,12 @@ repository's Pages folder.
 - **Files**: split or unified diff of every changed file at the pinned
   commits, with expandable context. Click a line number to comment on it.
   Click an identifier to see where it is defined at that commit; Ctrl-click
-  jumps there.
+  jumps there. Explainers and designs show full files at their pinned commit.
+  A file tree sits beside Files, Commits and Coverage: compact folder chains,
+  change statuses and line totals, comment and anchor markers, and a path
+  filter. Use arrows to move, Left/Right to fold, Enter to open, or the expand
+  and collapse all buttons. Drag the divider to resize it; the width and folds
+  are remembered. On a narrow screen, use Files to open the drawer.
 - **Commits**: the commits between base and head.
 - **Coverage** (explainers): every file in scope at the pinned commit, in one
   of four states - anchored in the document, placed on the map only, matched
