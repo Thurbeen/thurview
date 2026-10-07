@@ -496,3 +496,289 @@ describe("GitLab notes and threads", { timeout: 30_000 }, () => {
     expect(out["open"][0]).toMatchObject({ id: "loop" });
   });
 });
+
+describe("repository auto-merge opt-in", { timeout: 30_000 }, () => {
+  beforeEach(async () => {
+    await writeFile(
+      join(home, "publish.yaml"),
+      "auto_merge:\n  method: squash\n  repositories:\n    - github.com/acme/web\n    - gitlab.example.com/acme/web\n",
+    );
+  });
+  afterAll(async () => {
+    await rm(join(home, "publish.yaml"), { force: true });
+  });
+
+  async function review(
+    confidence: number,
+    over: Record<string, unknown> = {},
+    listed = true,
+    lab = false,
+    threads: unknown[] = [],
+    command = "sync",
+    extra: string[] = [],
+    findings: unknown[] = [],
+    failComment = false,
+  ) {
+    if (!listed)
+      await writeFile(
+        join(home, "publish.yaml"),
+        "auto_merge:\n  method: squash\n  repositories: []\n",
+      );
+    await fixtures(
+      lab
+        ? [
+            { cli: "glab", match: ["cancel_merge_when_pipeline_succeeds"], body: {} },
+            { cli: "glab", match: ["merge_requests/7/merge", "PUT"], body: {} },
+            { cli: "glab", match: ["merge_requests/7/notes", "POST"], body: { id: 9, body: "" } },
+            { cli: "glab", match: ["merge_requests/7/notes?"], body: "" },
+            { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
+            { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+            {
+              cli: "glab",
+              match: ["projects/acme%2Fweb/merge_requests/7"],
+              body: { ...MR, ...over },
+            },
+            { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+            { cli: "glab", match: ["auth", "status"], body: "" },
+          ]
+        : [
+            { cli: "gh", match: ["pulls/7/comments", "POST"], body: {}, fail: failComment },
+            { cli: "gh", match: ["pr", "merge"], body: "" },
+            {
+              cli: "gh",
+              match: ["issues/7/comments", "POST"],
+              body: { id: 9, body: "", user: null },
+            },
+            { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+            {
+              cli: "gh",
+              match: ["graphql"],
+              body: {
+                data: {
+                  repository: {
+                    pullRequest: { reviews: { nodes: [] }, reviewThreads: { nodes: threads } },
+                  },
+                },
+              },
+            },
+            { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL(over) },
+            { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+          ],
+    );
+    const file = join(bin, "auto-pass.json");
+    await writeFile(file, JSON.stringify({ ...PASS, confidence, findings }));
+    return cli(
+      [
+        "pr-review",
+        command,
+        "--change",
+        "7",
+        ...(command === "sync" ? ["--file", file] : []),
+        ...extra,
+      ],
+      lab ? gitlab : github,
+    );
+  }
+
+  it("enables native squash auto-merge at 5/5 on the reviewed head", async () => {
+    const out = await review(5);
+    expect(out["pass"].autoMerge).toBe("auto-merge enabled at 5/5");
+    expect((await calls()).find((c) => c.args.includes("--auto"))?.args).toEqual([
+      "pr",
+      "merge",
+      "7",
+      "--repo",
+      "github.com/acme/web",
+      "--auto",
+      "--squash",
+      "--match-head-commit",
+      HEAD,
+    ]);
+  });
+  it("holds at 4/5 without changing forge state", async () => {
+    const out = await review(4);
+    expect(out["pass"].autoMerge).toBe("auto-merge held: 4/5");
+    expect((await calls()).some((c) => c.args.includes("merge"))).toBe(false);
+  });
+  it("disables existing auto-merge after a confidence drop", async () => {
+    const out = await review(4, { auto_merge: { merge_method: "squash" } });
+    expect(out["pass"].autoMerge).toBe("auto-merge held: 4/5");
+    expect((await calls()).some((c) => c.args.includes("--disable-auto"))).toBe(true);
+  });
+  it("leaves an unlisted repository untouched", async () => {
+    const out = await review(5, { auto_merge: {} }, false);
+    expect(out["pass"].autoMerge).toBe("auto-merge held: repository not listed");
+    expect((await calls()).some((c) => c.args.includes("merge"))).toBe(false);
+  });
+  it("leaves a draft untouched", async () => {
+    const out = await review(5, { draft: true });
+    expect(out["pass"].autoMerge).toBe("auto-merge held: draft");
+    expect((await calls()).some((c) => c.args.includes("merge"))).toBe(false);
+  });
+  it("uses GitLab native auto-merge with squash and a head guard", async () => {
+    const out = await review(5, {}, true, true);
+    expect(out["pass"].autoMerge).toBe("auto-merge enabled at 5/5");
+    const call = (await calls()).find((c) => c.args.includes("auto_merge=true"));
+    expect(call?.args).toContain("squash=true");
+    expect(call?.args).toContain(`sha=${HEAD}`);
+  });
+  const thread = {
+    id: "T1",
+    isResolved: false,
+    isOutdated: false,
+    comments: { nodes: [{ author: { login: "reviewer" }, body: "Please check this." }] },
+  };
+  it("holds and disables for another reviewer's unresolved thread", async () => {
+    const out = await review(5, { auto_merge: {} }, true, false, [thread]);
+    expect(out["pass"].autoMerge).toBe("auto-merge held: unresolved threads");
+    expect((await calls()).some((c) => c.args.includes("--disable-auto"))).toBe(true);
+  });
+  it("disables on a new push before a new pass is available", async () => {
+    await review(5, { auto_merge: {} }, true, false, [], "wait");
+    expect((await calls()).some((c) => c.args.includes("--disable-auto"))).toBe(true);
+  });
+  it("previews without enabling auto-merge", async () => {
+    const out = await review(5, {}, true, false, [], "sync", ["--dry-run"]);
+    expect(out["body"]).toContain("auto-merge enabled at 5/5");
+    expect((await calls()).some((c) => c.args.includes("--auto"))).toBe(false);
+  });
+  it("cancels GitLab auto-merge on a confidence drop", async () => {
+    await review(4, { merge_when_pipeline_succeeds: true }, true, true);
+    expect(
+      (await calls()).some((c) => c.args.join(" ").includes("cancel_merge_when_pipeline_succeeds")),
+    ).toBe(true);
+  });
+
+  it("holds for an unresolved thread beyond the first GitHub page", async () => {
+    const page = (nodes: unknown[], more: boolean) => ({
+      data: {
+        repository: {
+          pullRequest: {
+            reviews: { nodes: [] },
+            reviewThreads: { nodes, pageInfo: { hasNextPage: more, endCursor: "next" } },
+          },
+        },
+      },
+    });
+    await fixtures([
+      { cli: "gh", match: ["cursor=next"], body: page([thread], false) },
+      { cli: "gh", match: ["graphql"], body: page([], true) },
+      { cli: "gh", match: ["pr", "merge"], body: "" },
+      { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9, body: "", user: null } },
+      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const file = join(bin, "auto-pass.json");
+    await writeFile(file, JSON.stringify({ ...PASS, confidence: 5, findings: [] }));
+    const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
+    expect(out["pass"].autoMerge).toBe("auto-merge held: unresolved threads");
+    expect((await calls()).some((c) => c.args.includes("--auto"))).toBe(false);
+  });
+  it("cancels before posting new findings even when posting fails", async () => {
+    await expect(
+      review(
+        4,
+        { auto_merge: {} },
+        true,
+        false,
+        [],
+        "sync",
+        [],
+        [{ ...PASS.findings[0], severity: "non-blocking" }],
+        true,
+      ),
+    ).rejects.toThrow("fixture says this call fails");
+    const logged = await calls();
+    const disabled = logged.findIndex((c) => c.args.includes("--disable-auto"));
+    const posted = logged.findIndex((c) => c.args.join(" ").includes("pulls/7/comments"));
+    expect(disabled).toBeGreaterThanOrEqual(0);
+    expect(disabled).toBeLessThan(posted);
+  });
+
+  it("cancels native auto-merge when the operator stops the review", async () => {
+    await review(5, { auto_merge: {} }, true, false, [], "stop");
+    expect((await calls()).some((c) => c.args.includes("--disable-auto"))).toBe(true);
+  });
+  it("holds at 5/5 with its own non-blocking finding", async () => {
+    const out = await review(
+      5,
+      {},
+      true,
+      false,
+      [],
+      "sync",
+      [],
+      [{ ...PASS.findings[0], severity: "non-blocking" }],
+    );
+    expect(out["pass"].autoMerge).toBe("auto-merge held: open findings");
+    expect((await calls()).some((c) => c.args.includes("--auto"))).toBe(false);
+  });
+  it("rejects an unsupported merge method before any forge mutation", async () => {
+    await review(4);
+    await writeFile(
+      join(home, "publish.yaml"),
+      "auto_merge: { method: merge, repositories: [github.com/acme/web] }\n",
+    );
+    await rm(log, { force: true });
+    const out = await cli(
+      ["pr-review", "sync", "--change", "7", "--file", join(bin, "auto-pass.json")],
+      github,
+      2,
+    );
+    expect(JSON.stringify(out)).toContain("invalid auto_merge configuration");
+    expect((await calls()).some((c) => c.args.includes("POST") || c.args.includes("--auto"))).toBe(
+      false,
+    );
+  });
+  it("cancels if a stop arrives during the final safety recheck", async () => {
+    await fixtures([
+      { cli: "gh", match: ["pr", "merge"], body: "" },
+      { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9, body: "", user: null } },
+      {
+        cli: "gh",
+        match: ["issues/7/comments", "--paginate"],
+        sequence: [[[]], [[{ id: 12, user: { login: "dev" }, body: "/thurview stop" }]]],
+      },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL({ auto_merge: {} }) },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const file = join(bin, "auto-pass.json");
+    await writeFile(file, JSON.stringify({ ...PASS, confidence: 5, findings: [] }));
+    const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
+    expect(out["pass"].autoMerge).toBe("auto-merge held: review stopped");
+    expect((await calls()).some((c) => c.args.includes("--auto"))).toBe(false);
+    expect((await calls()).some((c) => c.args.includes("--disable-auto"))).toBe(true);
+  });
+  it.each([
+    [
+      { head: { sha: TIP, ref: "retry", repo: { full_name: "acme/web" } } },
+      "auto-merge held: new head awaiting review",
+      true,
+    ],
+    [{ draft: true }, "auto-merge held: draft", false],
+  ] as const)(
+    "rechecks the head and draft state before enabling (%s)",
+    async (change, decision, cancel) => {
+      await fixtures([
+        { cli: "gh", match: ["pr", "merge"], body: "" },
+        { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9, body: "", user: null } },
+        { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+        { cli: "gh", match: ["graphql"], body: NO_THREADS },
+        {
+          cli: "gh",
+          match: ["repos/acme/web/pulls/7"],
+          sequence: [PULL({ auto_merge: {} }), PULL({ auto_merge: {}, ...change })],
+        },
+        { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+      ]);
+      const file = join(bin, "auto-pass.json");
+      await writeFile(file, JSON.stringify({ ...PASS, confidence: 5, findings: [] }));
+      const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
+      expect(out["pass"].autoMerge).toBe(decision);
+      expect((await calls()).some((c) => c.args.includes("--auto"))).toBe(false);
+      expect((await calls()).some((c) => c.args.includes("--disable-auto"))).toBe(cancel);
+    },
+  );
+});

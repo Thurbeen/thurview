@@ -50,6 +50,7 @@ interface RestPull {
   html_url: string;
   body: string | null;
   draft: boolean;
+  auto_merge?: unknown;
   state: string;
   merged: boolean;
   user: { login: string } | null;
@@ -82,6 +83,7 @@ interface ThreadsPayload {
           }[];
         };
         reviewThreads: {
+          pageInfo?: { hasNextPage: boolean; endCursor: string | null };
           nodes: {
             id: string;
             isResolved: boolean;
@@ -104,11 +106,11 @@ interface ThreadsPayload {
   };
 }
 
-const THREADS_QUERY = `query($owner:String!,$name:String!,$number:Int!){
+const THREADS_QUERY = `query($owner:String!,$name:String!,$number:Int!,$cursor:String){
   repository(owner:$owner,name:$name){
     pullRequest(number:$number){
       reviews(last:50){nodes{id author{login} state body submittedAt commit{oid}}}
-      reviewThreads(last:100){nodes{
+      reviewThreads(first:100,after:$cursor){pageInfo{hasNextPage endCursor} nodes{
         id isResolved isOutdated path line diffSide
         comments(first:50){nodes{author{login} body url originalCommit{oid}}}
       }}
@@ -163,6 +165,7 @@ export class GitHubForge implements Forge {
       baseBranch: pr.base.ref,
       fromFork: (pr.head.repo?.full_name ?? repo.path) !== (pr.base.repo?.full_name ?? repo.path),
       draft: pr.draft,
+      ...(pr.auto_merge ? { autoMerge: true } : {}),
       body: pr.body ?? "",
       labels: (pr.labels ?? []).map((l) => l.name),
     };
@@ -214,28 +217,41 @@ export class GitHubForge implements Forge {
     cr: ChangeRequest,
   ): Promise<{ passes: PriorPass[]; threads: PriorThread[] }> {
     const [owner, name] = repo.path.split("/");
-    const payload = await runJson<ThreadsPayload>(
-      "gh",
-      this.api(repo, [
-        "graphql",
-        "-f",
-        `query=${THREADS_QUERY}`,
-        "-f",
-        `owner=${owner}`,
-        "-f",
-        `name=${name}`,
-        // -F is the typed flag; only the Int! variable wants it. Everything
-        // else, a comment body above all, goes through -f as a literal string
-        // so a body starting with `@` is not read as a file path.
-        "-F",
-        `number=${cr.number}`,
-      ]),
-    );
-    const pr = payload.data?.repository?.pullRequest;
-    if (!pr)
-      throw new AxiError(`pull request ${cr.number} not found on ${repo.path}`, "NOT_FOUND", [
-        "Check the number and that the account can read the repository",
-      ]);
+    type Pull = NonNullable<NonNullable<ThreadsPayload["data"]["repository"]>["pullRequest"]>;
+    const nodes: Pull["reviewThreads"]["nodes"] = [];
+    let cursor: string | null = null;
+    let pr: Pull;
+    for (;;) {
+      const payload = await runJson<ThreadsPayload>(
+        "gh",
+        this.api(repo, [
+          "graphql",
+          "-f",
+          `query=${THREADS_QUERY}`,
+          "-f",
+          `owner=${owner}`,
+          "-f",
+          `name=${name}`,
+          "-F",
+          `number=${cr.number}`,
+          ...(cursor ? ["-f", `cursor=${cursor}`] : []),
+        ]),
+      );
+      const pagePull = payload.data?.repository?.pullRequest;
+      if (!pagePull)
+        throw new AxiError(`pull request ${cr.number} not found on ${repo.path}`, "NOT_FOUND", [
+          "Check the number and that the account can read the repository",
+        ]);
+      pr = pagePull;
+      nodes.push(...pr.reviewThreads.nodes);
+      const page = pr.reviewThreads.pageInfo;
+      if (!page?.hasNextPage) break;
+      if (!page.endCursor || page.endCursor === cursor)
+        throw new AxiError("review thread pagination did not advance", "FORGE_ERROR", [
+          "Retry before enabling auto-merge",
+        ]);
+      cursor = page.endCursor;
+    }
     const passes: PriorPass[] = pr.reviews.nodes
       .filter((r) => r.state !== "PENDING")
       .map((r) => ({
@@ -246,7 +262,7 @@ export class GitHubForge implements Forge {
         ...(r.commit?.oid ? { commit: r.commit.oid } : {}),
         body: r.body,
       }));
-    const threads: PriorThread[] = pr.reviewThreads.nodes.map((t) => {
+    const threads: PriorThread[] = nodes.map((t) => {
       const first = t.comments.nodes[0];
       return {
         id: t.id,
@@ -386,6 +402,17 @@ export class GitHubForge implements Forge {
       ]),
       { input: JSON.stringify({ commit_id: cr.head, ...inline(c) }) },
     );
+  }
+
+  async autoMerge(repo: RepoId, cr: ChangeRequest, enable: boolean): Promise<void> {
+    await run("gh", [
+      "pr",
+      "merge",
+      cr.number,
+      "--repo",
+      `${repo.host}/${repo.path}`,
+      ...(enable ? ["--auto", "--squash", "--match-head-commit", cr.head] : ["--disable-auto"]),
+    ]);
   }
 
   permalink(repo: RepoId, sha: string, path: string, from?: number, to?: number): string {

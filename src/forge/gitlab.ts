@@ -59,6 +59,8 @@ interface RestMr {
   web_url: string;
   description: string | null;
   draft?: boolean;
+  merge_when_pipeline_succeeds?: boolean;
+  auto_merge_enabled?: boolean;
   work_in_progress?: boolean;
   state: string;
   author: { username: string } | null;
@@ -175,6 +177,7 @@ export class GitLabForge implements Forge {
       baseBranch: mr.target_branch,
       fromFork: mr.source_project_id !== mr.target_project_id,
       draft: Boolean(mr.draft ?? mr.work_in_progress),
+      ...(mr.auto_merge_enabled || mr.merge_when_pipeline_succeeds ? { autoMerge: true } : {}),
       body: mr.description ?? "",
       labels: mr.labels ?? [],
     };
@@ -449,6 +452,28 @@ export class GitLabForge implements Forge {
         this.api(repo, base, ["--method", "PUT", "--raw-field", "resolved=true"]),
       );
     return { replied: body !== undefined, resolved: resolve, notes: [] };
+  }
+
+  async autoMerge(repo: RepoId, cr: ChangeRequest, enable: boolean): Promise<void> {
+    await run(
+      "glab",
+      this.api(
+        repo,
+        `projects/${this.project(repo)}/merge_requests/${cr.number}/${enable ? "merge" : "cancel_merge_when_pipeline_succeeds"}`,
+        enable
+          ? [
+              "--method",
+              "PUT",
+              "--raw-field",
+              "auto_merge=true",
+              "--raw-field",
+              "squash=true",
+              "--raw-field",
+              `sha=${cr.head}`,
+            ]
+          : ["--method", "POST"],
+      ),
+    );
   }
 
   permalink(repo: RepoId, sha: string, path: string, from?: number, to?: number): string {

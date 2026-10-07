@@ -252,12 +252,13 @@ export function renderSummary(
   m: SummaryMarker,
   author: string,
   open: OpenFinding[],
+  autoMerge?: string,
 ): string {
   const tail = [`Reviewed \`${m.head.slice(0, 7)}\``];
   if (p.reviewUrl) tail.push(`[Full review](${p.reviewUrl})`);
   if (p.markdownUrl) tail.push(`[Markdown export](${p.markdownUrl})`);
   const parts = [
-    `${marker(SUMMARY_TAG, m)}\n${statusLine(m) ?? headline(p, author, open)}`,
+    `${marker(SUMMARY_TAG, m)}\n${statusLine(m) ?? headline(p, author, open)}${autoMerge ? ` · ${autoMerge}` : ""}`,
     `**Confidence ${p.confidence}/5:** ${p.reason.trim()}`,
     `**Risk**\n${p.risk.map((r) => `- ${r.trim()}`).join("\n")}`,
     `**Change:** ${p.change.trim()}`,

@@ -28,8 +28,8 @@
  *   postNote  post one top-level comment; editNote rewrites one in place
  *   comment   one inline comment, which opens one resolvable thread
  *
- * WHAT IS NOT HERE, deliberately: merge, close, push. A review comments; the
- * maintainer merges. A seam with no merge method cannot be talked into one.
+ * Immediate merge, close and push are outside this seam. Native auto-merge
+ * is a separate opt-in that still obeys the forge's required checks.
  *
  * A CHECK THAT COULD NOT BE READ IS `unknown`, NEVER `passed`. Every mapping
  * below is explicit about which forge state becomes which verdict, because a
@@ -78,6 +78,7 @@ export interface ChangeRequest {
   /** True when the head lives in another repository, which is what strips CI. */
   fromFork: boolean;
   draft: boolean;
+  autoMerge?: boolean;
   body: string;
   labels: string[];
 }
@@ -174,4 +175,5 @@ export interface Forge {
   postNote(repo: RepoId, cr: ChangeRequest, body: string): Promise<Note>;
   editNote(repo: RepoId, cr: ChangeRequest, id: string, body: string): Promise<void>;
   comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<void>;
+  autoMerge?(repo: RepoId, cr: ChangeRequest, enable: boolean): Promise<void>;
 }

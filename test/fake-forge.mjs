@@ -3,7 +3,7 @@
 // rather than asserted. It logs every invocation to $FORGE_LOG and answers
 // from the fixture table at $FORGE_RESPONSES: the first entry whose `match`
 // substrings all appear in the command line wins.
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 
 const [cli, ...args] = process.argv.slice(2);
 const line = args.join(" ");
@@ -29,4 +29,12 @@ if (hit.fail) {
   process.stderr.write(hit.stderr ?? "fake-forge: fixture says this call fails\n");
   process.exit(1);
 }
-process.stdout.write(typeof hit.body === "string" ? hit.body : JSON.stringify(hit.body));
+let response = hit.body;
+if (hit.sequence?.length) {
+  response = hit.sequence[0];
+  if (hit.sequence.length > 1) {
+    hit.sequence.shift();
+    writeFileSync(process.env.FORGE_RESPONSES, JSON.stringify(table));
+  }
+}
+process.stdout.write(typeof response === "string" ? response : JSON.stringify(response));

@@ -23,21 +23,30 @@ import {
  * kept on this machine. Every call reads the state back from the forge, which
  * is what lets the loop die and resume anywhere.
  *
- * NEVER approve, merge or push. The seam has no merge and no push, and this
- * module calls neither `submit` nor anything else that changes the change
- * request's own state: the verdict is the summary's confidence.
+ * Native auto-merge is allowed only by the user-owned repository opt-in.
+ * Approval, immediate merge and push remain outside this loop.
  */
 
 /** The forge methods a follow loop uses, and no other. */
 export type ReviewForge = Pick<
   Forge,
-  "id" | "whoami" | "get" | "prior" | "reply" | "notes" | "postNote" | "editNote" | "comment"
+  | "id"
+  | "whoami"
+  | "get"
+  | "prior"
+  | "reply"
+  | "notes"
+  | "postNote"
+  | "editNote"
+  | "comment"
+  | "autoMerge"
 >;
 
 export interface Ctx {
   forge: ReviewForge;
   repo: RepoId;
   cr: ChangeRequest;
+  autoMergeAllowed?: boolean;
 }
 
 export const STOP_LABEL = "thurview:stop";
@@ -61,6 +70,7 @@ export interface ReviewState {
   stop: string | null;
   /** The newest note id on the change request. */
   newest: string;
+  unresolved: string[];
 }
 
 function maxId(...ids: string[]): string {
@@ -113,7 +123,13 @@ export async function readState(ctx: Ctx): Promise<ReviewState> {
     : command
       ? `a /thurview stop comment by @${command.author}`
       : null;
-  return { summary, findings, stop, newest: maxId(...notes.map((n) => n.id)) };
+  return {
+    summary,
+    findings,
+    stop,
+    newest: maxId(...notes.map((n) => n.id)),
+    unresolved: prior.threads.filter((t) => !t.resolved).map((t) => t.id),
+  };
 }
 
 export interface SyncResult {
@@ -125,6 +141,7 @@ export interface SyncResult {
   open: number;
   blocking: number;
   body: string;
+  autoMerge: string;
 }
 
 /**
@@ -203,7 +220,16 @@ export async function sync(
     state: "active",
     seen: maxId(st.newest, st.summary?.marker.seen ?? "0"),
   };
-  const body = renderSummary(pass, marker, cr.author, open);
+  const fixedThreads = fixed.map((id) => st.findings.find((f) => f.id === id)!.thread);
+  const unresolved = st.unresolved.filter((id) => !fixedThreads.includes(id)).length + fresh.length;
+  let autoMerge = mergeDecision(ctx, pass.confidence, open, unresolved);
+  const body = renderSummary(
+    pass,
+    marker,
+    cr.author,
+    open,
+    ctx.autoMergeAllowed ? autoMerge : undefined,
+  );
   const result: SyncResult = {
     summary: opts.dryRun ? "dry-run" : st.summary ? "edited" : "created",
     head: cr.head,
@@ -213,8 +239,10 @@ export async function sync(
     open: open.length,
     blocking,
     body,
+    autoMerge,
   };
   if (opts.dryRun) return result;
+  if (autoMerge !== "auto-merge enabled at 5/5") await applyAutoMerge(ctx, autoMerge);
 
   for (const { f } of fresh)
     await forge.comment(repo, cr, {
@@ -233,9 +261,53 @@ export async function sync(
       reply,
       true,
     );
-  if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, body);
-  else await forge.postNote(repo, cr, body);
+  if (ctx.autoMergeAllowed && !cr.draft) {
+    const current = await forge.get(repo, cr.number);
+    const live = await readState({ ...ctx, cr: current });
+    autoMerge =
+      current.state !== "open"
+        ? `auto-merge held: ${current.state}`
+        : current.head !== cr.head
+          ? "auto-merge held: new head awaiting review"
+          : live.stop || (live.summary && live.summary.marker.state !== "active")
+            ? "auto-merge held: review stopped"
+            : mergeDecision(
+                { ...ctx, cr: current },
+                pass.confidence,
+                open,
+                live.unresolved.length + fresh.length,
+              );
+    await applyAutoMerge({ ...ctx, cr: current }, autoMerge);
+    result.autoMerge = autoMerge;
+    result.body = renderSummary(pass, marker, cr.author, open, autoMerge);
+  }
+  if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, result.body);
+  else await forge.postNote(repo, cr, result.body);
   return result;
+}
+
+function mergeDecision(
+  ctx: Ctx,
+  confidence: number,
+  open: { severity: Severity }[],
+  unresolved: number,
+): string {
+  if (!ctx.autoMergeAllowed) return "auto-merge held: repository not listed";
+  if (ctx.cr.draft) return "auto-merge held: draft";
+  if (confidence !== 5) return `auto-merge held: ${confidence}/5`;
+  if (open.some((f) => f.severity !== "nit")) return "auto-merge held: open findings";
+  if (unresolved) return "auto-merge held: unresolved threads";
+  return "auto-merge enabled at 5/5";
+}
+
+async function applyAutoMerge(ctx: Ctx, decision: string): Promise<void> {
+  if (!ctx.autoMergeAllowed || ctx.cr.draft || ctx.cr.state !== "open") return;
+  const enable = decision === "auto-merge enabled at 5/5";
+  if (enable || ctx.cr.autoMerge) {
+    if (!ctx.forge.autoMerge)
+      throw new AxiError("native auto-merge is unsupported", "FORGE_ERROR", []);
+    await ctx.forge.autoMerge(ctx.repo, ctx.cr, enable);
+  }
 }
 
 /** Rewrite the summary's state and opening line, or post a bare one when there is none. */
@@ -258,6 +330,7 @@ async function mark(ctx: Ctx, st: ReviewState, state: ReviewStatus, opening?: st
 
 /** Stop following: the summary says so, and every later wait answers `stopped`. */
 export async function stopReview(ctx: Ctx): Promise<void> {
+  await applyAutoMerge(ctx, "auto-merge held: review stopped");
   await mark(ctx, await readState(ctx), "stopped");
 }
 
@@ -284,6 +357,7 @@ export interface WaitOptions {
   timeout: number;
   sleep?: (seconds: number) => Promise<void>;
   now?: () => number;
+  autoMergeAllowed?: boolean;
 }
 
 const realSleep = (s: number) => new Promise<void>((r) => setTimeout(r, s * 1000));
@@ -305,12 +379,32 @@ export async function waitForEvent(
   const start = now();
   for (;;) {
     const cr = await forge.get(repo, ref);
-    const ctx = { forge, repo, cr };
+    const ctx = { forge, repo, cr, autoMergeAllowed: opts.autoMergeAllowed };
     const st = await readState(ctx);
     const status = st.summary?.marker.state;
     if (cr.state === "merged" || cr.state === "closed") {
       if (st.summary && status !== cr.state) await mark(ctx, st, cr.state);
       return { event: cr.state, head: cr.head };
+    }
+    const held =
+      status === "stopped" || st.stop
+        ? "auto-merge held: review stopped"
+        : !st.summary || st.summary.marker.head !== cr.head
+          ? "auto-merge held: new head awaiting review"
+          : st.unresolved.length
+            ? "auto-merge held: unresolved threads"
+            : null;
+    if (held && ctx.autoMergeAllowed && !cr.draft) {
+      await applyAutoMerge(ctx, held);
+      if (st.summary && !st.summary.note.body.includes(held)) {
+        const body = st.summary.note.body.replace(/ · auto-merge [^\n]+/, "");
+        await forge.editNote(
+          repo,
+          cr,
+          st.summary.note.id,
+          restate(body, st.summary.marker, `${body.split("\n")[1]} · ${held}`),
+        );
+      }
     }
     if (status === "stopped") return { event: "stopped", head: cr.head };
     if (st.stop) {

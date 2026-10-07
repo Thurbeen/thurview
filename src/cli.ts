@@ -1,3 +1,4 @@
+import { autoMergeAllowed } from "./pr-review/config.js";
 import { renderStatic, publishStatic, checkStaticTarget } from "./static.js";
 import {
   runAxiCli,
@@ -2220,6 +2221,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const s = spec("pr-review").flags;
     const p = parseFlags(`pr-review ${sub}`, args.slice(1), s);
     const ctx = await forgeContext(p);
+    const mergeAllowed = await autoMergeAllowed(ctx.repo);
     const where = `${ctx.repo.path}#${ctx.cr.number}`;
     const again = `thurview pr-review wait --change ${ctx.cr.number}`;
 
@@ -2274,12 +2276,15 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       const text = await readText(resolve(process.cwd(), file));
       if (text === null) throw new AxiError(`${file} not found`, "NOT_FOUND", []);
       const dry = bool(p, "dry-run");
-      const r = await sync(ctx, parsePass(text, file), { dryRun: dry });
+      const r = await sync({ ...ctx, autoMergeAllowed: mergeAllowed }, parsePass(text, file), {
+        dryRun: dry,
+      });
       return {
         pass: {
           change: where,
           head: r.head,
           summary: r.summary,
+          autoMerge: r.autoMerge,
           open: r.open,
           blocking: r.blocking,
         },
@@ -2293,7 +2298,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           ? ["Nothing was posted; re-run without --dry-run to post it"]
           : [
               `Run \`${again}\` to block until the next push, merge or stop`,
-              "Never approve, merge or push to the change request; the verdict is the summary",
+              "Native auto-merge follows only the user-owned repository opt-in; never approve or push",
             ],
       };
     }
@@ -2303,7 +2308,11 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       const timeout = Number(str(p, "timeout"));
       if (!(interval > 0) || !(timeout > 0))
         throw new AxiError("--interval and --timeout take seconds", "VALIDATION_ERROR", []);
-      const ev = await waitForEvent(ctx.forge, ctx.repo, ctx.cr.number, { interval, timeout });
+      const ev = await waitForEvent(ctx.forge, ctx.repo, ctx.cr.number, {
+        interval,
+        timeout,
+        autoMergeAllowed: mergeAllowed,
+      });
       const help =
         ev.event === "push"
           ? [
@@ -2318,7 +2327,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     }
 
     if (sub === "stop") {
-      await stopReview(ctx);
+      await stopReview({ ...ctx, autoMergeAllowed: mergeAllowed });
       return {
         stopped: where,
         help: [
