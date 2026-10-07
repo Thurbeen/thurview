@@ -374,8 +374,8 @@ export class GitHubForge implements Forge {
     );
   }
 
-  async comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<void> {
-    await run(
+  async comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<string | void> {
+    const posted = await runJson<{ html_url?: string }>(
       "gh",
       this.api(repo, [
         `repos/${repo.path}/pulls/${cr.number}/comments`,
@@ -386,6 +386,7 @@ export class GitHubForge implements Forge {
       ]),
       { input: JSON.stringify({ commit_id: cr.head, ...inline(c) }) },
     );
+    return posted.html_url;
   }
 
   permalink(repo: RepoId, sha: string, path: string, from?: number, to?: number): string {

@@ -89,7 +89,8 @@ const wait = `await new Promise(r => setTimeout(r, 200));`;
 const key = (key: string) =>
   `document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }))`;
 
-describe.skipIf(!browserBin)("file explorer in the reader", () => {
+// A test must outlive the page helper's 15-second readiness check on a cold browser.
+describe.skipIf(!browserBin)("file explorer in the reader", { timeout: 30_000 }, () => {
   beforeAll(async () => {
     const cache = join(ROOT, "node_modules", ".cache");
     await mkdir(cache, { recursive: true });
@@ -198,6 +199,23 @@ describe.skipIf(!browserBin)("file explorer in the reader", () => {
     await server?.close();
     if (scratch) await rm(scratch, { recursive: true, force: true, maxRetries: 5 });
   }, 30000);
+
+  it("allows browser readiness within the page helper's existing deadline", async () => {
+    const slow = join(scratch, "slow-ready.html");
+    await writeFile(
+      slow,
+      `<!doctype html><body><script>
+      setTimeout(() => {
+        document.body.innerHTML = '<div class="file-view"><div class="code">ready</div></div>';
+      }, 6000);
+    </script></body>`,
+    );
+    const p = await page(pathToFileURL(slow).href);
+    expect(await p.evaluate(`document.querySelector('.file-view .code').textContent`)).toBe(
+      "ready",
+    );
+    await p.close();
+  });
 
   it("nests files under compact expandable folder chains", async () => {
     const p = await page();

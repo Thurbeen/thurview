@@ -16,7 +16,7 @@ import {
  * back from the change request and never from this machine.
  */
 
-/** The summary's word budget, the counts table and the marker excluded. */
+/** Authored summary prose budget; generated rows, labels, links and metadata are separate. */
 export const SUMMARY_WORDS = 120;
 /** A finding's visible lines, its suggestion block excluded and its sign-off included. */
 export const FINDING_LINES = 5;
@@ -196,31 +196,70 @@ export function renderFinding(f: Finding, signoff: string | undefined, forge: st
 }
 
 export interface OpenFinding {
+  id?: string;
   category: Category;
   severity: Severity;
+  title?: string;
+  path?: string;
+  line?: number;
+  url?: string;
+}
+
+export interface SummaryUpdate {
+  first: boolean;
+  counts: { resolved: number; new: number; stillOpen: number };
+  flagged?: string[];
+  reviewedAt: string;
+}
+
+function tableText(text: string): string {
+  return text
+    .trim()
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\|/g, "\\|")
+    .replace(/[\r\n]/g, " ");
+}
+
+function code(text: string): string {
+  const fence = "`".repeat(Math.max(0, ...(text.match(/`+/g) ?? []).map((s) => s.length)) + 1);
+  return `${fence}${text}${fence}`;
 }
 
 function table(open: OpenFinding[]): string {
   if (!open.length) return "No open findings.";
-  const rows = CATEGORY_IDS.filter((c) => open.some((f) => f.category === c)).map((c) => {
-    const n = (s: Severity) => open.filter((f) => f.category === c && f.severity === s).length;
-    return `| ${CATEGORIES[c].label} | ${SEVERITIES.map(n).join(" | ")} |`;
-  });
-  return [
-    `| Open findings | ${SEVERITIES.join(" | ")} |`,
-    `| --- | ${SEVERITIES.map(() => "---").join(" | ")} |`,
-    ...rows,
-  ].join("\n");
+  const rows = [...open]
+    .sort((a, b) => SEVERITIES.indexOf(a.severity) - SEVERITIES.indexOf(b.severity))
+    .map((f) => {
+      const severity =
+        f.severity === "non-blocking"
+          ? "Non-blocking"
+          : f.severity === "blocking"
+            ? "Blocking"
+            : "Nit";
+      const location = f.path
+        ? code(
+            `${f.path}${f.line ? `:${f.line}` : ""}`.replace(/\|/g, "\\|").replace(/[\r\n]/g, " "),
+          )
+        : "Location unavailable";
+      const thread = f.url
+        ? `[${location}](${f.url.replace(/\(/g, "%28").replace(/\)/g, "%29")})`
+        : location;
+      return `| **${severity} · ${CATEGORIES[f.category].label}:** ${tableText(f.title ?? "Finding")} | ${thread} |`;
+    });
+  return ["| Finding at reviewed head | Thread |", "| --- | --- |", ...rows].join("\n");
 }
 
 function headline(p: Pass, author: string, open: OpenFinding[]): string {
   const blocking = open.filter((f) => f.severity === "blocking").length;
+  const score = `Confidence ${p.confidence}/5`;
   if (blocking)
-    return `Next: @${author} — fix the ${blocking} blocking finding${blocking === 1 ? "" : "s"}.`;
-  if (p.confidence === 5) return "Next: merge";
+    return `Next: @${author} — **${score} · do not merge; fix the ${blocking} blocking finding${blocking === 1 ? "" : "s"}.**`;
+  if (p.confidence === 5) return `Next: merge — **${score} · no blocking findings.**`;
   if (p.confidence === 4 && open.some((f) => f.severity === "non-blocking"))
-    return `Next: @${author} — look at the non-blocking findings.`;
-  return `Next: @${author} — answer the risk below.`;
+    return `Next: @${author} — **${score} · look at the non-blocking findings before merge.**`;
+  return `Next: @${author} — **${score} · answer the risk before merge.**`;
 }
 
 /** The line a stopped or finished review opens with instead of a next step. */
@@ -232,54 +271,62 @@ export function statusLine(m: SummaryMarker): string | null {
   return null;
 }
 
-/** Words a reader reads: the marker and the counts table are not prose. */
-export function summaryWords(body: string): number {
-  return body
-    .split("\n")
-    .filter((l) => !l.startsWith("<!--") && !l.startsWith("|"))
-    .join(" ")
-    .split(/\s+/)
-    .filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+/** Count every authored word, including folded prose and Markdown-looking lines. */
+export function summaryWords(text: string): number {
+  return text.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 }
 
-/**
- * The one summary a change request carries: the next step, the confidence
- * with its reason, the risk, the change in short, the open findings by
- * category and severity, and a link to the full review when there is one.
- */
+/** The compact summary keeps the action visible and folds context and update history. */
 export function renderSummary(
   p: Pass,
   m: SummaryMarker,
   author: string,
   open: OpenFinding[],
+  update?: SummaryUpdate,
 ): string {
-  const tail = [`Reviewed \`${m.head.slice(0, 7)}\``];
-  if (p.reviewUrl) tail.push(`[Full review](${p.reviewUrl})`);
-  if (p.markdownUrl) tail.push(`[Markdown export](${p.markdownUrl})`);
-  const parts = [
-    `${marker(SUMMARY_TAG, m)}\n${statusLine(m) ?? headline(p, author, open)}`,
-    `**Confidence ${p.confidence}/5:** ${p.reason.trim()}`,
-    `**Risk**\n${p.risk.map((r) => `- ${r.trim()}`).join("\n")}`,
-    `**Change:** ${p.change.trim()}`,
-    table(open),
-    tail.join(" · "),
-  ];
-  if (p.signoff) parts.push(p.signoff);
-  const body = parts.join("\n\n");
-  const words = summaryWords(body);
+  // Count the inputs, not rendered lines: a pipe or HTML cannot hide prose from the budget.
+  const words = summaryWords([p.reason, p.change, ...p.risk, p.signoff ?? ""].join(" "));
   if (words > SUMMARY_WORDS)
     throw new AxiError(
-      `the summary is ${words} words, over the ${SUMMARY_WORDS}-word budget`,
+      `the summary prose is ${words} words, over the ${SUMMARY_WORDS}-word budget`,
       "VALIDATION_ERROR",
-      ["Cut reason, risk and change to what the author acts on; the full review holds the rest"],
+      ["Cut reason, risk, change and signoff; folded prose still counts"],
     );
-  return body;
+  const links: string[] = [];
+  if (p.reviewUrl) links.push(`[**Full review**](${p.reviewUrl})`);
+  if (p.markdownUrl) links.push(`[Markdown export](${p.markdownUrl})`);
+  const parts = [
+    `${marker(SUMMARY_TAG, m)}\n${statusLine(m) ?? headline(p, author, open)}`,
+    ...(links.length ? [links.join(" · ")] : []),
+    p.reason.trim(),
+    table(open),
+  ];
+  if (update) {
+    const c = update.counts;
+    parts.push(
+      update.first
+        ? `First review: ${c.new} new finding${c.new === 1 ? "" : "s"}.`
+        : `<details>\n<summary>Since this review: ${c.resolved} resolved · ${c.new} new · ${c.stillOpen} still open</summary>\n\nCounts are from this pass against the reviewed head.\n\n</details>`,
+    );
+    if (update.flagged?.length)
+      parts.push(
+        `Resolved on forge but still present: ${update.flagged.map(tableText).join(", ")}.`,
+      );
+  }
+  parts.push(
+    `<details>\n<summary>Change and risks</summary>\n\n**Change:** ${p.change.trim()}\n\n**Risk**\n\n${p.risk.map((r) => `- ${r.trim()}`).join("\n")}\n\n</details>`,
+  );
+  parts.push(`Reviewed ${code(m.head.slice(0, 7))}${update ? ` · ${update.reviewedAt}` : ""}`);
+  if (p.signoff) parts.push(p.signoff.trim());
+  return parts.join("\n\n");
 }
 
-/** The same summary under a new marker and opening line; the rest is kept as written. */
+/** Status changes keep the reviewed confidence, without the previous next action. */
 export function restate(body: string, m: SummaryMarker, opening: string): string {
   const lines = body.split("\n");
-  return [marker(SUMMARY_TAG, m), opening, ...lines.slice(2)].join("\n");
+  const confidence = lines[1]?.match(/\bConfidence [1-5]\/5\b/)?.[0];
+  const line = confidence ? `${opening} · **${confidence}**` : opening;
+  return [marker(SUMMARY_TAG, m), line, ...lines.slice(2)].join("\n");
 }
 
 export function bareSummary(m: SummaryMarker, opening: string): string {

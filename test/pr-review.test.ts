@@ -169,7 +169,7 @@ describe("the summary", () => {
     expect(state.findings[0]).toMatchObject({ category: "bug", severity: "blocking", open: true });
   });
 
-  it("counts open findings per category and severity", async () => {
+  it("lists each open finding with its category and severity", async () => {
     const forge = new MemoryForge();
     await pass(forge, {
       confidence: 2,
@@ -180,15 +180,18 @@ describe("the summary", () => {
       ],
     });
     const body = forge.summaries()[0]!.body;
-    expect(body).toMatch(/\| Bug \| 1 \| 1 \| 0 \|/);
-    expect(body).toMatch(/\| Docs \| 0 \| 0 \| 1 \|/);
+    expect(body).toContain("**Blocking · Bug:** The retry loop never stops on a 4xx.");
+    expect(body).toContain("**Non-blocking · Bug:** Second bug.");
+    expect(body).toContain("**Nit · Docs:** Typo.");
   });
 
   it("opens with the next step", async () => {
     const forge = new MemoryForge();
     await pass(forge, { findings: [UNBOUNDED], confidence: 2 });
     const lines = forge.summaries()[0]!.body.split("\n");
-    expect(lines[1]).toBe("Next: @dev — fix the 1 blocking finding.");
+    expect(lines[1]).toBe(
+      "Next: @dev — **Confidence 2/5 · do not merge; fix the 1 blocking finding.**",
+    );
   });
 
   describe("says merge only at confidence 5", () => {
@@ -201,25 +204,29 @@ describe("the summary", () => {
     const nit = { ...UNBOUNDED, severity: "nit" as const, category: "docs" as const };
 
     it("5 merges", async () => {
-      expect(await opening({ confidence: 5 })).toBe("Next: merge");
+      expect(await opening({ confidence: 5 })).toBe(
+        "Next: merge — **Confidence 5/5 · no blocking findings.**",
+      );
     });
 
     it("4 with non-blocking findings open asks for a look at them", async () => {
       expect(await opening({ confidence: 4, findings: [minor, nit] })).toBe(
-        "Next: @dev — look at the non-blocking findings.",
+        "Next: @dev — **Confidence 4/5 · look at the non-blocking findings before merge.**",
       );
     });
 
     it("4 with no non-blocking finding open asks for the risk", async () => {
-      expect(await opening({ confidence: 4 })).toBe("Next: @dev — answer the risk below.");
+      expect(await opening({ confidence: 4 })).toBe(
+        "Next: @dev — **Confidence 4/5 · answer the risk before merge.**",
+      );
       expect(await opening({ confidence: 4, findings: [nit] })).toBe(
-        "Next: @dev — answer the risk below.",
+        "Next: @dev — **Confidence 4/5 · answer the risk before merge.**",
       );
     });
 
     it("an open blocking finding asks for its fix", async () => {
       expect(await opening({ confidence: 2, findings: [UNBOUNDED, minor] })).toBe(
-        "Next: @dev — fix the 1 blocking finding.",
+        "Next: @dev — **Confidence 2/5 · do not merge; fix the 1 blocking finding.**",
       );
     });
   });
@@ -229,14 +236,17 @@ describe("the summary", () => {
     await pass(forge, {});
     expect(forge.summaries()[0]!.body).not.toContain("Full review");
     await pass(forge, { reviewUrl: "https://reviews.example.com/7/" });
-    expect(forge.summaries()[0]!.body).toContain("[Full review](https://reviews.example.com/7/)");
+    expect(forge.summaries()[0]!.body).toContain(
+      "[**Full review**](https://reviews.example.com/7/)",
+    );
   });
 
   it("holds the word budget", () => {
     const words = (n: number) => Array.from({ length: n }, () => "word").join(" ");
     const head = { head: SHA(1), state: "active" as const, seen: "0" };
     const fits = renderSummary({ ...base, change: words(80) }, head, "dev", []);
-    expect(summaryWords(fits)).toBeLessThanOrEqual(SUMMARY_WORDS);
+    expect(fits).toContain("<details>");
+    expect(summaryWords(words(80))).toBe(80);
     expect(() => renderSummary({ ...base, change: words(SUMMARY_WORDS) }, head, "dev", [])).toThrow(
       /words/,
     );
@@ -360,7 +370,9 @@ describe("following the change request", () => {
     expect(ev.event).toBe(state);
     const body = forge.summaries()[0]!.body;
     expect(body).toContain(`"state":"${state}"`);
-    expect(body.split("\n")[1]).toBe(`Review ended: ${state} at ${SHA(1).slice(0, 7)}.`);
+    expect(body.split("\n")[1]).toBe(
+      `Review ended: ${state} at ${SHA(1).slice(0, 7)}. · **Confidence 4/5**`,
+    );
     expect(forge.summaries()).toHaveLength(1);
   });
 
@@ -392,6 +404,22 @@ describe("following the change request", () => {
     expect(forge.summaries()[0]!.body).toContain("Review stopped");
     expect((await waitForEvent(forge, REPO, "7", fast)).event).toBe("stopped");
     await expect(pass(forge, {})).rejects.toThrow(/stopped/);
+  });
+
+  it("keeps the links, rows, folds and review timestamp through stop and start", async () => {
+    const forge = new MemoryForge();
+    await pass(forge, {
+      confidence: 2,
+      findings: [UNBOUNDED],
+      reviewUrl: "https://reviews.example.com/7/",
+      markdownUrl: "https://reviews.example.com/7/feedback.md",
+    });
+    const content = forge.summaries()[0]!.body.split("\n").slice(2);
+    await stopReview(ctx(forge));
+    expect(forge.summaries()[0]!.body.split("\n").slice(2)).toEqual(content);
+    await startReview(ctx(forge));
+    expect(forge.summaries()[0]!.body.split("\n").slice(2)).toEqual(content);
+    expect(forge.summaries()).toHaveLength(1);
   });
 
   it("gives up quietly at the timeout", async () => {

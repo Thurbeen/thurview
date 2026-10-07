@@ -227,8 +227,27 @@ holds the ids of open findings this push fixed:
   `risk` is one to five bullets naming what could break, the blast radius, and
   anything touching security, data, infra or a public API; `change` is two or
   three sentences.
-- The summary is capped at 120 words, the counts table aside. `sync` refuses
-  more: cut to what the author acts on.
+- The compact summary opens with the next action and confidence on one line,
+  followed by the public review and Markdown links. Stop, resume, merge and
+  close replace the action while keeping the reviewed confidence score. Its
+  two-column findings
+  table lists severity, category and title beside a `file:line` thread link,
+  blocking first. With zero findings it says `No open findings.` and omits
+  the table. Full finding detail stays in the inline thread and review page.
+- A first pass says `First review`. An edited pass folds `Since this review`
+  with resolved, new and still-open counts from that pass. The CLI returns
+  them as `sinceLastReview` (`resolved`, `new`, `stillOpen`), not lifetime
+  totals. Change and risks
+  are folded separately; the reviewed head and UTC sync timestamp stay small
+  below them. The sign-off is last. Both forges use ordinary Markdown tables
+  and HTML `details`/`summary`, with blank lines around their Markdown.
+- The 120-word budget applies to authored `reason`, `change`, all `risk`
+  bullets and `signoff` together, including folded text. Generated verdicts,
+  finding rows, links, update counts, labels and head/time metadata are
+  excluded. Finding titles/bodies still have their separate five-line limit.
+  `sync` counts the inputs before rendering, so Markdown or HTML cannot hide
+  words from the budget, and rejects excess prose before writing anything.
+  Cut to what the author acts on.
 - A finding's `title` is the claim in one line, `body` the fix. Title, body
   and sign-off together fit five lines. `suggestion` replaces the lines from
   `startLine` to `line` and is optional.
