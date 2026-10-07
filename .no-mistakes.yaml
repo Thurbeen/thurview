@@ -34,7 +34,9 @@ commit:
 document:
   instructions: |
     Each class of fact has exactly one owner document. README.md owns the
-    introduction, install, the reader-facing feature list and the CLI table.
+    introduction, the install command, the skills list and the CLI table, and
+    stays short; docs/INSTALL.md owns the other install routes and upgrades,
+    docs/READER.md the reader-facing feature list.
     skills/thurview/SKILL.md owns the agent workflow for authoring a review,
     skills/thurview-explain/SKILL.md the one for a code explainer, and
     skills/thurview-design/SKILL.md the one for a design, with
@@ -147,3 +149,7 @@ review:
       instructions: |
         Prose. Do not request test coverage. It must stay accurate to the CLI
         table and the setup commands; it never names the inspirations.
+    - path: "docs/**"
+      instructions: |
+        Prose. Do not request test coverage. It must stay accurate to the CLI
+        and the UI it describes; it never names the inspirations.
