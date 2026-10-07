@@ -268,8 +268,11 @@ holds a decision and evidence for every own finding returned by `reassess`:
 - `assessments` requires one entry per existing own finding, including
   resolved ones, with nonempty `evidence`. `status` is `fixed`, `still-present`
   or `partial`. Bare `fixed` IDs cannot resolve a thread. A fixed assessment
-  replies once per head with the commit and evidence before resolving; a
-  partial assessment replies with what remains and leaves the thread open.
+  replies with the commit and evidence before resolving. An author-resolved
+  thread still receives its first fixed confirmation and counts as resolved.
+  A closed thread with an own fixed confirmation is not replied to again on
+  later heads; same-head retries retain its count. A partial assessment replies
+  with what remains and leaves the thread open.
   Still-present findings stay open. Resolved threads whose findings persist
   are flagged in the summary and still count against confidence. Resolution
   failures leave the old summary intact; retrying does not duplicate replies.
