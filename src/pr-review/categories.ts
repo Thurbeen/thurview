@@ -51,6 +51,6 @@ export const CONFIDENCE = {
   1: "Do not merge: it breaks something that works today.",
   2: "Not yet: a blocking finding is open.",
   3: "Unsure: a risk is named that the review could not rule out.",
-  4: "Safe to merge; non-blocking findings are worth a look.",
+  4: "Not yet: non-blocking findings are worth a look before merge.",
   5: "Safe to merge; nothing open beyond nits.",
 } as const;

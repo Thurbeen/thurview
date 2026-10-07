@@ -132,15 +132,17 @@ fixing) or `nit` (taste, and the comment says `nit:`).
 
 Confidence that the change is safe to merge:
 
-| Score | Meaning                                                     |
-| ----- | ----------------------------------------------------------- |
-| 5     | Safe to merge; nothing open beyond nits.                    |
-| 4     | Safe to merge; non-blocking findings are worth a look.      |
-| 3     | Unsure: a risk is named that the review could not rule out. |
-| 2     | Not yet: a blocking finding is open.                        |
-| 1     | Do not merge: it breaks something that works today.         |
+| Score | Meaning                                                       |
+| ----- | ------------------------------------------------------------- |
+| 5     | Safe to merge; nothing open beyond nits.                      |
+| 4     | Not yet: non-blocking findings are worth a look before merge. |
+| 3     | Unsure: a risk is named that the review could not rule out.   |
+| 2     | Not yet: a blocking finding is open.                          |
+| 1     | Do not merge: it breaks something that works today.           |
 
-An open blocking finding caps confidence at 2; `sync` refuses more.
+An open blocking finding caps confidence at 2; `sync` refuses more. Only a 5
+opens the summary with `Next: merge`; a 4 sends the author to the open
+non-blocking findings, or to the risk when none is open.
 
 ## 4. Author, serve and publish this head
 
