@@ -43,5 +43,6 @@ and title, which is how the same finding found on the next push is recognised.
   caller goes in a risk bullet.
 - GitLab reports no per-thread staleness, and its adapter is driven by stub
   tests but has not been run against a live instance.
-- The full-review link is whatever URL the pass names; this command publishes
-  nothing itself.
+- The CLI sync accepts `reviewUrl` and `markdownUrl` without publishing them.
+  The `thurview-pr-review` workflow performs the preflight, publish and link
+  checks before calling sync, on either forge.

@@ -1,11 +1,18 @@
 ---
 name: thurview-publish
-description: Publish or update a thurview review, explainer or design as one self-contained HTML page in the user's own cloud - an Azure Storage container, an AWS S3 bucket, a Google Cloud Storage bucket or a Cloudflare Pages project - through the user's own CLI and login, at one stable unguessable path per document, and hand back a link that expires (an Azure SAS, an S3 presigned URL, a GCS signed URL) unless the user confirms a public copy. Refuses a target whose allow_remotes or deny_remotes rule out the repository, so a personal target never receives work code. Also re-signs a link, and takes a copy down. Use when the user asks to publish, upload, host, share a link to or update a published thurview document, to re-sign or refresh its link, or to unpublish it, or invokes /thurview-publish. Not for authoring the document, which is the thurview, thurview-explain or thurview-design skill.
+description: Publish or update a thurview review, explainer or design as one self-contained HTML page in the user's own cloud - an Azure Storage container, an AWS S3 bucket, a Google Cloud Storage bucket or a Cloudflare Pages project - through the user's own CLI and login, at one stable unguessable path per document, and hand back a link that expires (an Azure SAS, an S3 presigned URL, a GCS signed URL) unless the user confirms a public copy. Refuses a target whose allow_remotes or deny_remotes rule out the repository, so a personal target never receives work code. Also re-signs a link, and takes a copy down. Use when the user asks to publish, upload, host, share a link to or update a published thurview document, to re-sign or refresh its link, or to unpublish it, or invokes /thurview-publish. For an opened PR/MR review use thurview-pr-review, which owns the complete linked review flow. Not for authoring the document, which is the thurview, thurview-explain or thurview-design skill.
 user-invocable: true
 argument-hint: "<review id> [--provider azure|aws|gcp|cloudflare] [--days N] [--public] [--resign | --unpublish]"
 ---
 
 # thurview publish
+
+For an opened PR/MR review, use `thurview-pr-review` as the single entrypoint.
+It owns the durable Workers snapshot and Markdown links in the managed
+summary, with configuration in `cloudflare.json`. This skill is for separately
+requested cloud copies of reviews, explainers and designs; its multi-provider
+`publish.yaml` targets are a different contract. Do not copy one configuration
+into the other or send a PR review through both workflows.
 
 Put a thurview document where someone without thurview can open it, in the
 user's own cloud, and give them a link that stops working on its own.

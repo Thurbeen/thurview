@@ -64,6 +64,7 @@ const PassSchema = z.object({
   risk: z.array(z.string().min(1)).min(1).max(5),
   change: z.string().min(1),
   reviewUrl: z.string().url().optional(),
+  markdownUrl: z.string().url().optional(),
   signoff: z.string().optional(),
   findings: z.array(Finding).default([]),
   fixed: z.array(z.string()).default([]),
@@ -252,6 +253,7 @@ export function renderSummary(
 ): string {
   const tail = [`Reviewed \`${m.head.slice(0, 7)}\``];
   if (p.reviewUrl) tail.push(`[Full review](${p.reviewUrl})`);
+  if (p.markdownUrl) tail.push(`[Markdown export](${p.markdownUrl})`);
   const parts = [
     `${marker(SUMMARY_TAG, m)}\n${statusLine(m) ?? headline(p, author, open)}`,
     `**Confidence ${p.confidence}/5:** ${p.reason.trim()}`,

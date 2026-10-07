@@ -1,11 +1,18 @@
 ---
 name: thurview
-description: Author and publish a thurview review - a guided, evidence-anchored explanation of a change, a review of a branch, pull request or commit range, which the reader opens in the browser, annotates, asks questions about, and approves or sends back. To explain a codebase or one subsystem as it stands, use the thurview-explain skill; for a design, an architecture proposal or an implementation plan — a change not written yet — use the thurview-design skill. Use when the user asks to review a branch or PR, to explain or walk through a change, "review my branch against main", or invokes /thurview. Not for a pass/fail bug hunt.
+description: Author and publish a thurview review - a guided, evidence-anchored explanation of a change, a review of a branch, pull request or commit range, which the reader opens in the browser, annotates, asks questions about, and approves or sends back. To explain a codebase or one subsystem as it stands, use the thurview-explain skill; for a design, an architecture proposal or an implementation plan — a change not written yet — use the thurview-design skill. For an opened PR/MR, use thurview-pr-review for the page, public snapshot and linked summary in one flow. Use when the user asks to review a branch or commit range, to explain or walk through a change, "review my branch against main", or invokes /thurview. Not for a pass/fail bug hunt.
 user-invocable: true
 argument-hint: "[<pr-number|pr-url> | --base <ref> --head <ref>]"
 ---
 
 # thurview
+
+An **opened PR or MR** request belongs to `thurview-pr-review`, installed
+beside this skill. Load that entrypoint: it checks publishing first, authors
+and serves the page, publishes the snapshot and Markdown download, and edits
+one summary with both links on every push. Do not split that request between
+this workflow and `thurview-publish`. Everything below handles a local branch
+or commit range.
 
 There are three kinds of document, and the first decision is which one the
 request asks for.

@@ -50,8 +50,11 @@ locally.
   `thurview forge`.
 - `src/pr-review/`: `thurview pr-review` - the summary and finding markers,
   the closed category set, and the follow loop, all on the forge seam.
-- `skills/thurview-pr-review/`: the skill that reviews a change request on
-  the forge and follows it until it merges or closes.
+- `skills/thurview-pr-review/`: the entrypoint for an opened PR/MR: publishing
+  preflight, page authoring and serving, a durable snapshot and Markdown
+  download, and one forge summary linking both on every update. It follows
+  until merge, close or stop. Its `references/cloudflare-setup.md` owns the
+  one-time setup procedure.
 - `skills/thurview-publish/`: the skill that uploads `thurview export`'s page
   to the user's own Azure, S3, Cloud Storage or Cloudflare Pages account with
   the user's own CLI login, and signs an expiring link. It is commands, plus
@@ -79,8 +82,9 @@ nothing outside a temporary directory. Re-record it when the UI changes.
 `skills/` holds six skills - `thurview`, `thurview-explain` and
 `thurview-design` author and publish one document kind each,
 `thurview-fix` reviews a change and commits the fixes that pass,
-`thurview-pr-review` reviews a change request on the forge and follows it
-until it merges, and `thurview-publish` uploads an exported document to the
+`thurview-pr-review` authors a PR/MR review page, publishes its public
+snapshot and Markdown export, and keeps one forge summary linked to both,
+and `thurview-publish` uploads an exported document to the
 user's own cloud. Each is
 installed three ways, and only one of them keeps the
 skill and the command in step:
