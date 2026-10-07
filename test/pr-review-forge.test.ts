@@ -781,7 +781,7 @@ describe("repository auto-merge opt-in", { timeout: 30_000 }, () => {
       expect((await calls()).some((c) => c.args.includes("--disable-auto"))).toBe(cancel);
     },
   );
-  it("keeps fixture responses readable while parallel CLI calls advance a sequence", async () => {
+  it("keeps fixture responses readable while parallel forge CLI calls advance a sequence", async () => {
     await fixtures([
       {
         cli: "gh",
@@ -793,9 +793,15 @@ describe("repository auto-merge opt-in", { timeout: 30_000 }, () => {
       { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
       { cli: "gh", match: ["unused"], body: "x".repeat(1_000_000) },
     ]);
-    const results = await Promise.all(
-      Array.from({ length: 6 }, () => cli(["pr-review", "status", "--change", "7"], github)),
+    const results = await Promise.allSettled(
+      Array.from({ length: 6 }, () =>
+        execFileP(process.execPath, [join(ROOT, "test", "fake-forge.mjs"), "gh", "api", "user"], {
+          env: { ...process.env, FORGE_RESPONSES: responses, FORGE_LOG: log },
+        }),
+      ),
     );
-    expect(results.every((out) => out["change"].head === HEAD)).toBe(true);
+    expect(results.map((result) => result.status)).toEqual(Array(6).fill("fulfilled"));
+    for (const result of results)
+      if (result.status === "fulfilled") expect(JSON.parse(result.value.stdout).login).toBe("bot");
   });
 });
