@@ -192,6 +192,9 @@ describe.skipIf(!browserBin)("file explorer in the reader", () => {
     explainerSnapshot = join(scratch, "explainer.html");
     await cli(["export", "--review", explainer.id, "--out", explainerSnapshot]);
     browser = await launchBrowser(join(scratch, "profile"));
+    // Cold page initialization can exceed an interaction's timeout on CI.
+    const initial = await page();
+    await initial.close();
   }, 150000);
   afterAll(async () => {
     await browser?.close();
