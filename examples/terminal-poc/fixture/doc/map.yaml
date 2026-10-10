@@ -1,0 +1,43 @@
+nodes:
+  - { id: sender, kind: system, label: Event sender, description: "Signs each event with the shared secret" }
+  - { id: subscriber, kind: system, label: Subscriber, description: "Any HTTPS endpoint that wants the events" }
+  - { id: operator, kind: person, label: Operator, description: "Watches the dead-letter queue and replays it" }
+  - { id: relay, kind: system, label: relay, description: "The webhook relay" }
+  - { id: relay.receiver, kind: container, label: Receiver, files: ["src/http/**"], anchor: receive, description: "Verifies the HMAC, stores once, answers 202" }
+  - { id: relay.outbox, kind: container, label: Outbox, files: ["src/outbox/**"], anchor: enqueue, description: "Deliveries waiting for a worker, one row per subscriber" }
+  - { id: relay.router, kind: component, label: Fan-out router, description: "Turns one event into one delivery per subscriber" }
+  - { id: relay.worker, kind: container, label: Delivery worker, files: ["src/worker/**"], anchor: tick, description: "Leases a delivery, posts it, settles or retries" }
+  - { id: relay.deadletter, kind: component, label: Dead-letter queue, description: "Deliveries that ran out of attempts" }
+  - { id: relay.admin, kind: component, label: Admin view, description: "Lists parked deliveries and replays them" }
+  - { id: relay.store, kind: container, label: SQLite store, files: ["src/store/**"], anchor: schema, description: "outbox, deliveries and dead_letter tables" }
+  - { id: relay.config, kind: component, label: Config, files: ["src/config.ts"], anchor: config, description: "Secret, subscribers, retry budget" }
+edges:
+  - { from: sender, to: relay.receiver, label: "POST /events" }
+  - { from: relay.receiver, to: relay.outbox, label: "store once" }
+  - { from: relay.outbox, to: relay.router, label: "new event" }
+  - { from: relay.router, to: relay.outbox, label: "one row per subscriber" }
+  - { from: relay.worker, to: relay.outbox, label: "lease due row" }
+  - { from: relay.worker, to: subscriber, label: "POST body" }
+  - { from: relay.worker, to: relay.deadletter, label: "park after last attempt" }
+  - { from: relay.outbox, to: relay.store, label: "rows" }
+  - { from: relay.deadletter, to: relay.store, label: "rows" }
+  - { from: operator, to: relay.admin, label: "inspects" }
+  - { from: relay.admin, to: relay.deadletter, label: "replays" }
+  - { from: relay.config, to: relay.worker, label: "retry budget" }
+base:
+  nodes:
+    - { id: sender, kind: system, label: Event sender, description: "Signs each event with the shared secret" }
+    - { id: subscriber, kind: system, label: Subscriber, description: "Any HTTPS endpoint that wants the events" }
+    - { id: relay, kind: system, label: relay, description: "The webhook relay" }
+    - { id: relay.receiver, kind: container, label: Receiver, files: ["src/http/**"], anchor: receive, description: "Verifies the HMAC, stores once, answers 202" }
+    - { id: relay.outbox, kind: container, label: Outbox, files: ["src/outbox/**"], anchor: enqueue, description: "One row per event, shared by every subscriber" }
+    - { id: relay.worker, kind: container, label: Delivery worker, files: ["src/worker/**"], anchor: tick, description: "Leases an event, posts it to everyone, drops it after the last attempt" }
+    - { id: relay.store, kind: container, label: SQLite store, files: ["src/store/**"], anchor: schema, description: "The outbox table" }
+    - { id: relay.config, kind: component, label: Config, files: ["src/config.ts"], anchor: config, description: "Secret, subscribers, retry budget" }
+  edges:
+    - { from: sender, to: relay.receiver, label: "POST /events" }
+    - { from: relay.receiver, to: relay.outbox, label: "store once" }
+    - { from: relay.worker, to: relay.outbox, label: "lease due row" }
+    - { from: relay.worker, to: subscriber, label: "POST body" }
+    - { from: relay.outbox, to: relay.store, label: "rows" }
+    - { from: relay.config, to: relay.worker, label: "retry budget" }
