@@ -1,6 +1,7 @@
-import { h, popover } from "../dom.js";
+import { h, popover, clickPoint, asButton } from "../dom.js";
 import { state, threadsFor, navigate, kind, VIEWS, canWrite } from "../state.js";
 import { codeTable, openAnchorPeek } from "../code.js";
+import { published } from "../api.js";
 import { commentPopover, threadPinRow } from "../threads.js";
 import { sequenceDiagram, callstackDiff, databaseLens, flowDiagram } from "../diagrams.js";
 import type { Block, CompiledSecurity } from "../../document/compile.js";
@@ -56,13 +57,10 @@ export function renderReview(root: HTMLElement): void {
     if (b.type === "heading" && b.level === sectionLevel) {
       section = h("div", { class: `section ${b.collapsed ? "section-collapsed" : ""}` });
       docEl.appendChild(section);
-      const toggle = h("span", { class: "heading-toggle" }, b.collapsed ? "show" : "hide");
-      toggle.addEventListener("click", () => {
-        const s = toggle.closest(".section")!;
-        s.classList.toggle("section-collapsed");
-        toggle.textContent = s.classList.contains("section-collapsed") ? "show" : "hide";
-      });
-      el.querySelector("h2,h1,h3")?.appendChild(toggle);
+      const s = section;
+      el.querySelector("h2,h1,h3")?.appendChild(
+        toggleButton(!b.collapsed, (shown) => s.classList.toggle("section-collapsed", !shown)),
+      );
       el.classList.add("heading");
       section.appendChild(el);
     } else (section ?? docEl).appendChild(el);
@@ -87,19 +85,48 @@ export function renderReview(root: HTMLElement): void {
   const anchorParam = state.params.get("anchor");
   if (anchorParam && doc.anchors[anchorParam] && state.side.kind !== "peek")
     openAnchorPeek(doc.anchors[anchorParam]!);
-  const io = new IntersectionObserver(
-    (entries) => {
-      for (const en of entries) {
-        if (!en.isIntersecting) continue;
-        const id = (en.target as HTMLElement).dataset["block"];
-        toc
-          .querySelectorAll("a")
-          .forEach((a) => a.classList.toggle("active", a.dataset["block"] === id));
-      }
-    },
-    { rootMargin: "-10% 0px -80% 0px" },
+  trackSection(root, toc, docEl);
+}
+
+/**
+ * Mark in the contents the last heading above the top quarter of the view - the
+ * section being read. Worked out from positions on every scroll, so a jump from
+ * a link or a fast scroll lands on the right entry as surely as a slow one, and
+ * a subsection is marked as well as a section. Across the last screen the line
+ * moves down to the bottom, so a section too near the end to reach the top
+ * quarter is still marked once the reader is there.
+ */
+function trackSection(scroller: HTMLElement, toc: HTMLElement, docEl: HTMLElement): void {
+  const links = [...toc.querySelectorAll<HTMLAnchorElement>("a")];
+  const heads = links.map((a) =>
+    docEl.querySelector<HTMLElement>(`[data-block="${a.dataset["block"]}"]`),
   );
-  docEl.querySelectorAll(".block.heading").forEach((el) => io.observe(el));
+  let queued = false;
+  const mark = () => {
+    queued = false;
+    if (!docEl.isConnected) return scroller.removeEventListener("scroll", onScroll);
+    const view = scroller.getBoundingClientRect();
+    // How far through the scroll's last screen the reader is: a document
+    // shorter than two views starts inside it, so it is measured against what
+    // there is to scroll, and one that does not scroll at all never moves it.
+    const room = scroller.scrollHeight - scroller.clientHeight;
+    const last = Math.min(scroller.clientHeight, room);
+    const end = last > 0 ? Math.max(0, 1 - (room - scroller.scrollTop) / last) : 0;
+    const line = view.top + view.height * (0.25 + 0.75 * end);
+    let at = -1;
+    heads.forEach((el, i) => {
+      // a heading in a hidden section has no box, and is not being read
+      if (el?.getClientRects().length && el.getBoundingClientRect().top <= line) at = i;
+    });
+    links.forEach((a, i) => a.classList.toggle("active", i === at));
+  };
+  const onScroll = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(mark);
+  };
+  scroller.addEventListener("scroll", onScroll, { passive: true });
+  requestAnimationFrame(mark);
 }
 
 /** Ids the parser cannot produce, so the panel can hold threads like a document block. */
@@ -141,22 +168,14 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
         title: design ? "Comment on what this design proposes" : "Comment on the interface delta",
         onclick: (e: MouseEvent) => {
           if (!canWrite()) return;
-          popover(commentPopover({ type: "document", blockId: DELTA_BLOCK }), {
-            x: e.pageX + 10,
-            y: e.pageY,
-          });
+          popover(commentPopover({ type: "document", blockId: DELTA_BLOCK }), clickPoint(e));
         },
       },
       threads.length ? String(threads.length) : "+",
     ),
   );
   const body = h("div", { class: "ifd-body" });
-  const toggle = h("span", { class: "heading-toggle" }, "hide");
-  toggle.addEventListener("click", () => {
-    const hidden = body.hidden;
-    body.hidden = !hidden;
-    toggle.textContent = hidden ? "hide" : "show";
-  });
+  const toggle = toggleButton(true, (shown) => (body.hidden = !shown));
   const counts = delta
     ? (["removed", "changed", "added"] as const)
         .map((c) => [c, delta.entries.filter((e) => e.change === c).length] as const)
@@ -226,22 +245,14 @@ function coveragePanel(cov: Coverage | null): HTMLElement {
         title: "Comment on coverage",
         onclick: (e: MouseEvent) => {
           if (!canWrite()) return;
-          popover(commentPopover({ type: "document", blockId: COVERAGE_BLOCK }), {
-            x: e.pageX + 10,
-            y: e.pageY,
-          });
+          popover(commentPopover({ type: "document", blockId: COVERAGE_BLOCK }), clickPoint(e));
         },
       },
       threads.length ? String(threads.length) : "+",
     ),
   );
   const body = h("div", { class: "ifd-body" });
-  const toggle = h("span", { class: "heading-toggle" }, "hide");
-  toggle.addEventListener("click", () => {
-    const hidden = body.hidden;
-    body.hidden = !hidden;
-    toggle.textContent = hidden ? "hide" : "show";
-  });
+  const toggle = toggleButton(true, (shown) => (body.hidden = !shown));
   wrap.appendChild(
     h(
       "div",
@@ -299,22 +310,14 @@ function securityPanel(sec: CompiledSecurity | null | undefined): HTMLElement {
         title: "Comment on the trust boundaries",
         onclick: (e: MouseEvent) => {
           if (!canWrite()) return;
-          popover(commentPopover({ type: "document", blockId: SECURITY_BLOCK }), {
-            x: e.pageX + 10,
-            y: e.pageY,
-          });
+          popover(commentPopover({ type: "document", blockId: SECURITY_BLOCK }), clickPoint(e));
         },
       },
       threads.length ? String(threads.length) : "+",
     ),
   );
   const body = h("div", { class: "ifd-body" });
-  const toggle = h("span", { class: "heading-toggle" }, "hide");
-  toggle.addEventListener("click", () => {
-    const hidden = body.hidden;
-    body.hidden = !hidden;
-    toggle.textContent = hidden ? "hide" : "show";
-  });
+  const toggle = toggleButton(true, (shown) => (body.hidden = !shown));
   const badge = !sec
     ? null
     : sec.state === "none"
@@ -344,18 +347,20 @@ function securityPanel(sec: CompiledSecurity | null | undefined): HTMLElement {
     const anchor = state.data?.document?.anchors[c.anchor];
     if (!anchor) continue;
     body.appendChild(
-      h(
-        "div",
-        {
-          class: "ifd-entry",
-          title: `Open ${anchor.title}`,
-          onclick: () => openAnchorPeek(anchor),
-        },
-        h("div", { class: "ifd-what" }, h("div", { class: "ifd-cap" }, c.boundary)),
+      asButton(
         h(
-          "span",
-          { class: "ifd-where mono" },
-          anchor.peek ? `${anchor.peek.file}:${anchor.peek.from}` : anchor.title,
+          "div",
+          {
+            class: "ifd-entry",
+            title: `Open ${anchor.title}`,
+            onclick: () => openAnchorPeek(anchor),
+          },
+          h("div", { class: "ifd-what" }, h("div", { class: "ifd-cap" }, c.boundary)),
+          h(
+            "span",
+            { class: "ifd-where mono" },
+            anchor.peek ? `${anchor.peek.file}:${anchor.peek.from}` : anchor.title,
+          ),
         ),
       ),
     );
@@ -370,7 +375,7 @@ function interfaceRow(e: InterfaceEntry): HTMLElement {
   // A design has no Files tab: its entry is a proposal, and what the reader can
   // actually open is the site it names - real code at the pinned commit.
   const anchor = kind() === "design" && e.anchor ? state.data?.document?.anchors[e.anchor] : null;
-  return h(
+  const row = h(
     "div",
     {
       class: `ifd-entry ifd-${e.change}`,
@@ -394,6 +399,23 @@ function interfaceRow(e: InterfaceEntry): HTMLElement {
       `${anchor ? "at " : ""}${e.file}:${e.line}`,
     ),
   );
+  return asButton(row);
+}
+
+/** The hide/show switch on a section or a panel: a button, so the keyboard reaches it too. */
+function toggleButton(shown: boolean, set: (shown: boolean) => void): HTMLButtonElement {
+  const b = h("button", { type: "button", class: "heading-toggle" });
+  const show = (on: boolean) => {
+    b.setAttribute("aria-expanded", String(on));
+    b.textContent = on ? "hide" : "show";
+  };
+  show(shown);
+  b.addEventListener("click", () => {
+    const on = b.getAttribute("aria-expanded") !== "true";
+    show(on);
+    set(on);
+  });
+  return b;
 }
 
 function scrollToBlock(id: string): void {
@@ -421,10 +443,7 @@ function renderBlock(b: Block): HTMLElement {
         title: "Comment on this block",
         onclick: (e: MouseEvent) => {
           if (!canWrite()) return;
-          popover(commentPopover({ type: "document", blockId: b.id }), {
-            x: e.pageX + 10,
-            y: e.pageY,
-          });
+          popover(commentPopover({ type: "document", blockId: b.id }), clickPoint(e));
         },
       },
       threads.length ? String(threads.length) : "+",
@@ -434,7 +453,7 @@ function renderBlock(b: Block): HTMLElement {
   switch (b.type) {
     case "html":
     case "heading":
-      wrap.appendChild(h("div", { html: b.html }));
+      wrap.appendChild(h("div", { class: "prose", html: b.html }));
       break;
     case "peek": {
       const a = doc.anchors[b.anchor];
@@ -546,7 +565,7 @@ function selectionHandler(docEl: HTMLElement): void {
           window.getSelection()?.removeAllRanges();
         },
       },
-      "Comment / Ask",
+      published ? "Add note" : "Comment / Ask",
     );
     btn.style.left = `${rect.left + window.scrollX}px`;
     btn.style.top = `${rect.bottom + window.scrollY + 6}px`;

@@ -73,7 +73,8 @@ them, and the selected node's files, code and neighbours](../media/review-map.pn
 
 _Send to the agent_ delivers a question at once and the answer lands in the
 same thread. _Add to the review_ holds a comment until you submit with
-_Approve_ or _Request changes_. _Close_ ends the review without approving it.
+_Approve_ or _Request changes_. _Close the review_ ends it without approving
+it; a design says _Drop the design_ and an explainer _Stop reading_.
 Each thread says where it stands - held, queued, delivered or answered - and
 the panel says whether an agent is listening at all. Nothing claims a reader is
 there when none is: a question asked with no agent attached is queued, not
@@ -111,6 +112,12 @@ at the pinned commits and the reader's threads shown as notes (`--no-threads`
 leaves them out). It opens from disk, fetches nothing, and names no server and
 no local path. Point `--out` at a folder for `<folder>/index.html`, such as a
 repository's Pages folder.
+
+Whoever opens a copy can still comment: the `+` beside a paragraph, a line
+number or a selection adds a note that stays in their browser.
+_Export for agent_ then gives the Markdown of what was sent with their notes
+added, to hand to an agent. Nothing they write reaches the review or its
+agent unless they send that Markdown.
 
 For a link instead of a file, `thurview publish-static` deploys a durable
 read-only snapshot to Cloudflare (see

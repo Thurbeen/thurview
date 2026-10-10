@@ -3,7 +3,7 @@ import { state } from "./state.js";
 import type { Block, CompiledDocument } from "../document/compile.js";
 import { openAnchorPeek } from "./code.js";
 import { popover } from "./dom.js";
-import { boxH, boxW, layoutFlow, type Flow } from "./flow-layout.js";
+import { boxW, boxH as oneLineH, layoutFlow, type Flow } from "./flow-layout.js";
 
 type Seq = Extract<Block, { type: "sequence" }>;
 type Stack = Extract<Block, { type: "callstack" }>;
@@ -14,22 +14,25 @@ function openAnchor(id: string): void {
   if (a) openAnchorPeek(a);
 }
 
+// Labels are mono at a known size, so their width is a character count.
+const charW = 12 * 0.605;
+const lineH = 15;
+
+/** Break `text` at spaces into lines of at most `room` units of 12px mono. */
+function wrap(text: string, room: number): string[] {
+  const max = Math.max(8, Math.floor(room / charW));
+  const lines: string[] = [];
+  for (const word of text.split(" ")) {
+    const last = lines.length - 1;
+    if (last >= 0 && lines[last]!.length + 1 + word.length <= max) lines[last] += ` ${word}`;
+    else lines.push(word);
+  }
+  return lines;
+}
+
 export function sequenceDiagram(b: Seq): HTMLElement {
-  // Labels are mono at a known size, so their width is a character count. A
-  // long actor name or message wraps rather than widening the drawing past
+  // A long actor name or message wraps rather than widening the drawing past
   // the column; every box and column then grows to hold what it wraps to.
-  const charW = 12 * 0.605;
-  const lineH = 15;
-  const wrap = (text: string, room: number) => {
-    const max = Math.max(8, Math.floor(room / charW));
-    const lines: string[] = [];
-    for (const word of text.split(" ")) {
-      const last = lines.length - 1;
-      if (last >= 0 && lines[last]!.length + 1 + word.length <= max) lines[last] += ` ${word}`;
-      else lines.push(word);
-    }
-    return lines;
-  };
   const widest = (lines: string[]) => Math.max(...lines.map((l) => l.length)) * charW;
   const names = b.actors.map((a) => wrap(a.label, 20 * charW));
   const nameLines = Math.max(...names.map((l) => l.length));
@@ -290,14 +293,34 @@ export function databaseLens(b: Db, doc: CompiledDocument): HTMLElement {
  */
 export function flowDiagram(b: Flow, doc: CompiledDocument): HTMLElement {
   // The labels are mono at a known size, so a character budget is enough to
-  // keep one inside its box; the whole text stays in the tooltip.
+  // keep one inside its box. A step's label wraps, up to `maxLines`, and every
+  // box grows to the tallest; past that it is cut, with the whole text in the
+  // tooltip.
   const fit = (text: string, room: number, px: number) => {
     const max = Math.floor(room / (px * 0.605));
     return text.length > max ? `${text.slice(0, max - 1)}\u2026` : text;
   };
-  const { width, height, at, edges } = layoutFlow(b);
+  const maxLines = 3;
+  // A decision is cut in at both ends, so it has less room for text than a step.
+  const roomOf = (s: Flow["steps"][number]) => boxW - (s.decision ? 44 : 20);
+  const lines = new Map(
+    b.steps.map((s) => {
+      const all = wrap(s.label, roomOf(s));
+      const kept = all.slice(0, maxLines);
+      if (all.length > maxLines) kept[maxLines - 1] = `${kept[maxLines - 1]} ${all[maxLines]}`;
+      return [s.id, kept.map((l) => fit(l, roomOf(s), 12))] as const;
+    }),
+  );
+  const actorH = 14;
+  const textH = (s: Flow["steps"][number]) =>
+    (s.actor ? actorH : 0) + lines.get(s.id)!.length * lineH;
+  const boxH = Math.max(oneLineH, 18 + Math.max(...b.steps.map(textH)));
+  const { width, height, at, edges } = layoutFlow(b, boxH);
 
   const el = svg("svg", { viewBox: `0 0 ${width} ${height}`, class: "flow" });
+  // As a sequence does: shrunk no further than 90%, so a phone scrolls across
+  // a flow it can read rather than getting one too small to.
+  el.style.minWidth = `${Math.ceil(width * 0.9)}px`;
   el.appendChild(
     svg(
       "defs",
@@ -340,24 +363,29 @@ export function flowDiagram(b: Flow, doc: CompiledDocument): HTMLElement {
           })
         : svg("rect", { x, y, width: boxW, height: boxH, rx: 6 }),
     );
-    // A decision is cut in at both ends, so it has less room for text than a step.
-    const room = boxW - (s.decision ? 44 : 20);
+    const room = roomOf(s);
     const actor = s.actor ? (doc.actors[s.actor]?.label ?? s.actor) : null;
+    // The actor and the label's lines are centred as one block in the box.
+    const top = y + (boxH - textH(s)) / 2;
     if (actor)
       g.appendChild(
         svg(
           "text",
-          { class: "who", x: cx, y: y + 17, "text-anchor": "middle" },
+          { class: "who", x: cx, y: top + 10, "text-anchor": "middle" },
           fit(actor, room, 10.5),
         ),
       );
-    g.appendChild(
-      svg(
-        "text",
-        { x: cx, y: actor ? y + 33 : y + boxH / 2 + 4, "text-anchor": "middle" },
-        fit(s.label, room, 12),
-      ),
-    );
+    lines
+      .get(s.id)!
+      .forEach((line, i) =>
+        g.appendChild(
+          svg(
+            "text",
+            { x: cx, y: top + (actor ? actorH : 0) + 11 + i * lineH, "text-anchor": "middle" },
+            line,
+          ),
+        ),
+      );
     g.appendChild(svg("title", {}, s.anchor ? `${s.label} — ${s.anchor}` : s.label));
     if (s.anchor) {
       // The only way to open code from a flow, so it answers the keyboard as
@@ -376,5 +404,10 @@ export function flowDiagram(b: Flow, doc: CompiledDocument): HTMLElement {
     }
     el.appendChild(g);
   }
-  return h("div", { class: "diagram" }, h("div", { class: "dhead" }, b.label), el);
+  return h(
+    "div",
+    { class: "diagram" },
+    h("div", { class: "dhead" }, b.label),
+    h("div", { class: "seq-scroll" }, el),
+  );
 }

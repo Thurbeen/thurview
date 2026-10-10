@@ -321,9 +321,9 @@ describe.skipIf(!browserBin)("an exported document in a browser, offline", () =>
     const text = await p.evaluate<string>("document.body.innerText");
     for (const s of SECTIONS) expect.soft(text).toContain(s);
     for (const s of SNIPPETS) expect.soft(text).toContain(s);
-    // nothing to write with: a published copy is read only
+    // a published copy takes notes in the browser, but no decision reaches anyone from it
     const decide = await p.evaluate<number>(
-      `[...document.querySelectorAll("button")].filter((b) => b.offsetParent && /^(Decide|Submit.*|\\+|Comment on .*)$/.test(b.textContent)).length`,
+      `[...document.querySelectorAll("button")].filter((b) => b.offsetParent && /^(Decide|Submit.*)$/.test(b.textContent)).length`,
     );
     p.close();
     expect.soft(decide).toBe(0);

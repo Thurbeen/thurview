@@ -1,6 +1,6 @@
 import { api, published } from "./api.js";
 import { exportDialog } from "./export.js";
-import { h, append, clear, dialog, timeAgo } from "./dom.js";
+import { h, append, clear, dialog, timeAgo, asButton, clickPoint } from "./dom.js";
 import {
   state,
   on,
@@ -190,6 +190,8 @@ function renderTopbar(): void {
   const tabs: [View, string][] = VIEWS[kind()].map((v) => [v, labels[v]]);
   const revSel = h("select", {
     class: "small",
+    name: "revision",
+    "aria-label": "Revision",
     style: { font: "inherit", fontSize: "12px" },
     onchange: async (e: Event) => {
       const n = Number((e.target as HTMLSelectElement).value);
@@ -222,7 +224,7 @@ function renderTopbar(): void {
       {
         class: "muted mono bar-binding",
         style: { fontSize: "12px" },
-        title: `${r.pins.base} → ${r.pins.head}`,
+        title: `${bindingLabel(r)}: ${r.pins.base} → ${r.pins.head}`,
       },
       bindingLabel(r),
     ),
@@ -236,19 +238,22 @@ function renderTopbar(): void {
       ),
     ),
     h("span", { class: "spacer" }),
-    !published ? h("button", { onclick: () => void exportDialog() }, "Export for agent") : null,
-    h(
-      "button",
-      {
-        class: state.side.kind === "threads" ? "primary" : "",
-        onclick: () => {
-          state.side = state.side.kind === "threads" ? { kind: "none" } : { kind: "threads" };
-          emit("side");
-        },
-      },
-      `Threads${open ? ` · ${open}` : ""}`,
-    ),
-    readOnly()
+    h("button", { onclick: () => void exportDialog() }, "Export for agent"),
+    // A published copy with nothing sent and nothing noted has no thread to show.
+    published && !d.threads.length
+      ? null
+      : h(
+          "button",
+          {
+            class: state.side.kind === "threads" ? "primary" : "",
+            onclick: () => {
+              state.side = state.side.kind === "threads" ? { kind: "none" } : { kind: "threads" };
+              emit("side");
+            },
+          },
+          `Threads${open ? ` · ${open}` : ""}`,
+        ),
+    readOnly() || published
       ? null
       : h(
           "button",
@@ -281,15 +286,17 @@ function pickTheme(item: HTMLElement): void {
   if (label) label.textContent = themeLabel();
 }
 
+/** A menu entry, reachable by the keyboard as well as the mouse. */
+const item = (attrs: Record<string, unknown>, label: string) =>
+  asButton(h("div", { class: "item", ...attrs }, label));
+
 function moreMenu(e: MouseEvent): void {
   const r = state.data!.review;
   const box = h(
     "div",
     { class: "def-popover" },
-    h(
-      "div",
+    item(
       {
-        class: "item",
         onclick: async () => {
           await api.dismiss(state.id, !r.dismissed);
           await reload();
@@ -298,10 +305,8 @@ function moreMenu(e: MouseEvent): void {
       },
       r.dismissed ? "Restore review" : "Dismiss review",
     ),
-    h(
-      "div",
+    item(
       {
-        class: "item",
         onclick: () => {
           const d = dialog(
             h(
@@ -335,7 +340,7 @@ function moreMenu(e: MouseEvent): void {
       },
       "Delete review",
     ),
-    h("div", { class: "item", onclick: () => pickTheme(box) }, themeLabel()),
+    item({ onclick: () => pickTheme(box) }, themeLabel()),
     h(
       "div",
       { class: "item muted" },
@@ -344,7 +349,11 @@ function moreMenu(e: MouseEvent): void {
         : `commit ${r.pins.head.slice(0, 12)}`,
     ),
   );
-  import("./dom.js").then(({ popover }) => popover(box, { x: e.pageX - 200, y: e.pageY + 10 }));
+  const at = clickPoint(e, -200, 10);
+  import("./dom.js").then(({ popover }) => {
+    popover(box, at);
+    box.querySelector<HTMLElement>("[role=button]")?.focus();
+  });
 }
 
 let disposeCenter: (() => void) | undefined;
@@ -404,8 +413,8 @@ function renderBanner(): void {
         "span",
         { class: "snapshot-notice" },
         snapshot
-          ? `Snapshot of revision ${snapshot.revision} at ${snapshot.sha}; comments are made on the live review.`
-          : `Published copy of revision ${d.review.revision}, ${d.review.status}. Read only: nothing here reaches the agent.`,
+          ? `Snapshot of revision ${snapshot.revision} at ${snapshot.sha}; comments are made on the live review. Notes you add here stay in this browser until you export them.`
+          : `Published copy of revision ${d.review.revision}, ${d.review.status}. Nothing here reaches the agent: notes you add stay in this browser until you export them.`,
       ),
     );
     if (snapshot?.liveUrl)
@@ -545,7 +554,6 @@ async function reviewPage(id: string): Promise<void> {
   window.matchMedia(NARROW).addEventListener("change", () => emit("view"));
   emit("data");
   if (published) {
-    // nothing here starts a thread, so the controls that would are not drawn
     document.documentElement.classList.add("published");
     return;
   }
