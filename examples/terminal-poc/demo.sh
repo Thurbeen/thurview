@@ -80,6 +80,10 @@ else
         (
             cd "$scratch"
             dir="$(thurview design --title relay | sed -n 's/^  dir: //p')"
+            if [[ -z "$dir" ]]; then
+                echo "demo.sh: thurview design printed no dir:" >&2
+                exit 1
+            fi
             cp "$here/fixture/doc/review.md" "$here/fixture/doc/data.yaml" "$here/fixture/doc/map.yaml" "$dir/"
             thurview publish >/dev/null
             echo "$dir" >"$root/design-dir"

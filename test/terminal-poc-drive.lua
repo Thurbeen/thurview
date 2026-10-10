@@ -7,11 +7,12 @@
 --
 -- Each render prints one JSON frame, terminated by a form feed: the rows as
 -- plain text, the cells painted in the flow highlight, and the status line.
-local ui = assert(arg[1], "usage: lua5.4 terminal-poc-drive.lua <ui dir>")
+local ui = assert(arg[1], "usage: lua5.4 terminal-poc-drive.lua <ui dir> [model.lua]")
 package.path = ui .. "/?.lua;" .. package.path
 
 local view = require("thurview_poc.view")
-local model = require("thurview_poc.model")
+-- A second argument names a model file to draw instead of the installed one.
+local model = arg[2] and dofile(arg[2]) or require("thurview_poc.model")
 
 local function json_string(s)
   return '"'

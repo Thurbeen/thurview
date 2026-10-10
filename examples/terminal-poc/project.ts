@@ -113,7 +113,8 @@ function trim(runs: Run[]): Run[] {
  */
 export function htmlToBlocks(html: string): Block[] {
   const out: Block[] = [];
-  const lists: { ordered: boolean; n: number }[] = [];
+  // `cont`: the item's own text resumes after a nested list closed inside it.
+  const lists: { ordered: boolean; n: number; cont?: boolean }[] = [];
   const inline = { strong: 0, em: 0, code: 0, anchor: [] as string[] };
   let runs: Run[] | null = null;
   let quote = 0;
@@ -141,7 +142,7 @@ export function htmlToBlocks(html: string): Block[] {
       if (done.length)
         out.push({
           t: "item",
-          marker: list.ordered ? `${list.n}.` : "•",
+          marker: list.cont ? "" : list.ordered ? `${list.n}.` : "•",
           depth: lists.length - 1,
           runs: done,
         });
@@ -177,11 +178,17 @@ export function htmlToBlocks(html: string): Block[] {
         if (open) {
           const start = /start="(\d+)"/.exec(attrs);
           lists.push({ ordered: name === "ol", n: start ? +start[1]! - 1 : 0 });
-        } else lists.pop();
+        } else {
+          lists.pop();
+          const outer = lists.at(-1);
+          if (outer) outer.cont = true;
+        }
         break;
       case "li":
         if (open) {
-          lists.at(-1)!.n++;
+          const list = lists.at(-1)!;
+          list.n++;
+          list.cont = false;
           runs = [];
         } else flushItem();
         break;

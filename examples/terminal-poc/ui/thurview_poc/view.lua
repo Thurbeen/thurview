@@ -210,7 +210,8 @@ local function build_doc(model, w)
       local p = b.quote and "▌ " or ""
       add_wrapped(b.runs, { text = p, st = "quote" }, { text = p, st = "quote" })
     elseif b.t == "item" then
-      local marker = string.rep("  ", b.depth) .. b.marker .. " "
+      -- An empty marker continues the item above, so its text hangs under that item's.
+      local marker = string.rep("  ", b.depth) .. (b.marker == "" and " " or b.marker) .. " "
       add_wrapped(
         b.runs,
         { text = marker, st = "muted" },
@@ -542,6 +543,9 @@ end
 
 local function map_key(model, st, key)
   local L, vw, vh = map_layout(model, st)
+  if #L.order == 0 then
+    return false
+  end
   if key == "j" or key == "down" then
     st.node = st.node % #L.order + 1
     st.inspect = "node"

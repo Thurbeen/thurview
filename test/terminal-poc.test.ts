@@ -11,7 +11,12 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { decode } from "@toon-format/toon";
-import { project, toLua, type TerminalModel } from "../examples/terminal-poc/project.ts";
+import {
+  htmlToBlocks,
+  project,
+  toLua,
+  type TerminalModel,
+} from "../examples/terminal-poc/project.ts";
 
 const execFileP = promisify(execFile);
 const ROOT = join(import.meta.dirname, "..");
@@ -139,6 +144,19 @@ describe("projecting a sealed revision into the terminal model", () => {
     expect(seq && seq.t === "sequence" && seq.messages).toHaveLength(7);
   });
 
+  it("keeps the text after a nested list inside its own item, not a new bullet", () => {
+    const blocks = htmlToBlocks(
+      "<ul>\n<li>outer\n<ul>\n<li>inner</li>\n</ul>\nstill outer</li>\n</ul>\n",
+    );
+    expect(
+      blocks.map((b) => (b.t === "item" ? [b.marker, b.depth, b.runs[0]?.text] : b.t)),
+    ).toEqual([
+      ["•", 0, "outer"],
+      ["•", 1, "inner"],
+      ["", 0, "still outer"],
+    ]);
+  });
+
   it("refuses a directory that is not a sealed revision", async () => {
     await expect(project(tmp)).rejects.toThrow(/not a published revision/);
   });
@@ -152,8 +170,13 @@ interface Frame {
 }
 
 /** Drive the pane's view in Lua 5.4 with a script of `size`, `key` and `render` lines. */
-function drive(script: string[]): Frame[] {
-  const stdout = execFileSync(luaBin!, [join(ROOT, "test", "terminal-poc-drive.lua"), ui], {
+function drive(script: string[], modelFile?: string): Frame[] {
+  const args = [
+    join(ROOT, "test", "terminal-poc-drive.lua"),
+    ui,
+    ...(modelFile ? [modelFile] : []),
+  ];
+  const stdout = execFileSync(luaBin!, args, {
     input: script.join("\n") + "\n",
     encoding: "utf8",
   });
@@ -243,6 +266,14 @@ describe.skipIf(!luaBin)("the pane's view, in the Lua the host embeds", () => {
     expect(paused!.status).toMatch(/⏸ 2\/7/);
     expect(still!.status).toBe(paused!.status);
     expect(still!.flow).toEqual(paused!.flow);
+  });
+
+  it("draws a document with no map, and its map keys do nothing rather than fail", async () => {
+    const file = join(tmp, "no-map.lua");
+    await writeFile(file, toLua({ ...model, map: { nodes: [], edges: [] } }));
+    const [f] = drive(["size 120 40", "key tab", "key j", "key k", "key enter", "render 0"], file);
+    expect(screen(f!)).toContain("relay: fan-out delivery");
+    expect(screen(f!)).toContain("node · none");
   });
 
   it("stops by itself after one pass, and resumes where it was after being hidden", async () => {
@@ -349,6 +380,9 @@ describe.skipIf(!thurboxBin || !tmuxBin || !luaBin)(
       await until((s) => /▶ \d\/7/.test(s), "the flow playing");
       tmux("send-keys", "-t", "poc", "Space");
       await until((s) => /⏸ \d\/7/.test(s), "the flow paused");
+      // A key the view does not use falls through: Esc goes back where it came from.
+      tmux("send-keys", "-t", "poc", "Escape");
+      await until((s) => /^ Agent /m.test(s), "the focus back on the agent pane");
       const text = await readFile(join(root, "config", "ui", "thurview_poc", "model.lua"), "utf8");
       expect(text).toMatch(/^return {/m);
     });

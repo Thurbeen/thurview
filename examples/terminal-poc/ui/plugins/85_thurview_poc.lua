@@ -204,7 +204,8 @@ return {
     local key = ACTION_KEY[action]
     if key and st then
       keys_seen = keys_seen + 1
-      return view.key(model, st, key) or true
+      -- A key the view does not use falls through, so Esc still goes back.
+      return view.key(model, st, key)
     end
     return false
   end,
