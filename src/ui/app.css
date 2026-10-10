@@ -328,6 +328,15 @@ kbd {
   flex: 1 1 auto;
   min-width: 3rem;
 }
+/* A branch name can be as long as the title; it gives way too, rather than
+   running under the tabs, and its tooltip keeps the whole of it. */
+.topbar .bar-binding {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .topbar .tabs {
   display: flex;
   gap: 2px;

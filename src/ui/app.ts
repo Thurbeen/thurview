@@ -224,7 +224,7 @@ function renderTopbar(): void {
       {
         class: "muted mono bar-binding",
         style: { fontSize: "12px" },
-        title: `${r.pins.base} → ${r.pins.head}`,
+        title: `${bindingLabel(r)}: ${r.pins.base} → ${r.pins.head}`,
       },
       bindingLabel(r),
     ),

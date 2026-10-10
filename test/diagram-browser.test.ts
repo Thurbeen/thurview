@@ -331,7 +331,8 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
     await writeFile(join(repo, "src", "plan.ts"), "export function plan() {\n  return 0;\n}\n");
     await git("add", ".");
     await git("commit", "-q", "-m", "base");
-    await git("checkout", "-q", "-b", "feature");
+    // A branch name as long as real ones get, which the top bar has to make room for.
+    await git("checkout", "-q", "-b", "fix/keep-the-scheduler-lease-across-daemon-restarts");
     await writeFile(join(repo, "src", "plan.ts"), "export function plan() {\n  return 1;\n}\n");
     await git("commit", "-qam", "plan");
     const { review } = await cli(repo, home, ["scaffold"]);
@@ -479,6 +480,27 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
         p.close();
       }
     }, 30_000);
+  for (const width of [1100, 1180, 1280, 1440])
+    it(`keeps the title row off the tabs at ${width}px`, async () => {
+      const p = await page(width, 800);
+      try {
+        const m = await p.evaluate<{ overlap: number; spill: string[] }>(`(() => {
+          const id = document.querySelector(".bar-identity").getBoundingClientRect();
+          const tabs = document.querySelector(".bar-actions .tabs").getBoundingClientRect();
+          const spill = [...document.querySelectorAll(".bar-identity > *")]
+            .filter((e) => e.getBoundingClientRect().right > id.right + 0.5)
+            .map((e) => e.className || e.tagName);
+          // Side by side, the identity must end before the tabs begin.
+          const sameRow = id.top < tabs.bottom && tabs.top < id.bottom;
+          return { overlap: sameRow ? Math.max(0, id.right - tabs.left) : 0, spill };
+        })()`);
+        expect.soft(m.spill).toEqual([]);
+        expect.soft(m.overlap).toBe(0);
+      } finally {
+        await p.close();
+      }
+    }, 30_000);
+
   it("keeps a wide table inside its own scroller on a phone, not the whole page", async () => {
     const p = await reader(390, 844);
     try {
