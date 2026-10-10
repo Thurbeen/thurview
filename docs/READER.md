@@ -73,7 +73,8 @@ them, and the selected node's files, code and neighbours](../media/review-map.pn
 
 _Send to the agent_ delivers a question at once and the answer lands in the
 same thread. _Add to the review_ holds a comment until you submit with
-_Approve_ or _Request changes_. _Close_ ends the review without approving it.
+_Approve_ or _Request changes_. _Close the review_ ends it without approving
+it; a design says _Drop the design_ and an explainer _Stop reading_.
 Each thread says where it stands - held, queued, delivered or answered - and
 the panel says whether an agent is listening at all. Nothing claims a reader is
 there when none is: a question asked with no agent attached is queued, not

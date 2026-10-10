@@ -1,6 +1,6 @@
 import { api, published } from "./api.js";
 import { exportDialog } from "./export.js";
-import { h, append, clear, dialog, timeAgo } from "./dom.js";
+import { h, append, clear, dialog, timeAgo, asButton, clickPoint } from "./dom.js";
 import {
   state,
   on,
@@ -190,6 +190,8 @@ function renderTopbar(): void {
   const tabs: [View, string][] = VIEWS[kind()].map((v) => [v, labels[v]]);
   const revSel = h("select", {
     class: "small",
+    name: "revision",
+    "aria-label": "Revision",
     style: { font: "inherit", fontSize: "12px" },
     onchange: async (e: Event) => {
       const n = Number((e.target as HTMLSelectElement).value);
@@ -281,15 +283,17 @@ function pickTheme(item: HTMLElement): void {
   if (label) label.textContent = themeLabel();
 }
 
+/** A menu entry, reachable by the keyboard as well as the mouse. */
+const item = (attrs: Record<string, unknown>, label: string) =>
+  asButton(h("div", { class: "item", ...attrs }, label));
+
 function moreMenu(e: MouseEvent): void {
   const r = state.data!.review;
   const box = h(
     "div",
     { class: "def-popover" },
-    h(
-      "div",
+    item(
       {
-        class: "item",
         onclick: async () => {
           await api.dismiss(state.id, !r.dismissed);
           await reload();
@@ -298,10 +302,8 @@ function moreMenu(e: MouseEvent): void {
       },
       r.dismissed ? "Restore review" : "Dismiss review",
     ),
-    h(
-      "div",
+    item(
       {
-        class: "item",
         onclick: () => {
           const d = dialog(
             h(
@@ -335,7 +337,7 @@ function moreMenu(e: MouseEvent): void {
       },
       "Delete review",
     ),
-    h("div", { class: "item", onclick: () => pickTheme(box) }, themeLabel()),
+    item({ onclick: () => pickTheme(box) }, themeLabel()),
     h(
       "div",
       { class: "item muted" },
@@ -344,7 +346,11 @@ function moreMenu(e: MouseEvent): void {
         : `commit ${r.pins.head.slice(0, 12)}`,
     ),
   );
-  import("./dom.js").then(({ popover }) => popover(box, { x: e.pageX - 200, y: e.pageY + 10 }));
+  const at = clickPoint(e, -200, 10);
+  import("./dom.js").then(({ popover }) => {
+    popover(box, at);
+    box.querySelector<HTMLElement>("[role=button]")?.focus();
+  });
 }
 
 let disposeCenter: (() => void) | undefined;

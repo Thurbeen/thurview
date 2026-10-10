@@ -20,7 +20,9 @@ export interface FlowEdge {
 }
 
 export const boxW = 210;
+/** A box's height when its label fits one line; a flow with longer labels passes its own. */
 export const boxH = 46;
+const BOX_H = boxH;
 const gapX = 40;
 const gapY = 58;
 const pad = 14;
@@ -34,7 +36,10 @@ const minW = 700;
  * back to a layer already placed - a retry loop, which is what a real journey
  * does - is routed down a lane on the right instead of crossing the boxes.
  */
-export function layoutFlow(b: Flow): {
+export function layoutFlow(
+  b: Flow,
+  boxH: number = BOX_H,
+): {
   width: number;
   height: number;
   at: (id: string) => FlowBox;
@@ -84,11 +89,17 @@ export function layoutFlow(b: Flow): {
     const back = to.li < from.li;
     if (to.li > from.li) {
       const mid = from.y + boxH + (to.y - from.y - boxH) / 2;
+      // A label centred on an edge that runs straight down would sit on the
+      // line itself, so that one starts beside it instead, below the run its
+      // siblings branch out along.
+      const straight = from.cx === to.cx;
       return {
         edge,
         back,
         d: `M${from.cx},${from.y + boxH} V${mid} H${to.cx} V${to.y - 4}`,
-        label: { x: (from.cx + to.cx) / 2 + 6, y: mid - 5, at: "middle" },
+        label: straight
+          ? { x: from.cx + 6, y: mid + 15, at: "start" }
+          : { x: (from.cx + to.cx) / 2 + 6, y: mid - 5, at: "middle" },
       };
     }
     // Out through the band below this row, up the lane, and back in through

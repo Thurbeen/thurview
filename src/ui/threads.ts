@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { h, closePopover, dialog, timeAgo } from "./dom.js";
+import { h, closePopover, dialog, timeAgo, asButton } from "./dom.js";
 import { state, emit, describeTarget, navigate, readOnly, kind } from "./state.js";
 import type { Thread, ThreadTarget } from "../store.js";
 import type { Presence } from "../presence.js";
@@ -118,7 +118,7 @@ export function commentPopover(target: ThreadTarget, quote?: string): HTMLElemen
 export function threadPinRow(t: Thread): HTMLElement {
   const first = t.messages[0];
   const last = t.messages[t.messages.length - 1];
-  return h(
+  const pin = h(
     "div",
     {
       class: `thread-pin ${t.status === "resolved" ? "resolved" : ""}`,
@@ -152,6 +152,7 @@ export function threadPinRow(t: Thread): HTMLElement {
       : null,
     t.status === "resolved" ? h("span", { class: "badge ok" }, "resolved") : null,
   );
+  return asButton(pin);
 }
 
 export function focusThread(id: string): void {
@@ -189,6 +190,7 @@ export function renderThreadsPanel(container: HTMLElement): void {
       { style: { fontSize: "12px" } },
       h("input", {
         type: "checkbox",
+        name: "show-resolved",
         onchange: (e: Event) => {
           showResolved = (e.target as HTMLInputElement).checked;
           draw();
@@ -365,10 +367,25 @@ export function submitDialog(): void {
   const explainer = k === "explainer";
   const words =
     k === "explainer"
-      ? { title: "Send this back or finish", accept: "Done reading", back: "Send it back" }
+      ? {
+          title: "Send this back or finish",
+          accept: "Done reading",
+          back: "Send it back",
+          close: "Stop reading",
+        }
       : k === "design"
-        ? { title: "Decide on this design", accept: "Approve the design", back: "Send it back" }
-        : { title: "Submit review", accept: "Approve", back: "Request changes" };
+        ? {
+            title: "Decide on this design",
+            accept: "Approve the design",
+            back: "Send it back",
+            close: "Drop the design",
+          }
+        : {
+            title: "Submit review",
+            accept: "Approve",
+            back: "Request changes",
+            close: "Close the review",
+          };
   const ta = h("textarea", { rows: 4, placeholder: "Summary for the agent (optional)" });
   const d = dialog(
     h(
@@ -397,7 +414,9 @@ export function submitDialog(): void {
                 : "End the review without approving it",
             onclick: () => decide("close"),
           },
-          "Close",
+          // Not "Close": beside "Cancel" that read as a second way out of the
+          // dialog, and it ends the document.
+          words.close,
         ),
         h("button", { onclick: () => decide("request-changes") }, words.back),
         h("button", { class: "ok", onclick: () => decide("approve") }, words.accept),
