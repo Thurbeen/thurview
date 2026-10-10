@@ -452,7 +452,7 @@ function renderBlock(b: Block): HTMLElement {
   switch (b.type) {
     case "html":
     case "heading":
-      wrap.appendChild(h("div", { html: b.html }));
+      wrap.appendChild(h("div", { class: "prose", html: b.html }));
       break;
     case "peek": {
       const a = doc.anchors[b.anchor];

@@ -490,13 +490,17 @@ kbd {
 .doc li {
   margin: 2px 0;
 }
-/* A table wider than the column scrolls inside itself; the page never does. */
 .doc table {
+  border-collapse: collapse;
+  margin: 10px 0;
+}
+/* A table the author wrote scrolls inside itself when it is wider than the
+   column, so the page never does. Only prose: a code peek's table is laid
+   out by .code and must stay a table to keep its lines full width. */
+.doc .prose table {
   display: block;
   max-width: 100%;
   overflow-x: auto;
-  border-collapse: collapse;
-  margin: 10px 0;
 }
 .doc th,
 .doc td {

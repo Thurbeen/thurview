@@ -58,6 +58,10 @@ const REVIEW = (rev: number) => `# A scheduler for recurring reviews
 
 Revision ${rev}. Move the recurring reviewer into [a small scheduler](anchor:loop) of its own.
 
+\`\`\`peek
+loop
+\`\`\`
+
 ${filler(3)}
 
 ## How it works today
@@ -245,6 +249,24 @@ describe.skipIf(!browserBin)("document page, driven by a reader", () => {
     }
   }, 30_000);
 
+  it("leaves a code peek's lines as wide as their frame", async () => {
+    const p = await page(1440, 900);
+    try {
+      const m = await p.evaluate<{ display: string; short: number }>(`(() => {
+        const code = document.querySelector(".doc .code-frame .code");
+        const t = code.querySelector("table");
+        return {
+          display: getComputedStyle(t).display,
+          short: code.clientWidth - t.querySelector("tr").getBoundingClientRect().width,
+        };
+      })()`);
+      expect.soft(m.display).toBe("table");
+      expect.soft(m.short).toBeLessThanOrEqual(1);
+    } finally {
+      await p.close();
+    }
+  }, 30_000);
+
   it("shows every tab and the revision picker on a phone", async () => {
     const p = await page(390, 844);
     try {
@@ -416,6 +438,61 @@ describe.skipIf(!browserBin)("document page, driven by a reader", () => {
         .toEqual(["Cancel", "Drop the design", "Send it back", "Approve the design"]);
       await p.press("Escape");
       expect(await p.evaluate<boolean>(`!!document.querySelector(".overlay")`)).toBe(false);
+    } finally {
+      await p.close();
+    }
+  }, 30_000);
+
+  it("opens the menu from the keyboard, beside its button, on its first entry", async () => {
+    const p = await page(1440, 900);
+    try {
+      const at = await p.evaluate<{ x: number; y: number }>(`(() => {
+        const b = document.querySelector(".bar-more");
+        b.focus();
+        const r = b.getBoundingClientRect();
+        return { x: r.left, y: r.bottom };
+      })()`);
+      await p.press("Enter");
+      const menu = await p.evaluate<{ y: number; first: boolean }>(`(() => {
+        const m = document.querySelector(".def-popover");
+        return {
+          y: m.getBoundingClientRect().top,
+          first: document.activeElement === m.querySelector(".item") && document.activeElement.getAttribute("role") === "button",
+        };
+      })()`);
+      expect.soft(Math.abs(menu.y - at.y)).toBeLessThan(40);
+      expect.soft(menu.first).toBe(true);
+      await p.press("Escape");
+    } finally {
+      await p.close();
+    }
+  }, 30_000);
+
+  // After every test that reads the comment buttons: the thread it leaves
+  // makes its block's button show for good.
+  it("opens a thread from its pin by keyboard", async () => {
+    await fetch(`http://127.0.0.1:${server.port}/api/reviews/${designId}/threads`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind: "comment",
+        mode: "review",
+        target: { type: "document", blockId: "interface-delta" },
+        body: "Which runner does the first repository use?",
+      }),
+    });
+    const p = await page(1440, 900);
+    try {
+      const focused = await p.evaluate<boolean>(`(() => {
+        const pin = document.querySelector(".ifd .thread-pin");
+        pin.focus();
+        return document.activeElement === pin;
+      })()`);
+      expect(focused).toBe(true);
+      await p.press("Enter");
+      expect(
+        await p.evaluate<boolean>(`!!document.querySelector(".side:not(.hidden) .thread.active")`),
+      ).toBe(true);
     } finally {
       await p.close();
     }
