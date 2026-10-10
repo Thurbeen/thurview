@@ -1,4 +1,4 @@
-import { published, type Payload } from "./api.js";
+import type { Payload } from "./api.js";
 import type { DocumentKind, Thread, ThreadTarget } from "../store.js";
 
 export type View = "review" | "commits" | "files" | "map" | "coverage";
@@ -112,7 +112,10 @@ export function readOnly(): boolean {
   return isTerminal() || !canWrite();
 }
 
-/** Whether the reader may start a thread: not on an older revision, nor on a published copy. */
+/**
+ * Whether the reader may start a thread: not on an older revision. On a
+ * published copy what they start is a note kept in their browser.
+ */
 export function canWrite(): boolean {
-  return state.viewingRevision === null && !published;
+  return state.viewingRevision === null;
 }

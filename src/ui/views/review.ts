@@ -1,6 +1,7 @@
 import { h, popover, clickPoint, asButton } from "../dom.js";
 import { state, threadsFor, navigate, kind, VIEWS, canWrite } from "../state.js";
 import { codeTable, openAnchorPeek } from "../code.js";
+import { published } from "../api.js";
 import { commentPopover, threadPinRow } from "../threads.js";
 import { sequenceDiagram, callstackDiff, databaseLens, flowDiagram } from "../diagrams.js";
 import type { Block, CompiledSecurity } from "../../document/compile.js";
@@ -564,7 +565,7 @@ function selectionHandler(docEl: HTMLElement): void {
           window.getSelection()?.removeAllRanges();
         },
       },
-      "Comment / Ask",
+      published ? "Add note" : "Comment / Ask",
     );
     btn.style.left = `${rect.left + window.scrollX}px`;
     btn.style.top = `${rect.bottom + window.scrollY + 6}px`;

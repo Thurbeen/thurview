@@ -169,7 +169,7 @@ async function page(
   width: number,
   height: number,
   os: "light" | "dark" = "light",
-  doc: { id: string; ready: string } = { id: reviewId, ready: "svg.seq" },
+  doc: { id: string; ready: string; url?: string } = { id: reviewId, ready: "svg.seq" },
 ) {
   const target = (await (
     await fetch(`http://127.0.0.1:${devtools}/json/new?about:blank`, { method: "PUT" })
@@ -218,7 +218,9 @@ async function page(
     features: [{ name: "prefers-color-scheme", value: os }],
   });
   const open = async () => {
-    await call("Page.navigate", { url: `http://127.0.0.1:${server.port}/review/${doc.id}` });
+    await call("Page.navigate", {
+      url: doc.url ?? `http://127.0.0.1:${server.port}/review/${doc.id}`,
+    });
     await evaluate(`new Promise((ok, no) => {
     const t = Date.now();
     (function wait() {
@@ -238,6 +240,14 @@ async function page(
 }
 
 /** The design, which the reader-facing checks below drive. */
+/** The design as `thurview export` writes it: one file, opened from disk, no server. */
+const publishedCopy = (width: number, height: number) =>
+  page(width, height, "light", {
+    id: designId,
+    ready: "article.doc svg.flow",
+    url: `file://${join(tmp, "design.html")}`,
+  });
+
 const reader = (width: number, height: number) =>
   page(width, height, "light", { id: designId, ready: "article.doc svg.flow" });
 
@@ -337,6 +347,7 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
       await writeFile(join(design.dir, "data.yaml"), DESIGN_DATA);
       await cli(repo, home, ["publish", "--review", designId]);
     }
+    await cli(repo, home, ["export", designId, "--out", join(tmp, "design.html")]);
 
     process.env["THURVIEW_HOME"] = home;
     const { startServer } = await import(join(ROOT, "dist", "server", "server.js"));
@@ -727,6 +738,75 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
       expect(
         await p.evaluate<boolean>(`!!document.querySelector(".side:not(.hidden) .thread.active")`),
       ).toBe(true);
+    } finally {
+      await p.close();
+    }
+  }, 30_000);
+
+  it("takes notes on a published copy and exports them for an agent", async () => {
+    const p = await publishedCopy(1440, 900);
+    const bar = () =>
+      p.evaluate<string[]>(
+        `[...document.querySelectorAll(".bar-actions button")].map((b) => b.textContent)`,
+      );
+    try {
+      // Nothing sent and nothing noted yet: no Threads to open, and no decision to make here.
+      const before = await bar();
+      expect.soft(before.some((t) => t.startsWith("Threads"))).toBe(false);
+      expect.soft(before).toContain("Export for agent");
+      expect.soft(before).not.toContain("Decide");
+
+      await p.evaluate(`(() => {
+        const block = [...document.querySelectorAll(".doc .block")].find((b) => b.querySelector(".prose")?.textContent.startsWith("Revision 2."));
+        block.querySelector(".block-actions button").focus();
+      })()`);
+      await p.press("Enter");
+      const offered = await p.evaluate<string[]>(
+        `[...document.querySelectorAll(".comment-popover button")].map((b) => b.textContent)`,
+      );
+      expect(offered).toEqual(["Add note", "Cancel"]);
+      await p.evaluate(`(async () => {
+        document.querySelector(".comment-popover textarea").value = "Name the runner the first repository uses.";
+        [...document.querySelectorAll(".comment-popover button")].find((b) => b.textContent === "Add note").click();
+        await new Promise((r) => setTimeout(r, 300));
+      })()`);
+      expect
+        .soft(
+          await p.evaluate<string>(
+            `document.querySelector(".side:not(.hidden) .thread")?.textContent ?? ""`,
+          ),
+        )
+        .toContain("Name the runner the first repository uses.");
+      expect.soft((await bar()).some((t) => t.startsWith("Threads"))).toBe(true);
+
+      // A note outlives a reload: it is kept in this browser.
+      await p.reload();
+      expect(await p.evaluate<number>(`document.querySelectorAll(".doc .thread-pin").length`)).toBe(
+        1,
+      );
+
+      const markdown = await p.evaluate<string>(`(async () => {
+        [...document.querySelectorAll(".bar-actions button")].find((b) => b.textContent === "Export for agent").click();
+        await new Promise((r) => setTimeout(r, 300));
+        const text = document.querySelector(".export-preview").value;
+        document.querySelector(".overlay").remove();
+        return text;
+      })()`);
+      expect.soft(markdown).toContain("# A scheduler for recurring reviews");
+      expect.soft(markdown).toContain("Target: review.md:");
+      expect.soft(markdown).toContain("Name the runner the first repository uses.");
+      expect.soft(markdown).toContain("Written on a published copy");
+      expect.soft(markdown).toMatch(/- \[ \] Address item 1 /);
+      expect.soft(markdown).not.toContain("No reader feedback.");
+
+      // Deleting the last note takes Threads away again.
+      await p.evaluate(`(async () => {
+        document.querySelector(".doc .thread-pin").click();
+        await new Promise((r) => setTimeout(r, 200));
+        [...document.querySelectorAll(".side .thread button")].find((b) => b.textContent === "Delete").click();
+        await new Promise((r) => setTimeout(r, 300));
+      })()`);
+      expect.soft((await bar()).some((t) => t.startsWith("Threads"))).toBe(false);
     } finally {
       await p.close();
     }

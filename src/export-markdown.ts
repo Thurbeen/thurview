@@ -1,4 +1,4 @@
-import { basename, join, posix, win32 } from "node:path";
+import { basename, join } from "node:path";
 import {
   readJson,
   readText,
@@ -13,6 +13,15 @@ import { parseDocument } from "./document/parse.js";
 import type { CompiledDocument, CompiledMap, Block } from "./document/compile.js";
 import type { Coverage } from "./coverage.js";
 import { showFile, type ChangedFile } from "./git.js";
+import {
+  relative,
+  fence,
+  codeAnchor,
+  shortQuote,
+  plainQuote,
+  feedbackItem,
+  checklistItem,
+} from "./feedback-format.js";
 
 interface Meta {
   title: string;
@@ -42,28 +51,6 @@ async function sealed(review: ReviewState, n: number) {
   };
 }
 type Sealed = Awaited<ReturnType<typeof sealed>>;
-
-function relative(path: string): string {
-  if (posix.isAbsolute(path) || win32.isAbsolute(path) || path.split(/[\\/]/).includes(".."))
-    throw new Error("export requires repository-relative anchors");
-  return path;
-}
-
-function fence(text: string): string {
-  const runs = text.match(/`+/g) ?? [];
-  const delimiter = "`".repeat(Math.max(3, ...runs.map((r) => r.length + 1)));
-  return `${delimiter}text\n${text}\n${delimiter}`;
-}
-
-function shortQuote(text: string): string {
-  const lines = text.split("\n");
-  const excerpt = lines.slice(0, 8).join("\n");
-  return excerpt.slice(0, 600) + (lines.length > 8 || excerpt.length > 600 ? "\n…" : "");
-}
-
-function codeAnchor(file: string, from: number, to: number, sha: string): string {
-  return `${relative(file)}:${from}-${to} at ${sha}`;
-}
 
 function blockAnchors(block: Block, snapshot: Sealed): string[] {
   const ids = new Set(
@@ -176,15 +163,13 @@ async function context(thread: Thread, snapshot: Sealed, review: ReviewState) {
       }
     }
   }
-  // Anchor links are reader navigation, not portable Markdown links.
-  quote = quote.replace(/\[([^\]]+)\]\(anchor:[^)]+\)/g, "$1");
-  return { target, anchors, quote: shortQuote(quote) };
+  return { target, anchors, quote: plainQuote(quote) };
 }
 
 export async function exportMarkdown(
   review: ReviewState,
   revision = review.revision,
-  opts: { sentOnly?: boolean } = {},
+  opts: { sentOnly?: boolean; threads?: boolean } = {},
 ) {
   if (!Number.isInteger(revision) || revision < 1 || revision > review.revision)
     throw new Error("export requires a published revision between 1 and the current revision");
@@ -193,7 +178,10 @@ export async function exportMarkdown(
   snapshots.set(revision, current);
   const feedback = await readThreads(review.id);
   const threads = feedback.threads.filter(
-    (t) => t.revision <= revision && (!opts.sentOnly || t.submitted || t.mode === "ask"),
+    (t) =>
+      opts.threads !== false &&
+      t.revision <= revision &&
+      (!opts.sentOnly || t.submitted || t.mode === "ask"),
   );
   for (const t of threads) {
     if (t.revision > 0 && !snapshots.has(t.revision))
@@ -259,23 +247,8 @@ export async function exportMarkdown(
                 : "",
           }
         : await context(t, snapshots.get(t.revision)!, review);
-    lines.push(
-      `### ${i + 1}. ${t.kind === "question" ? "Question" : "Comment"} — ${t.status}`,
-      "",
-      `Revision: ${t.revision}`,
-      `Thread: ${t.id}`,
-      `Target: ${c.target}`,
-    );
-    for (const a of c.anchors) lines.push(`Anchor: ${a}`);
-    if (!c.anchors.length && t.target.type !== "file")
-      lines.push("Anchor: none (no code anchor attached)");
-    lines.push("");
-    if (c.quote) lines.push("Quoted text:", "", fence(c.quote), "");
-    for (const m of t.messages)
-      lines.push(`${m.role === "reviewer" ? "Reviewer" : "Agent"}:`, "", fence(m.body), "");
-    if (t.status === "open") {
-      checklist.push(`- [ ] Address item ${i + 1} (thread ${t.id}).`);
-    }
+    lines.push(...feedbackItem(i + 1, t, c));
+    if (t.status === "open") checklist.push(checklistItem(i + 1, t));
   }
   lines.push("## What to do", "", ...(checklist.length ? checklist : ["No unresolved items."]), "");
   return {

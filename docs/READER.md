@@ -113,6 +113,12 @@ leaves them out). It opens from disk, fetches nothing, and names no server and
 no local path. Point `--out` at a folder for `<folder>/index.html`, such as a
 repository's Pages folder.
 
+Whoever opens a copy can still comment: the `+` beside a paragraph, a line
+number or a selection adds a note that stays in their browser.
+_Export for agent_ then gives the Markdown of what was sent with their notes
+added, to hand to an agent. Nothing they write reaches the review or its
+agent unless they send that Markdown.
+
 For a link instead of a file, `thurview publish-static` deploys a durable
 read-only snapshot to Cloudflare (see
 [public static snapshots](../skills/thurview/references/lifecycle.md#public-static-snapshots)),

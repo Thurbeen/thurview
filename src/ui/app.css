@@ -529,9 +529,6 @@ kbd {
 .block.has-threads > .block-actions {
   opacity: 1;
 }
-.published .block-actions button:not(.count) {
-  display: none;
-}
 .block-actions button {
   width: 26px;
   height: 26px;

@@ -238,19 +238,22 @@ function renderTopbar(): void {
       ),
     ),
     h("span", { class: "spacer" }),
-    !published ? h("button", { onclick: () => void exportDialog() }, "Export for agent") : null,
-    h(
-      "button",
-      {
-        class: state.side.kind === "threads" ? "primary" : "",
-        onclick: () => {
-          state.side = state.side.kind === "threads" ? { kind: "none" } : { kind: "threads" };
-          emit("side");
-        },
-      },
-      `Threads${open ? ` · ${open}` : ""}`,
-    ),
-    readOnly()
+    h("button", { onclick: () => void exportDialog() }, "Export for agent"),
+    // A published copy with nothing sent and nothing noted has no thread to show.
+    published && !d.threads.length
+      ? null
+      : h(
+          "button",
+          {
+            class: state.side.kind === "threads" ? "primary" : "",
+            onclick: () => {
+              state.side = state.side.kind === "threads" ? { kind: "none" } : { kind: "threads" };
+              emit("side");
+            },
+          },
+          `Threads${open ? ` · ${open}` : ""}`,
+        ),
+    readOnly() || published
       ? null
       : h(
           "button",
@@ -410,8 +413,8 @@ function renderBanner(): void {
         "span",
         { class: "snapshot-notice" },
         snapshot
-          ? `Snapshot of revision ${snapshot.revision} at ${snapshot.sha}; comments are made on the live review.`
-          : `Published copy of revision ${d.review.revision}, ${d.review.status}. Read only: nothing here reaches the agent.`,
+          ? `Snapshot of revision ${snapshot.revision} at ${snapshot.sha}; comments are made on the live review. Notes you add here stay in this browser until you export them.`
+          : `Published copy of revision ${d.review.revision}, ${d.review.status}. Nothing here reaches the agent: notes you add stay in this browser until you export them.`,
       ),
     );
     if (snapshot?.liveUrl)
@@ -551,7 +554,6 @@ async function reviewPage(id: string): Promise<void> {
   window.matchMedia(NARROW).addEventListener("change", () => emit("view"));
   emit("data");
   if (published) {
-    // nothing here starts a thread, so the controls that would are not drawn
     document.documentElement.classList.add("published");
     return;
   }
