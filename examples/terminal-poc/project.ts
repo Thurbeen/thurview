@@ -9,7 +9,7 @@
 //
 //   node node_modules/tsx/dist/cli.mjs examples/terminal-poc/project.ts <revision dir> <out.lua>
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CompiledDocument, CompiledMap } from "../../src/document/compile.ts";
 
@@ -27,28 +27,33 @@ export interface Token {
   tok: string;
 }
 
-export type Block =
-  | { t: "heading"; level: number; text: string }
-  | { t: "para"; runs: Run[]; quote?: true }
-  | { t: "item"; marker: string; depth: number; runs: Run[] }
-  | { t: "table"; rows: string[][] }
-  | { t: "code"; lines: string[] }
-  | { t: "rule" }
-  | {
-      t: "sequence";
-      label: string;
-      /** `from`/`to` are map node ids where the actor names one, else the actor's label */
-      messages: { from: string; to: string; label: string; anchor?: string }[];
-    }
-  | {
-      t: "flow";
-      label: string;
-      steps: { id: string; label: string; anchor?: string; decision: boolean }[];
-      edges: { from: string; to: string; case?: string }[];
-    }
-  | { t: "peek"; anchor: string }
-  /** a component the terminal does not draw yet; the pane says so rather than hiding it */
-  | { t: "other"; what: string };
+/** The compiled block it came from, which is what a comment on it targets. */
+type FromBlock = { bid?: string };
+
+export type Block = FromBlock &
+  (
+    | { t: "heading"; level: number; text: string }
+    | { t: "para"; runs: Run[]; quote?: true }
+    | { t: "item"; marker: string; depth: number; runs: Run[] }
+    | { t: "table"; rows: string[][] }
+    | { t: "code"; lines: string[] }
+    | { t: "rule" }
+    | {
+        t: "sequence";
+        label: string;
+        /** `from`/`to` are map node ids where the actor names one, else the actor's label */
+        messages: { from: string; to: string; label: string; anchor?: string }[];
+      }
+    | {
+        t: "flow";
+        label: string;
+        steps: { id: string; label: string; anchor?: string; decision: boolean }[];
+        edges: { from: string; to: string; case?: string }[];
+      }
+    | { t: "peek"; anchor: string }
+    /** a component the terminal does not draw yet; the pane says so rather than hiding it */
+    | { t: "other"; what: string }
+  );
 
 export interface TerminalAnchor {
   title: string;
@@ -71,6 +76,10 @@ export interface TerminalNode {
 }
 
 export interface TerminalModel {
+  /** the review's id, and the store and bridge a write goes through; absent off a store */
+  review?: string;
+  home?: string;
+  bridge?: string;
   title: string;
   kind: string;
   revision: number;
@@ -283,6 +292,7 @@ export async function project(revisionDir: string): Promise<TerminalModel> {
 
   const blocks: Block[] = [];
   for (const b of doc.blocks) {
+    const from = blocks.length;
     if (b.type === "heading") blocks.push({ t: "heading", level: b.level, text: b.text });
     else if (b.type === "html") blocks.push(...htmlToBlocks(b.html));
     else if (b.type === "peek") blocks.push({ t: "peek", anchor: b.anchor });
@@ -310,6 +320,7 @@ export async function project(revisionDir: string): Promise<TerminalModel> {
         edges: b.edges,
       });
     else blocks.push({ t: "other", what: b.type });
+    for (const out of blocks.slice(from)) out.bid = b.id;
   }
 
   const anchors: Record<string, TerminalAnchor> = {};
@@ -333,7 +344,19 @@ export async function project(revisionDir: string): Promise<TerminalModel> {
       : changed.has(id)
         ? { status: "changed" as const }
         : {};
+  // A sealed revision lives at <home>/reviews/<id>/revisions/<n>: that is where
+  // a write goes, through thurview's own threads module.
+  const dir = resolve(revisionDir);
+  const store =
+    basename(dirname(dir)) === "revisions"
+      ? {
+          review: basename(dirname(dirname(dir))),
+          home: dirname(dirname(dirname(dirname(dir)))),
+          bridge: join(dirname(fileURLToPath(import.meta.url)), "bridge.mjs"),
+        }
+      : {};
   return {
+    ...store,
     title: doc.title,
     kind: meta.kind ?? "review",
     revision: meta.revision,

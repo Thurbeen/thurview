@@ -22,6 +22,6 @@ if [ ! -f "$ui/layout.lua" ]; then
 fi
 mkdir -p "$ui/plugins" "$ui/thurview_poc"
 cp "$here/ui/plugins/85_thurview_poc.lua" "$ui/plugins/"
-cp "$here/ui/thurview_poc/view.lua" "$here/ui/thurview_poc/diagram.lua" "$ui/thurview_poc/"
+cp "$here/ui/thurview_poc/view.lua" "$here/ui/thurview_poc/diagram.lua" "$here/ui/thurview_poc/threads.lua" "$ui/thurview_poc/"
 cp "$model" "$ui/thurview_poc/model.lua"
 echo "installed into $ui"

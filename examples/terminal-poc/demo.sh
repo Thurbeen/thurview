@@ -3,6 +3,8 @@
 #
 #   examples/terminal-poc/demo.sh            build, install, launch
 #   examples/terminal-poc/demo.sh --setup    build and install, do not launch
+#   examples/terminal-poc/demo.sh --seed     also ask one question and answer it as
+#                                            the agent would, so a thread shows
 #   examples/terminal-poc/demo.sh clean      stop the sandbox and delete it
 #
 # Everything lives under $THURVIEW_POC_ROOT (default ~/.cache/tvpoc):
@@ -17,7 +19,8 @@
 # only read.
 #
 # Needs: node and this checkout's dependencies (pnpm install), git, tmux,
-# thurbox and thurbox-cli on PATH.
+# thurbox and thurbox-cli on PATH. Commenting needs the `run` grant, which only
+# you can give: Ctrl+, then ] in the sandboxed thurbox, select thurview, press t.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -62,6 +65,8 @@ thurview() {
 
 mkdir -p "$root"
 model="$root/model.lua"
+# The pane writes through bridge.mjs, which imports thurview's built modules.
+"$repo_root/node_modules/.bin/tsc" -p "$repo_root/tsconfig.json"
 
 if [[ -n "${THURVIEW_POC_REVISION:-}" ]]; then
     revision="$THURVIEW_POC_REVISION"
@@ -90,6 +95,16 @@ else
         )
     fi
     revision="$(find "$(cat "$root/design-dir")/revisions" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+    review="$(basename "$(cat "$root/design-dir")")"
+    if [[ " $* " == *" --seed "* ]] && ! grep -q '"threads": *\[ *{' "$(cat "$root/design-dir")/threads.json" 2>/dev/null; then
+        # The reader asks through the bridge, the agent answers through the CLI:
+        # the same two paths a real review takes.
+        block="$(node -e 'const d=require(process.argv[1]); console.log(d.blocks.find((b)=>b.type==="heading"&&b.text==="How a delivery works today").id)' "$revision/document.json")"
+        hex() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
+        asked="$(node "$here/bridge.mjs" create "$review" document "$(hex "$block")" ask "$(hex "Does the lease survive a worker restart?")")"
+        thread="$(printf '%s\n' "$asked" | awk -F'\t' '$1=="T"{print $2; exit}')"
+        (cd "$scratch" && thurview threads reply "$thread" --review "$review" --body "Yes: the row keeps its due_at, so another worker takes it after thirty seconds." >/dev/null)
+    fi
 fi
 tsx "$here/project.ts" "$revision" "$model"
 echo "projected $revision"
@@ -111,7 +126,7 @@ echo "projected $revision"
     thurbox-cli plugin check --text
 )
 
-if [[ "${1:-}" == "--setup" ]]; then
+if [[ " $* " == *" --setup "* ]]; then
     exit 0
 fi
 

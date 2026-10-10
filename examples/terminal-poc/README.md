@@ -1,21 +1,27 @@
 # Thurview in a terminal: proof of concept
 
-A thurview architecture document drawn inside a terminal by a thurbox pane: the
-prose, the software map as a diagram of boxes and labelled connections, code
-anchors at the pinned commit, keyboard navigation and a flow animation. All of it
-uses text and box-drawing characters, with no browser or WebView anywhere.
+A thurview architecture document read and reviewed inside a terminal by a
+thurbox pane. You get:
 
-This is a proof of concept, not an integration. It reads one published revision
-and draws it. It does not comment, answer threads, decide, edit or sync, and
-nothing here is installed by thurview.
+- the prose and the software map, drawn as boxes and labelled connections;
+- code anchors at the pinned commit;
+- a flow animation over the map;
+- comments, questions, replies and the review decision, as in the browser.
+
+It works by keyboard and by mouse, and an agent can drive it with one CLI call
+per step. Everything is text and box-drawing characters, with no browser or
+WebView.
+
+This is a proof of concept, not an integration: nothing here is installed by
+thurview, and it reads one published revision.
 
 ![The pane playing a sequence over the map](media/terminal-poc.gif)
 
-| Wide pane: document, map, inspector          | An anchor's code at the pinned commit       |
+| Wide pane: document, map, inspector          | A comment in your review, and the answer    |
 | -------------------------------------------- | ------------------------------------------- |
-| ![wide](media/01-document-map-inspector.png) | ![peek](media/02-anchor-peek.png)           |
-| **A sequence playing over the map**          | **Narrow pane: the map on its own, panned** |
-| ![flow](media/04-flow-playing.png)           | ![narrow](media/07-narrow-map-panned.png)   |
+| ![wide](media/01-document-map-inspector.png) | ![thread](media/03-comment-thread.png)      |
+| **Submitting the review**                    | **Narrow pane: the map on its own, panned** |
+| ![submit](media/05-submit-review.png)        | ![narrow](media/07-narrow-map-panned.png)   |
 
 Every image is a capture of the real thurbox 2.56.5 TUI recorded with VHS
 (`demo.tape`, `narrow.tape`), not a mock-up.
@@ -30,94 +36,155 @@ examples/terminal-poc/demo.sh          # build, install into a sandbox, launch
 examples/terminal-poc/demo.sh clean    # stop the sandbox and delete it
 ```
 
-`demo.sh` never touches your own thurbox. It runs one under
-`~/.cache/tvpoc` with its own `HOME`, `THURBOX_CONFIG_DIR`,
-`THURBOX_DATA_DIR`, session socket and `TMUX_TMPDIR`. It commits the fixture's
-code to a scratch repository and publishes the fixture design there with
-thurview itself, into a `THURVIEW_HOME` of its own. It then projects the sealed
-revision, installs the pane and starts that thurbox.
+`demo.sh` never touches your own thurbox. It runs one under `~/.cache/tvpoc`
+with its own `HOME`, `THURBOX_CONFIG_DIR`, `THURBOX_DATA_DIR`, session socket and
+`TMUX_TMPDIR`. Then it:
 
-To view one of your own published documents instead, point it at a revision
-directory. The revision is only read:
+1. commits the fixture's code to a scratch repository;
+2. publishes the fixture design there with thurview itself, into a
+   `THURVIEW_HOME` of its own;
+3. projects the sealed revision, installs the pane and starts that thurbox.
+
+**Commenting needs one grant, and only you can give it.** In the sandboxed
+thurbox press `F6`, then `]` for the Interface tab. Select
+`plugins/85_thurview_poc.lua` and press `t`. The pane uses `run` for nothing
+but its writes. Without the grant it still reads, draws and navigates, and says
+why it cannot write.
+
+To view one of your own published documents instead, point `demo.sh` at a
+revision directory. Comments then go to that review's store, the same files the
+browser and the CLI write:
 
 ```sh
 THURVIEW_POC_REVISION=~/.thurview/reviews/<id>/revisions/<n> examples/terminal-poc/demo.sh
 ```
 
-In the sandbox:
+### Keys and mouse
 
-| Key                           | Where    | Does                                                         |
-| ----------------------------- | -------- | ------------------------------------------------------------ |
-| `F3`                          | anywhere | open the pane, or go back where you were                     |
-| `Tab`                         | pane     | document → map → inspector (one at a time below 100 columns) |
-| `j` `k` `PgDn` `PgUp` `g` `G` | document | scroll                                                       |
-| `]` `[`                       | document | next / previous section                                      |
-| `n` `N`                       | document | next / previous code anchor; the map follows it              |
-| `Enter`                       | document | read the anchor's code in the inspector                      |
-| `j` `k`                       | map      | select the next / previous part                              |
-| `←` `→` `J` `K`               | map      | pan                                                          |
-| `Space`                       | pane     | play or pause the sequence over the map                      |
-| `.` `,` `s`                   | pane     | step forward / back, next sequence                           |
+| Key                                    | Mouse                                       | Does                                                         |
+| -------------------------------------- | ------------------------------------------- | ------------------------------------------------------------ |
+| `F3`                                   |                                             | open the pane, or go back where you were                     |
+| `Tab`                                  | click a region's caption                    | document → map → inspector (one at a time below 100 columns) |
+| `j` `k` `PgDn` `g` `G`                 | wheel over the document                     | scroll                                                       |
+| `]` `[`                                |                                             | next / previous section                                      |
+| `n` `N`, `Enter`                       | click an underlined anchor                  | select a code anchor and read its code; the map follows      |
+| `J` `K` (document)                     | click a block                               | select the block a comment goes on                           |
+| `j` `k` (map), `←` `→`                 | click a part, wheel over map                | select a part; pan                                           |
+| `c`                                    | double-click a block or part                | comment on the selected block or part                        |
+| `C`                                    |                                             | comment on the whole document                                |
+| in the composer: `Tab`, `Enter`, `Esc` | **Add to review**, **Ask now**, **Cancel**  | choose held-for-review or ask-now, send, cancel              |
+| `t` `T`                                | click a thread                              | next / previous thread                                       |
+| `r`, `x`                               |                                             | reply to the thread; resolve or reopen it                    |
+| `R`, then `Tab` `Enter`                | **Approve**, **Request changes**, **Close** | submit the review with a decision                            |
+| `Space`, `.` `,` `s`                   | click the playing caption                   | play or pause the flow; step; next sequence                  |
 
-`F1` lists the same keys, and `Ctrl+P` → "thurview" opens the pane too.
+`F1` lists the keys, and `Ctrl+P` → "thurview" opens the pane too.
 
-To install into another isolated interface directory by hand:
+## Reviewing, as the browser does
 
-```sh
-node node_modules/tsx/dist/cli.mjs examples/terminal-poc/project.ts <revision dir> model.lua
-examples/terminal-poc/install.sh <interface dir> model.lua
-thurbox-cli plugin check
-```
+The pane writes the way the reader does in the browser, through the same code.
+`bridge.mjs` calls thurview's own `src/threads.ts`: `createThread`,
+`replyThread`, `setThreadStatus` and `submitReview`. Those are the functions its
+HTTP API and its CLI call, so there is no second writer and no second store.
+
+- **Add to review** holds a comment until you submit, as the browser does. The
+  agent sees it listed but is not asked to answer it.
+- **Ask now** sends a question the agent's `thurview wait` reports at once.
+- **Submit** records approve, request-changes or close, releases every held
+  comment, and moves the review's status, exactly as the browser's submit does.
+- A thread shows as a card under the block or part it is on, with who said
+  what. The agent's replies appear on the next listing, at most 30 s later or
+  straight after your next write.
+
+What is not here yet: comments on diff lines (this pane draws designs, which
+have no diff), live presence, and the browser's push updates. The pane lists on
+a timer instead of listening to the server's event stream.
+
+## For agents: reproduce it cheaply
+
+Three ways in, cheapest first. None needs a browser or a screenshot.
+
+1. **The view alone**, with no thurbox at all. This runs in 9 ms and returns a
+   frame of about 6 KB of plain text:
+
+   ```sh
+   printf 'size 120 40\nclicktext Outbox\nkey c\ntype is one table enough?\nkey enter\nprint 0\n' \
+     | lua5.4 examples/terminal-poc/drive.lua <interface dir>
+   ```
+
+   `drive.lua` takes `key`, `type`, `click`, `clicktext`, `wheel`, `act` and
+   `threads`, and prints frames as text (`print`) or JSON (`render`, which also
+   lists the writes the view asked for). The tests drive the view this way.
+
+2. **A running sandboxed thurbox**, driven by name with no keystrokes. Every
+   key and click has a typed action:
+
+   ```sh
+   thurbox-cli ui action thurview.comment --arg target=block:<id> --arg "body=…" --arg mode=ask
+   thurbox-cli ui action thurview.submit  --arg decision=request-changes --arg "body=…"
+   thurbox-cli ui action thurview.select  --arg target=node:relay.outbox
+   thurbox-cli ui state --json   # plugin_state["plugins/85_thurview_poc.lua"]
+   ```
+
+   `thurview.reply` and `thurview.resolve` take a `thread=<id>`. `ui state`
+   reports the pane's focus, selection, flow step, thread counts, review status
+   and whether it can write. Block ids are the compiled ids in the revision's
+   `document.json`.
+
+3. **The tests**: `pnpm exec vitest run test/terminal-poc.test.ts`, about 10 s.
+   They publish the fixture with the real CLI and drive the bridge and the view.
+   Where `thurbox` and `tmux` exist, they also install the pane into an isolated
+   thurbox and drive it: keys, the grant in thurbox's own settings, a comment by
+   `ui action` and one typed in the composer, and mouse clicks and wheel ticks
+   sent by a real tmux client on a pty.
 
 ## How it works
 
 ```text
- thurview publish            project.ts                 thurbox pane
- ────────────────            ──────────                 ────────────
- review.md ┐                 document.json ─┐           plugins/85_thurview_poc.lua
- data.yaml ├─► sealed ─────► map.json ──────┼─► model ─► thurview_poc/view.lua
- map.yaml  ┘   revision      meta.json ─────┘   .lua     thurview_poc/diagram.lua
-               (the authority)   (read only)                 │
-                                                             ▼
-                                                rows of styled cells → theme roles
+ thurview publish        project.ts                 thurbox pane
+ ────────────────        ──────────                 ────────────
+ review.md ┐             document.json ─┐           plugins/85_thurview_poc.lua
+ data.yaml ├─► sealed ─► map.json ──────┼─► model ─► thurview_poc/view.lua ──► cells
+ map.yaml  ┘   revision  meta.json ─────┘   .lua     thurview_poc/diagram.lua
+                  ▲                                   │ comment, reply, resolve, submit
+                  │        bridge.mjs                 ▼
+                  └── threads.json ◄── src/threads.ts ◄── run (granted), one process per write
 ```
 
-- **One authority.** `thurview publish` has already validated the document and
-  resolved every anchor at the pinned commit. `project.ts` reads the sealed
-  revision's `document.json`, `map.json` and `meta.json` and nothing else: no
-  git, no compiler, no second copy of the rules, no store of its own. It turns
-  the browser-shaped parts into terminal-shaped ones: HTML prose becomes styled
-  runs, highlighted code spans become role tokens, and sequence actors become
-  the map nodes they name.
-- **The view is host-independent.** `view.lua` and `diagram.lua` read no
-  thurbox global. They take a size and a clock and return rows of spans with
-  semantic styles. That is why the tests run them in plain Lua 5.4, the
-  interpreter thurbox embeds, and why the pane file is a thin adapter: rect,
-  keys, clock and theme roles.
-- **The diagram** is a layered layout, the way dot does it: cycles broken,
-  longest-path layers, placeholders threaded through the layers a long edge
-  skips, barycentre ordering, and edges routed through per-channel lanes so two
-  runs never share a cell lengthwise. Labels go in free cells beside their
-  arrowheads. A label that finds no room is counted on the map's caption and
-  listed in the inspector. Proposed parts get dashed borders and `new`, changed
-  ones are marked `changes`. Only leaf parts are drawn; the inspector names a
-  part's parent.
-- **The animation** plays one sequence block over the map, message by message:
-  the edge and both parts light up, the message's line in the document lights
-  up, and the map pans to keep it in view. It steps every 1.2 s, stops by itself
-  after the last message, pauses on `Space`, and reads the clock only while it
-  plays. A hidden pane is not rendered, so it costs nothing and resumes where it
-  was.
+- **One authority.** `project.ts` reads the sealed revision and nothing else,
+  and `bridge.mjs` writes through thurview's threads module. HTML prose becomes
+  styled runs, highlighted code becomes role tokens, sequence actors become map
+  nodes. Each block keeps the compiled block id a comment targets.
+- **The view is host-independent.** `view.lua`, `diagram.lua` and `threads.lua`
+  read no thurbox global. They take a size, a clock, keys, clicks, wheel ticks
+  and the bridge's answers, and return rows of spans plus the writes to make.
+  That is why `drive.lua` and the tests run them in plain Lua 5.4, the
+  interpreter thurbox embeds. The pane file adapts the result to the host: the
+  rect, the clock, the theme roles, the `run` calls, `ui_state` and the typed
+  actions.
+- **The diagram** is a layered layout, the way dot does it. Cycles are broken,
+  parts go on longest-path layers, placeholders are threaded through the layers
+  a long edge skips, and each layer is ordered by barycentre. Edges route
+  through per-channel lanes so two runs never share a cell lengthwise. Labels go
+  in free cells beside their arrowheads. A label with no room is counted on the
+  caption and listed in the inspector.
+- **The animation** plays a sequence block over the map, one message per 1.2 s.
+  It stops after the last message, pauses on `Space`, reads the clock only while
+  playing, and costs nothing while the pane is hidden.
+- **The bridge's answer is a line format**, hex for free text. The plugin
+  sandbox has no JSON decoder and no `load`, and hex needs no shell quoting
+  either. Every write answers with the review's whole thread state.
 
 ## What carries over, and what needs a design of its own
 
-| Carries over to a terminal                                                | Needs a design of its own                                                                               |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Title, sections, prose with emphasis, lists, tables (stacked when narrow) | Inline images, rich HTML, and pixel-exact diagrams                                                      |
-| Code anchors: file, lines, pinned commit, highlighted code                | A file explorer and full diffs with editing                                                             |
-| The software map: parts, kinds, proposal marks, labelled connections      | Nested containers drawn as boundaries, base-versus-proposal toggling, maps of 50+ parts                 |
-| Sequence blocks, played over the map; flow blocks as text                 | Callstack and database components (named, "drawn in the browser only")                                  |
-| Navigation by section, anchor and part; pan; narrow layouts               | Threads, comments, decisions and shared presence: they need thurview's server as the writer, not a pane |
+| Carries over to a terminal                                                    | Needs a design of its own                                              |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Title, sections, prose with emphasis, lists, tables (stacked when narrow)     | Inline images, rich HTML, and pixel-exact diagrams                     |
+| Code anchors: file, lines, pinned commit, highlighted code                    | A file explorer and full diffs, with comments on diff lines            |
+| The software map: parts, kinds, proposal marks, labelled connections          | Nested containers drawn as boundaries, base-versus-proposal toggling   |
+| Sequence blocks, played over the map; flow blocks as text                     | Callstack and database components (named, "drawn in the browser only") |
+| Comments on blocks, parts and the document; ask now; replies; resolve; submit | Live presence, and push updates from the server's event stream         |
+| Keyboard, mouse (click, double-click, wheel), and typed actions for agents    | Drag to select text into a comment's quote                             |
 
 ## Feasibility, measured
 
@@ -125,80 +192,83 @@ Measured on Linux with thurbox 2.56.5, in a 160 × 45 terminal, against the
 fixture here and against a real design with 21 parts, 21 connections and 17
 sections.
 
-- **The baseline needs nothing the host lacks.** The pane uses only the
-  documented API: four node kinds, `require` inside the interface directory, the
-  theme roles, declared keys, a pill and a palette command. It asks for no
-  capability. `thurbox-cli plugin check` loads it, lua-language-server finds no
-  problem against `thurbox.d.lua`, and selene finds none against thurbox's
-  sandbox standard library.
-- **Raster graphics are not available, so the baseline does without them.** A
-  pane paints ratatui cells, and a program surface is emulated by the `vt100`
-  crate, which has no sixel or kitty graphics support. Nothing a plugin draws
-  can reach the terminal as an image. Box drawing at one cell per glyph is the
-  ceiling, and the screenshots show what it buys.
+- **It fits the host's documented API.** The pane uses four node kinds,
+  `require` inside the interface directory, theme roles, declared keys and
+  actions, `on_click`, `on_scroll`, `ui_state`, and `run` with
+  `machine = "local"`. `thurbox-cli plugin check` loads it, lua-language-server
+  finds no problem against `thurbox.d.lua`, and selene finds none against
+  thurbox's sandbox standard library. `check` raises one warning, that on_click
+  handles gestures not advertised as catalog actions. 2.56.5 does not document
+  the rule behind it; every click here has a typed action and a key.
+- **Raster graphics are not available.** A pane paints ratatui cells, and a
+  program surface is emulated by the `vt100` crate, which has no sixel or kitty
+  graphics. Box drawing at one cell per glyph is the ceiling.
 
-**Cost.** In plain Lua 5.4, a frame at 158 × 42 takes about 1.5 ms. The first
-frame takes 3 ms on the fixture and 17 ms on the larger design: wrapping the
-document and laying out the map, once per width. Process CPU of the whole TUI,
-sampled from `/proc` over 6–8 s windows:
+**Cost.** A frame takes about 1.5 ms in plain Lua 5.4 at 158 × 42. The first one
+takes 3 ms on the fixture and 17 ms on the larger design, because it wraps the
+document and lays out the map, once per width. A write or a listing is one Node
+process of about 53 ms. Listings happen every 30 s, and only while the pane is
+drawn. CPU of the whole TUI process and its children, from `/proc`, over
+6–8 s windows, with the pane granted and listing:
 
 | State                     | CPU of one core |
 | ------------------------- | --------------- |
-| Pane closed (baseline)    | 0.6%            |
-| Pane open, idle           | 1.6%            |
-| Flow playing              | 3.3%            |
+| Pane closed (baseline)    | 0.4%            |
+| Pane open, idle           | 1.1–1.4%        |
+| Flow playing              | 2.5–3.2%        |
 | Flow playing, pane hidden | 0.7%            |
-
-No subprocess runs, ever. Nothing is spawned per frame or at all.
 
 ### Host gaps, exactly
 
-None of these blocked the proof of concept. Each is what a production plugin
-would ask thurbox for.
-
-1. **A pane cannot ask for the animation clock.** `ctx.elapsed` invalidates a
-   `pure` pane only on the shared tick, and the host advances that tick only
-   while a session is working, a command is in flight or a repository read is
-   pending. On an idle screen a pure pane's animation freezes. So this pane is
-   not `pure`. It caches its own tree while idle; the host still calls it on
-   every repaint, which is the idle 1.0% over baseline above. A
+1. **A pane cannot ask for the animation clock.** The host advances its shared
+   tick only while a session is working or a command is in flight, so a `pure`
+   pane's animation freezes on an idle screen. This pane is not `pure`. It
+   caches its own tree while idle, which is most of the idle cost over baseline. A
    declaration such as "animating until I say otherwise" would let it be pure.
-2. **No data channel without trust.** `require` loads Lua only from inside the
-   interface directory, and `files.read` is rooted at a session's working tree.
-   So the proof of concept installs the projected model as a Lua module beside
-   the pane. A live plugin would call thurview through `run`, which the user
-   must grant per file. Its answer is text, and the sandbox has neither `load`
-   nor a JSON decoder, so the plugin would carry a small decoder, or thurview
-   would emit a line format.
-3. **Width is counted in code points.** The view assumes one column per
-   character, which holds for box drawing and Latin text but not for CJK. The
-   host's `text.width` is the fix, kept out so the view runs outside thurbox.
+2. **Writing needs the `run` grant, given in the settings UI.** No action or
+   command grants it, which is right for your own interface. The tests grant it
+   by pressing the same keys you would.
+3. **`run` needs a session unless asked for `machine = "local"`.** An idle
+   thurbox with no session would otherwise fail every write with "no session to
+   run it in".
+4. **A run's answer is collected only while the pane is drawn.** The write
+   itself happens either way: one sent just before hiding the pane lands in
+   thurview.
+5. **Asking for a run on every frame costs repaints, not processes.** With the
+   listing asked on every render and a 30 s `ttl`, the bridge still ran once per
+   window. The pane, though, rendered 231 times in about 15 s against 52, and
+   idle CPU rose to 7.4%. So the pane asks for its listing on a schedule of its
+   own, every 30 s from the render clock, and asks for each write once.
+6. **Width is counted in code points.** That holds for box drawing and Latin
+   text but not for CJK. The host's `text.width` is the fix, kept out so the
+   view runs outside thurbox.
 
 ## Towards a thurbox-thurview plugin
 
-1. **thurview projects, the plugin draws.** Move `project.ts` into the CLI as a
-   command (say `thurview terminal-model --review <id>`), so the store stays the
-   only authority. The plugin never parses `review.md` and never keeps a copy.
-2. **A plugin repository** installed with
-   `thurbox-cli plugin install git+<url>`, holding these three Lua files. With
-   `run` granted it asks thurview for the model and refreshes on a short `ttl`.
-   Without the grant it says so, as the shipped panes do.
-3. **Writes go through thurview.** Comments, thread replies and decisions become
-   `thurview threads reply` / `resolve` calls through `run`. The server and its
-   store remain the one writer, and the pane shows what thurview answers.
+1. **thurview projects and writes, the plugin draws.** Move `project.ts` and
+   `bridge.mjs` into the CLI, say `thurview terminal-model` and a reader-side
+   `thurview comment` / `submit`. The pane would then call one installed
+   command, and the store stays the only authority.
+2. **A plugin repository** installed with `thurbox-cli plugin install git+<url>`,
+   holding these four Lua files.
+3. **Listen rather than poll.** The browser's server pushes thread changes, and
+   a `run` that follows `thurview wait` could do the same for the pane.
 4. **The tests come along.** `test/terminal-poc.test.ts` already drives the view
-   in Lua 5.4 and the installed pane in an isolated thurbox through tmux. The
-   same pair would gate the plugin.
+   in Lua 5.4, the bridge against thurview's CLI, and the installed pane in an
+   isolated thurbox by key, mouse and typed action.
 
 ## Files
 
-| File                             | What it is                                                  |
-| -------------------------------- | ----------------------------------------------------------- |
-| `project.ts`                     | sealed revision → `model.lua`                               |
-| `ui/plugins/85_thurview_poc.lua` | the thurbox adapter: keys, clock, theme, idle cache         |
-| `ui/thurview_poc/view.lua`       | layout, navigation, inspector, animation                    |
-| `ui/thurview_poc/diagram.lua`    | the map as a grid of cells                                  |
-| `install.sh`                     | copies the pane and a model into an interface directory     |
-| `demo.sh`                        | the whole sandbox: build, publish, project, install, launch |
-| `demo.tape`, `narrow.tape`       | the VHS scripts that recorded `media/`                      |
-| `fixture/`                       | a sanitized design: a small webhook relay and its code      |
+| File                             | What it is                                                              |
+| -------------------------------- | ----------------------------------------------------------------------- |
+| `project.ts`                     | sealed revision → `model.lua`                                           |
+| `bridge.mjs`                     | comments, replies, resolve and submit through thurview's threads module |
+| `drive.lua`                      | the view without thurbox: keys, clicks, actions in, frames out          |
+| `ui/plugins/85_thurview_poc.lua` | the thurbox adapter: keys, mouse, clock, theme, `run`, actions, state   |
+| `ui/thurview_poc/view.lua`       | layout, navigation, inspector, threads, composer, animation             |
+| `ui/thurview_poc/diagram.lua`    | the map as a grid of cells                                              |
+| `ui/thurview_poc/threads.lua`    | the bridge's answer, read back                                          |
+| `install.sh`                     | copies the pane and a model into an interface directory                 |
+| `demo.sh`                        | the whole sandbox: build, publish, project, install, launch             |
+| `demo.tape`, `narrow.tape`       | the VHS scripts that recorded `media/`                                  |
+| `fixture/`                       | a sanitized design: a small webhook relay and its code                  |

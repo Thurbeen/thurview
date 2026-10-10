@@ -4,7 +4,7 @@
 // the host embeds, and the pane installed into an isolated thurbox and driven
 // through a real terminal.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { cp, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -36,6 +36,9 @@ let revision: string;
 let commit: string;
 let model: TerminalModel;
 let ui: string;
+let home: string;
+let repo: string;
+let reviewId: string;
 
 async function cli(repo: string, home: string, args: string[]) {
   const tsx = join(ROOT, "node_modules", "tsx", "dist", "cli.mjs");
@@ -48,8 +51,12 @@ async function cli(repo: string, home: string, args: string[]) {
 
 beforeAll(async () => {
   tmp = await mkdtemp(join(tmpdir(), "thurview-terminal-poc-"));
-  const home = join(tmp, "home");
-  const repo = join(tmp, "repo");
+  home = join(tmp, "home");
+  repo = join(tmp, "repo");
+  // The bridge imports thurview's built modules, so build them from this checkout.
+  await execFileP(join(ROOT, "node_modules", ".bin", "tsc"), ["-p", "tsconfig.json"], {
+    cwd: ROOT,
+  });
   await cp(join(POC, "fixture", "repo"), repo, { recursive: true });
   const git = (...a: string[]) =>
     execFileP("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: repo });
@@ -61,6 +68,7 @@ beforeAll(async () => {
   for (const f of ["review.md", "data.yaml", "map.yaml"])
     await cp(join(POC, "fixture", "doc", f), join(design.dir, f));
   await cli(repo, home, ["publish", "--review", design.id]);
+  reviewId = design.uuid;
   revision = join(design.dir, "revisions", "1");
   model = await project(revision);
   // The pane's own files, as the install step lays them out, plus the model.
@@ -157,8 +165,95 @@ describe("projecting a sealed revision into the terminal model", () => {
     ]);
   });
 
+  it("carries what a write needs: the review, its store, and each block's id", async () => {
+    expect(model.review).toBe(reviewId);
+    expect(model.home).toBe(home);
+    const doc = JSON.parse(await readFile(join(revision, "document.json"), "utf8"));
+    const heading = doc.blocks.find(
+      (b: any) => b.type === "heading" && b.text === "Failure handling",
+    );
+    const html = doc.blocks.find(
+      (b: any) => b.type === "html" && b.html.includes("A slow subscriber"),
+    );
+    const blockOf = (pred: (b: any) => boolean) => model.blocks.find(pred);
+    expect(blockOf((b) => b.t === "heading" && b.text === "Failure handling")?.bid).toBe(
+      heading.id,
+    );
+    expect(
+      blockOf(
+        (b) => b.t === "item" && b.runs.some((r: any) => r.text.includes("A slow subscriber")),
+      )?.bid,
+    ).toBe(html.id);
+    expect(model.blocks.every((b) => typeof b.bid === "string")).toBe(true);
+  });
+
   it("refuses a directory that is not a sealed revision", async () => {
     await expect(project(tmp)).rejects.toThrow(/not a published revision/);
+  });
+});
+
+const hex = (s: string) => Buffer.from(s, "utf8").toString("hex");
+const bridge = (...args: string[]) =>
+  execFileP(process.execPath, [join(POC, "bridge.mjs"), ...args], {
+    env: { ...process.env, THURVIEW_HOME: home },
+  });
+const bidOf = (text: string) =>
+  model.blocks.find((b) => b.t === "heading" && b.text === text)!.bid!;
+
+describe("writing comments and reviews through thurview's own threads module", () => {
+  it("holds a review comment until the review is submitted, as the browser does", async () => {
+    const created = await bridge(
+      "create",
+      reviewId,
+      "document",
+      hex(bidOf("Migration")),
+      "review",
+      hex("Drain first?"),
+    );
+    expect(created.stdout).toMatch(/^T\t\w+\tcomment\treview\topen\t0\tdocument\t/m);
+    expect(created.stdout).toContain(`M\treviewer\t${hex("Drain first?")}`);
+    // Held: listed, but not yet something the agent is asked to answer.
+    const drain = (list: Record<string, any>) =>
+      (list["threads"] as { last: string; needsAgent: boolean }[]).find((t) =>
+        t.last.includes("Drain first?"),
+      );
+    expect(
+      drain(await cli(repo, home, ["threads", "list", "--review", reviewId]))?.needsAgent,
+    ).toBe(false);
+    const submitted = await bridge("submit", reviewId, "request-changes", hex("see the migration"));
+    expect(submitted.stdout).toMatch(/^R\tawaiting-agent-updates\t/m);
+    expect(submitted.stdout).toMatch(/^D\trequest-changes\t1\t/m);
+    expect(
+      drain(await cli(repo, home, ["threads", "list", "--review", reviewId]))?.needsAgent,
+    ).toBe(true);
+  });
+
+  it("asks a question at once, shows the agent's answer, and resolves it", async () => {
+    const asked = await bridge(
+      "create",
+      reviewId,
+      "map",
+      hex("relay.outbox"),
+      "ask",
+      hex("Why one table?"),
+    );
+    const id = /^T\t(\w+)\tquestion\task\topen\t1\tmap\t/m.exec(asked.stdout)?.[1];
+    expect(id).toBeTruthy();
+    await cli(repo, home, ["threads", "reply", id!, "--review", reviewId, "--body", "One writer."]);
+    const listed = await bridge("list", reviewId);
+    expect(listed.stdout).toContain(`M\tagent\t${hex("One writer.")}`);
+    const resolved = await bridge("status", reviewId, id!, "resolved");
+    expect(resolved.stdout).toMatch(new RegExp(`^T\\t${id}\\tquestion\\task\\tresolved\\t`, "m"));
+    const replied = await bridge("reply", reviewId, id!, hex("Thanks"));
+    expect(replied.stdout).toMatch(new RegExp(`^T\\t${id}\\tquestion\\task\\topen\\t`, "m"));
+  });
+
+  it("refuses what thurview would refuse, with the reason on stdout and exit 1", async () => {
+    const bad = await bridge("create", reviewId, "document", hex("x"), "later", hex("?")).catch(
+      (e) => e,
+    );
+    expect(bad.code).toBe(1);
+    expect(bad.stdout).toMatch(/^E\t/m);
   });
 });
 
@@ -167,15 +262,13 @@ interface Frame {
   /** cells drawn in the flow highlight: "row:col:text" */
   flow: string[];
   status: string;
+  /** the writes the view asked for since the last frame, tab-separated */
+  outbox: string[];
 }
 
 /** Drive the pane's view in Lua 5.4 with a script of `size`, `key` and `render` lines. */
 function drive(script: string[], modelFile?: string): Frame[] {
-  const args = [
-    join(ROOT, "test", "terminal-poc-drive.lua"),
-    ui,
-    ...(modelFile ? [modelFile] : []),
-  ];
+  const args = [join(POC, "drive.lua"), ui, ...(modelFile ? [modelFile] : [])];
   const stdout = execFileSync(luaBin!, args, {
     input: script.join("\n") + "\n",
     encoding: "utf8",
@@ -276,6 +369,109 @@ describe.skipIf(!luaBin)("the pane's view, in the Lua the host embeds", () => {
     expect(screen(f!)).toContain("node · none");
   });
 
+  it("shows each thread under the block it is on, with who said what", async () => {
+    const file = join(tmp, "threads.txt");
+    await writeFile(file, (await bridge("list", reviewId)).stdout);
+    const [f] = drive(["size 120 40", `threads ${file}`, "key G", "render 0"]);
+    const s = screen(f!);
+    expect(s).toContain("Drain first?");
+    expect(s).toMatch(/you +Drain first\?|you: Drain first\?/);
+  });
+
+  it("writes a comment on a clicked block, held for the review or asked at once", async () => {
+    const frames = drive([
+      "size 120 40",
+      "render 0",
+      "clicktext How a delivery works today",
+      "key c",
+      "type nj ] the lease?",
+      "key enter",
+      "render 0",
+      "key c",
+      "type ask it",
+      "key tab",
+      "key enter",
+      "render 0",
+    ]);
+    const bid = bidOf("How a delivery works today");
+    expect(frames[1]!.outbox).toEqual([`create\tdocument\t${bid}\treview\tnj ] the lease?`]);
+    expect(frames[2]!.outbox).toEqual([`create\tdocument\t${bid}\task\task it`]);
+  });
+
+  it("submits the review with a decision, by key or by clicking it", async () => {
+    const frames = drive([
+      "size 120 40",
+      "key R",
+      "render 0",
+      "key tab",
+      "type fix the lease",
+      "key enter",
+      "render 0",
+      "key R",
+      "render 0",
+      "clicktext Approve",
+      "render 0",
+    ]);
+    expect(screen(frames[0]!)).toMatch(/Approve/);
+    expect(frames[1]!.outbox).toEqual(["submit\trequest-changes\tfix the lease"]);
+    expect(frames[3]!.outbox).toEqual(["submit\tapprove\t"]);
+  });
+
+  it("replies to and resolves a thread", async () => {
+    const file = join(tmp, "threads2.txt");
+    await writeFile(file, (await bridge("list", reviewId)).stdout);
+    const [f] = drive([
+      "size 120 40",
+      `threads ${file}`,
+      "key t",
+      "key r",
+      "type ok",
+      "key enter",
+      "key x",
+      "render 0",
+    ]);
+    expect(f!.outbox).toHaveLength(2);
+    expect(f!.outbox[0]).toMatch(/^reply\t\w+\tok$/);
+    expect(f!.outbox[1]).toMatch(/^status\t\w+\t(resolved|open)$/);
+  });
+
+  it("answers the mouse: a click selects a part, opens an anchor, and the wheel scrolls", async () => {
+    const [start, part, anchor, wheeled] = drive([
+      "size 120 40",
+      "render 0",
+      "clicktext Outbox",
+      "render 0",
+      "clicktext checks the sender",
+      "render 0",
+      "wheel down 10 10",
+      "wheel down 10 10",
+      "render 0",
+    ]);
+    expect(screen(part!)).toContain("node · relay.outbox");
+    expect(screen(anchor!)).toContain("src/http/receive.ts:10-15");
+    expect(wheeled!.rows[1]).not.toBe(anchor!.rows[1]);
+    expect(start!.rows[1]).not.toBe(wheeled!.rows[1]);
+  });
+
+  it("does by name what the keys and the mouse do, for an agent driving it", async () => {
+    const bid = bidOf("Failure handling");
+    const [selected, commented] = drive([
+      "size 120 40",
+      "act select target=node:relay.worker",
+      "render 0",
+      `act comment target=block:${bid}|body=Is thirty seconds enough?|mode=ask`,
+      "act submit decision=close|body=superseded",
+      "act comment target=block:nope|body=x",
+      "render 0",
+    ]);
+    expect(screen(selected!)).toContain("node · relay.worker");
+    expect(commented!.outbox).toEqual([
+      `create\tdocument\t${bid}\task\tIs thirty seconds enough?`,
+      "submit\tclose\tsuperseded",
+    ]);
+    expect(commented!.status).toContain("no block or part block:nope");
+  });
+
   it("stops by itself after one pass, and resumes where it was after being hidden", async () => {
     const frames = await drive([
       "size 120 40",
@@ -364,7 +560,7 @@ describe.skipIf(!thurboxBin || !tmuxBin || !luaBin)(
       const { stdout } = await execFileP("thurbox-cli", ["plugin", "check", "--text"], { env });
       expect(stdout).toMatch(/thurview/);
       const files = await readdir(join(root, "config", "ui", "thurview_poc"));
-      expect(files.sort()).toEqual(["diagram.lua", "model.lua", "view.lua"]);
+      expect(files.sort()).toEqual(["diagram.lua", "model.lua", "threads.lua", "view.lua"]);
     });
 
     it("opens on F3 with the document and the map, and answers the pane's keys", async () => {
@@ -385,6 +581,120 @@ describe.skipIf(!thurboxBin || !tmuxBin || !luaBin)(
       await until((s) => /^ Agent /m.test(s), "the focus back on the agent pane");
       const text = await readFile(join(root, "config", "ui", "thurview_poc", "model.lua"), "utf8");
       expect(text).toMatch(/^return {/m);
+    });
+
+    it("answers the mouse in a real terminal: a part, an anchor, the wheel", async () => {
+      // A real client on a pty, attached the way a terminal emulator attaches,
+      // sends the mouse reports a terminal sends (SGR); tmux forwards them to
+      // thurbox, which asked for mouse tracking.
+      tmux("set", "-g", "mouse", "on");
+      tmux("set", "-g", "status", "off");
+      const client = spawn(
+        "script",
+        ["-qfc", `stty cols 160 rows 45; exec ${tmuxBin} -L view attach -t poc`, "/dev/null"],
+        { env, stdio: ["pipe", "ignore", "ignore"] },
+      );
+      await new Promise((r) => setTimeout(r, 1000));
+      const at = (text: string) => {
+        const rows = capture().split("\n");
+        const row = rows.findIndex((r) => r.includes(text));
+        if (row < 0) throw new Error(`nothing on screen shows ${text}`);
+        return { row: row + 1, col: [...rows[row]!.slice(0, rows[row]!.indexOf(text))].length + 1 };
+      };
+      const sgr = (button: number, row: number, col: number, release = false) =>
+        client.stdin!.write(`\x1b[<${button};${col};${row}${release ? "m" : "M"}`);
+      const click = (text: string, offset = 1) => {
+        const { row, col } = at(text);
+        sgr(0, row, col + offset);
+        sgr(0, row, col + offset, true);
+      };
+      const state = async () =>
+        JSON.parse((await execFileP("thurbox-cli", ["ui", "state", "--json"], { env })).stdout)
+          .plugin_state["plugins/85_thurview_poc.lua"];
+      const settle = async (want: (s: any) => boolean, what: string) => {
+        const deadline = Date.now() + 10_000;
+        let s: any;
+        while (Date.now() < deadline) {
+          s = await state();
+          if (want(s)) return s;
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        throw new Error(`the pane never reported ${what}: ${JSON.stringify(s)}`);
+      };
+      tmux("send-keys", "-t", "poc", "F3");
+      await until((s) => s.includes("│ Outbox"), "the map");
+      click("│ Outbox", 2);
+      await settle((s) => s.node === "relay.outbox" && s.focus === "map", "the clicked part");
+      click("checks the sender");
+      await settle((s) => s.anchor === "verify", "the clicked anchor");
+      const before = capture().split("\n")[3];
+      const { row, col } = at("checks the sender");
+      for (let i = 0; i < 3; i++) sgr(65, row, col);
+      await until((s) => s.split("\n")[3] !== before, "the document scrolled by the wheel");
+      client.stdin!.end("\x02d");
+      await new Promise((r) => client.once("exit", r));
+    });
+
+    it("writes through thurview once you grant it run: by the agent's CLI and by the keyboard", async () => {
+      // The grant is yours to give, in thurbox's own settings: F6, the Interface
+      // tab, the pane's row, t.
+      tmux("send-keys", "-t", "poc", "F6");
+      await until((s) => s.includes("Settings"), "the settings");
+      tmux("send-keys", "-t", "poc", "]");
+      await until((s) => s.includes("85_thurview_poc.lua"), "the interface tab");
+      for (let i = 0; i < 20 && !/▸ \S+ plugins\/85_thurview_poc\.lua/.test(capture()); i++) {
+        tmux("send-keys", "-t", "poc", "j");
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      tmux("send-keys", "-t", "poc", "t");
+      await new Promise((r) => setTimeout(r, 300));
+      tmux("send-keys", "-t", "poc", "Escape");
+      const ui = async (...a: string[]) =>
+        JSON.parse((await execFileP("thurbox-cli", ["ui", ...a, "--json"], { env })).stdout);
+      await new Promise((r) => setTimeout(r, 300));
+      if ((await ui("state")).focused_pane !== "thurview") tmux("send-keys", "-t", "poc", "F3");
+      const state = async () => {
+        const all = await ui("state");
+        return all.plugin_state["plugins/85_thurview_poc.lua"];
+      };
+      const settle = async (want: (s: any) => boolean, what: string) => {
+        const deadline = Date.now() + 15_000;
+        let s: any;
+        while (Date.now() < deadline) {
+          s = await state();
+          if (s && want(s)) return s;
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        throw new Error(`the pane never reported ${what}: ${JSON.stringify(s)}`);
+      };
+      await settle((s) => s.writable === true, "that it can write");
+
+      // An agent: one typed action, no keystrokes, no screen to read.
+      const bid = bidOf("Open questions");
+      await ui(
+        "action",
+        "thurview.comment",
+        "--arg",
+        `target=block:${bid}`,
+        "--arg",
+        "body=From the CLI",
+        "--arg",
+        "mode=ask",
+      );
+      await settle((s) => s.notice === "" && s.threads >= 1, "the comment saved");
+
+      // A person: c, type, Enter.
+      tmux("send-keys", "-t", "poc", "c");
+      await until((s) => s.includes("Add to review"), "the composer");
+      tmux("send-keys", "-t", "poc", "-l", "typed in the pane");
+      tmux("send-keys", "-t", "poc", "Enter");
+      await settle((s) => s.threads_in_review >= 1, "the review comment saved");
+
+      const listed = JSON.stringify(
+        await cli(repo, home, ["threads", "list", "--review", reviewId]),
+      );
+      expect(listed).toContain("From the CLI");
+      expect(listed).toContain("typed in the pane");
     });
   },
 );

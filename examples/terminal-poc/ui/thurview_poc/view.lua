@@ -159,15 +159,47 @@ local function wrap(runs, w, first, rest, links, line_base, base_st)
   return lines
 end
 
+--- The threads by what they are on: a document block, a map part, the review.
+local function threads_by_target(st)
+  local doc, node, review = {}, {}, {}
+  for _, t in ipairs((st and st.threads and st.threads.threads) or {}) do
+    if t.target == "document" then
+      doc[t.key] = doc[t.key] or {}
+      table.insert(doc[t.key], t)
+    elseif t.target == "map" then
+      node[t.key] = node[t.key] or {}
+      table.insert(node[t.key], t)
+    elseif t.target == "review" then
+      review[#review + 1] = t
+    end
+  end
+  return doc, node, review
+end
+
+--- How a thread reads in one word: held for the review, open, or resolved.
+local function thread_state(t)
+  if not t.submitted then
+    return "in your review"
+  end
+  return t.status
+end
+
 local doc_cache = {}
 
-local function build_doc(model, w)
-  if doc_cache.model == model and doc_cache.w == w then
+local function build_doc(model, w, st)
+  local tv = (st and st.tv) or 0
+  if doc_cache.model == model and doc_cache.w == w and doc_cache.tv == tv then
     return doc_cache
   end
   local lines, links, headings, msg_line = {}, {}, {}, {}
+  -- Per line: the block it belongs to, or the thread it shows. A click is
+  -- resolved through these, and a comment is aimed with them.
+  local line_block, line_thread = {}, {}
+  local cur_block, cur_thread
   local function add(spans)
     lines[#lines + 1] = spans
+    line_block[#lines] = cur_block
+    line_thread[#lines] = cur_thread
   end
   local function blank()
     if #lines > 0 and #lines[#lines] > 0 then
@@ -175,17 +207,51 @@ local function build_doc(model, w)
     end
   end
   local function add_wrapped(runs, first, rest, base_st)
+    local before = #links
     -- One column short of the edge, so prose never touches the separator.
     for _, l in ipairs(wrap(runs, math.max(8, w - 1), first, rest, links, #lines, base_st)) do
       add(l)
     end
+    for k = before + 1, #links do
+      links[k].block = cur_block
+    end
+  end
+  local on_block, _, on_review = threads_by_target(st)
+  local last_of = {}
+  for bi, b in ipairs(model.blocks) do
+    if b.bid then
+      last_of[b.bid] = bi
+    end
+  end
+  -- A thread is drawn as a card under the last line of what it is on, the way
+  -- the browser pins it under its block.
+  local function cards(list)
+    for _, t in ipairs(list or {}) do
+      cur_thread = t.id
+      local label = (t.mode == "ask" and "question" or "comment") .. " · " .. thread_state(t)
+      add({
+        { text = "  ✎ ", st = "thread" },
+        { text = label, st = "thread" },
+        { text = "  #" .. t.id, st = "muted" },
+      })
+      for _, m in ipairs(t.messages) do
+        add_wrapped({
+          { text = m.role == "agent" and "agent" or "you", strong = true },
+          { text = ": " .. m.body },
+        }, { text = "  ┃ ", st = "thread" }, { text = "  ┃ ", st = "thread" })
+      end
+      cur_thread = nil
+    end
   end
   local seq_index = 0
+  local first_heading = true
   for bi, b in ipairs(model.blocks) do
     local prev = model.blocks[bi - 1]
+    cur_block = nil
     if not (prev and prev.t == "item" and b.t == "item") then
       blank()
     end
+    cur_block = bi
     if b.t == "heading" then
       headings[#headings + 1] = #lines + 1
       if b.level == 1 then
@@ -336,9 +402,25 @@ local function build_doc(model, w)
     else
       add({ { text = "[" .. b.what .. ": drawn in the browser only]", st = "muted" } })
     end
+    if b.t == "heading" and first_heading then
+      first_heading = false
+      cards(on_review)
+    end
+    if b.bid and last_of[b.bid] == bi then
+      cards(on_block[b.bid])
+    end
   end
-  doc_cache =
-    { model = model, w = w, lines = lines, links = links, headings = headings, msg_line = msg_line }
+  doc_cache = {
+    model = model,
+    w = w,
+    tv = tv,
+    lines = lines,
+    links = links,
+    headings = headings,
+    msg_line = msg_line,
+    line_block = line_block,
+    line_thread = line_thread,
+  }
   return doc_cache
 end
 
@@ -382,7 +464,35 @@ function M.new(_)
     -- The last rect drawn, for the keys: the host passes no rect to a key.
     w = 80,
     h = 24,
+    -- Reviewing: thurview's threads as the bridge last read them (and their
+    -- version, which keys the document cache), the selected block and thread,
+    -- the composer when one is open, and the writes not yet handed over.
+    threads = nil,
+    tv = 0,
+    block = nil,
+    thread = nil,
+    compose = nil,
+    outbox = {},
+    notice = nil,
+    -- Why writing is off, when it is: the host sets it.
+    readonly = nil,
   }
+end
+
+--- Take the bridge's answer: the threads as thurview now has them.
+function M.set_threads(st, parsed)
+  st.threads = parsed
+  st.tv = st.tv + 1
+  st.notice = parsed.error and ("thurview: " .. parsed.error) or nil
+end
+
+--- The writes asked for since the last call, each a list of fields:
+--- { "create", type, key, mode, body }, { "reply", thread, body },
+--- { "status", thread, open|resolved }, { "submit", decision, body }.
+function M.take_outbox(st)
+  local out = st.outbox
+  st.outbox = {}
+  return out
 end
 
 --- The regions for a rect: where the document, the map and the inspector go.
@@ -460,14 +570,21 @@ end
 -- ---------------------------------------------------------------------------
 -- Keys.
 
+--- The document as the doc region draws it: a column narrower, for the gutter
+--- that marks the selected block.
+local function doc_for(model, st)
+  return build_doc(model, geometry(st.w, st.h).doc.w - 1, st)
+end
+
 local function select_link(model, st, idx)
   local g = geometry(st.w, st.h)
-  local doc = build_doc(model, g.doc.w)
+  local doc = doc_for(model, st)
   local link = doc.links[idx]
   if not link then
     return false
   end
   st.link, st.anchor, st.inspect, st.peek = idx, link.anchor, "anchor", 0
+  st.block = link.block
   local vh = g.doc.h - 1
   if link.line <= st.scroll or link.line > st.scroll + vh then
     st.scroll = math.max(0, link.line - 3)
@@ -484,9 +601,181 @@ local function select_link(model, st, idx)
   return true
 end
 
+--- Scroll the document so line `l` is on screen.
+local function show_line(st, l, vh)
+  if l <= st.scroll or l > st.scroll + vh then
+    st.scroll = math.max(0, l - 3)
+  end
+end
+
+--- What a new comment is on: the selected part in the map, else the selected
+--- block, else the first block on screen.
+local function comment_target(model, st)
+  if st.focus == "map" then
+    local L = map_layout(model, st)
+    local id = L.order[st.node]
+    if id then
+      return { type = "map", key = id, label = node_label(model, id) }
+    end
+  end
+  local doc = doc_for(model, st)
+  local bi = st.block
+  if not bi then
+    for l = st.scroll + 1, #doc.lines do
+      if doc.line_block[l] then
+        bi = doc.line_block[l]
+        break
+      end
+    end
+  end
+  local b = bi and model.blocks[bi]
+  if not (b and b.bid) then
+    return { type = "review", key = "", label = "the whole document" }
+  end
+  st.block = bi
+  local words = b.text
+  if not words and b.runs then
+    local parts = {}
+    for _, r in ipairs(b.runs) do
+      parts[#parts + 1] = r.text
+    end
+    words = table.concat(parts)
+  end
+  return { type = "document", key = b.bid, label = cut(words or b.label or b.t, 40) }
+end
+
+local function open_composer(st, compose)
+  if st.readonly then
+    st.notice = st.readonly
+    return
+  end
+  compose.text = ""
+  st.compose = compose
+end
+
+--- Every thread, in the order the bridge listed them.
+local function thread_list(st)
+  return (st.threads and st.threads.threads) or {}
+end
+
+local function find_thread(st, id)
+  for i, t in ipairs(thread_list(st)) do
+    if t.id == id then
+      return t, i
+    end
+  end
+end
+
+local function select_thread(model, st, id)
+  local t = find_thread(st, id)
+  if not t then
+    return false
+  end
+  st.thread, st.inspect = id, "thread"
+  local doc = doc_for(model, st)
+  for l, tid in pairs(doc.line_thread) do
+    if tid == id then
+      show_line(st, l, geometry(st.w, st.h).doc.h - 1)
+      break
+    end
+  end
+  return true
+end
+
+--- Keys shared by every region: commenting, replying, resolving, submitting.
+local function review_key(model, st, key)
+  if key == "c" or key == "C" then
+    local target = key == "C" and { type = "review", key = "", label = "the whole document" }
+      or comment_target(model, st)
+    open_composer(st, { kind = "comment", target = target, mode = "review" })
+  elseif key == "R" then
+    open_composer(st, { kind = "submit", decision = "approve" })
+  elseif key == "t" or key == "T" then
+    local list = thread_list(st)
+    if #list == 0 then
+      return false
+    end
+    local _, i = find_thread(st, st.thread)
+    i = i or (key == "t" and 0 or 1)
+    i = (i + (key == "t" and 1 or -1) - 1) % #list + 1
+    select_thread(model, st, list[i].id)
+  elseif key == "r" and st.thread then
+    open_composer(st, { kind = "reply", thread = st.thread })
+  elseif key == "x" and st.thread then
+    local t = find_thread(st, st.thread)
+    if t and not st.readonly then
+      st.outbox[#st.outbox + 1] =
+        { "status", t.id, t.status == "resolved" and "open" or "resolved" }
+    elseif st.readonly then
+      st.notice = st.readonly
+    end
+  else
+    return false
+  end
+  return true
+end
+
+local DECISIONS = { "approve", "request-changes", "close" }
+local DECISION_LABEL =
+  { approve = "Approve", ["request-changes"] = "Request changes", close = "Close" }
+
+--- Hand the composer's text over as a write, and close it.
+local function send(st, mode, decision)
+  local c = st.compose
+  if not c then
+    return
+  end
+  if c.kind == "submit" then
+    st.outbox[#st.outbox + 1] = { "submit", decision or c.decision, c.text }
+  elseif c.text:match("^%s*$") then
+    st.notice = "nothing to send: type the comment first"
+    return
+  elseif c.kind == "reply" then
+    st.outbox[#st.outbox + 1] = { "reply", c.thread, c.text }
+  else
+    st.outbox[#st.outbox + 1] = { "create", c.target.type, c.target.key, mode or c.mode, c.text }
+  end
+  st.compose = nil
+  st.notice = "saving to thurview…"
+end
+
+--- The composer takes every key while it is open: a letter is a letter, not a command.
+local function compose_key(st, key, char)
+  local c = st.compose
+  if key == "esc" then
+    st.compose = nil
+  elseif key == "enter" then
+    send(st)
+  elseif key == "tab" or key == "backtab" then
+    if c.kind == "submit" then
+      local i = 1
+      for k, d in ipairs(DECISIONS) do
+        if d == c.decision then
+          i = k
+        end
+      end
+      c.decision = DECISIONS[(i + (key == "tab" and 0 or -2)) % #DECISIONS + 1]
+    elseif c.kind == "comment" then
+      c.mode = c.mode == "review" and "ask" or "review"
+    end
+  elseif key == "backspace" then
+    local last = utf8.offset(c.text, -1)
+    if last then
+      c.text = c.text:sub(1, last - 1)
+    end
+  elseif key == "space" then
+    c.text = c.text .. " "
+  elseif char and char ~= "" and not char:match("%c") then
+    c.text = c.text .. char
+  elseif utf8.len(key) == 1 then
+    c.text = c.text .. key
+  end
+  return true
+end
+
 local function doc_key(model, st, key)
   local g = geometry(st.w, st.h)
-  local doc = build_doc(model, g.doc.w)
+  local doc = doc_for(model, st)
   local vh = g.doc.h - 1
   local max = math.max(0, #doc.lines - vh)
   if key == "j" or key == "down" then
@@ -535,6 +824,23 @@ local function doc_key(model, st, key)
     end
   elseif key == "enter" and st.link then
     st.focus = "inspect"
+  elseif key == "J" or key == "K" then
+    -- The block cursor: what a comment is aimed at.
+    local cur = st.block or 0
+    local step = key == "J" and 1 or -1
+    local bi = cur + step
+    while model.blocks[bi] and model.blocks[bi].bid == (model.blocks[cur] or {}).bid do
+      bi = bi + step
+    end
+    if model.blocks[bi] then
+      st.block = bi
+      for l, b in pairs(doc.line_block) do
+        if b == bi then
+          show_line(st, l, vh)
+          break
+        end
+      end
+    end
   else
     return false
   end
@@ -575,7 +881,9 @@ local function map_key(model, st, key)
 end
 
 local function inspect_key(st, key)
-  if key == "j" or key == "down" then
+  if (key == "esc" or key == "backspace") and st.inspect == "thread" then
+    st.inspect, st.thread = "node", nil
+  elseif key == "j" or key == "down" then
     st.peek = st.peek + 1
   elseif key == "k" or key == "up" then
     st.peek = math.max(0, st.peek - 1)
@@ -588,10 +896,14 @@ local function inspect_key(st, key)
 end
 
 --- One key. Returns whether the view used it, so the host can pass the rest on.
-function M.key(model, st, key, ctx)
+function M.key(model, st, key, ctx, char)
   if ctx and ctx.width then
     st.w, st.h = ctx.width, ctx.height
   end
+  if st.compose then
+    return compose_key(st, key, char)
+  end
+  st.notice = nil
   local seqs = sequences(model)
   local seq = seqs[st.seq]
   if key == "tab" or key == "backtab" then
@@ -629,12 +941,222 @@ function M.key(model, st, key, ctx)
     end
     return true
   end
+  if review_key(model, st, key) then
+    return true
+  end
   if st.focus == "doc" then
     return doc_key(model, st, key)
   elseif st.focus == "map" then
     return map_key(model, st, key)
   end
   return inspect_key(st, key)
+end
+
+--- A click on something the view drew, by the id it gave the span.
+function M.click(model, st, id, clicks)
+  if not id then
+    return false
+  end
+  local kind, rest = id:match("^(%a+):(.*)$")
+  if st.compose then
+    if id == "btn:cancel" then
+      st.compose = nil
+    elseif kind == "send" then
+      send(st, rest)
+    elseif kind == "decide" then
+      send(st, nil, rest)
+    end
+    return true
+  end
+  st.notice = nil
+  if kind == "link" then
+    st.focus = "doc"
+    return select_link(model, st, tonumber(rest))
+  elseif kind == "block" then
+    st.focus, st.block = "doc", tonumber(rest)
+    if clicks == 2 then
+      open_composer(st, { kind = "comment", target = comment_target(model, st), mode = "review" })
+    end
+  elseif kind == "thread" then
+    select_thread(model, st, rest)
+  elseif kind == "node" then
+    local L = map_layout(model, st)
+    for i, nid in ipairs(L.order) do
+      if nid == rest then
+        st.node, st.inspect, st.focus = i, "node", "map"
+      end
+    end
+    if clicks == 2 then
+      open_composer(st, { kind = "comment", target = comment_target(model, st), mode = "review" })
+    end
+  elseif kind == "focus" then
+    st.focus = rest
+  elseif id == "btn:play" then
+    return M.key(model, st, "space")
+  elseif id == "btn:review" then
+    return M.key(model, st, "R")
+  else
+    return false
+  end
+  return true
+end
+
+--- The block a target names: `block:<compiled block id>`.
+local function block_of(model, bid)
+  for i, b in ipairs(model.blocks) do
+    if b.bid == bid then
+      return i
+    end
+  end
+end
+
+--- Resolve `block:<id>`, `node:<id>` or `review` to a comment target, or the
+--- current selection when there is none.
+local function target_of(model, st, spec)
+  if not spec or spec == "" then
+    return comment_target(model, st)
+  end
+  local kind, key = spec:match("^(%a+):(.+)$")
+  if spec == "review" then
+    return { type = "review", key = "", label = "the whole document" }
+  elseif kind == "block" and block_of(model, key) then
+    st.block = block_of(model, key)
+    st.focus = "doc"
+    return comment_target(model, st)
+  elseif kind == "node" then
+    return { type = "map", key = key, label = node_label(model, key) }
+  end
+end
+
+--- The same operations as the keys and the mouse, by name and typed
+--- arguments, for whoever drives the pane without either: `thurbox-cli ui
+--- action thurview.<name> --arg k=v`. Every one of them is something a click
+--- or a key also does, so nothing here is reachable only by an agent.
+---
+---   select  target=block:<id>|node:<id>|anchor:<id>|thread:<id>
+---   comment target=block:<id>|node:<id>|review  body=<text>  [mode=review|ask]
+---   reply   thread=<id> body=<text>
+---   resolve thread=<id> [status=resolved|open]
+---   submit  decision=approve|request-changes|close  [body=<text>]
+function M.act(model, st, name, args)
+  args = args or {}
+  st.notice = nil
+  local function refuse(why)
+    st.notice = why
+    return false
+  end
+  if name == "select" then
+    local kind, key = (args.target or ""):match("^(%a+):(.+)$")
+    if kind == "block" and block_of(model, key) then
+      return M.click(model, st, "block:" .. block_of(model, key), 1)
+    elseif kind == "node" then
+      return M.click(model, st, "node:" .. key, 1)
+    elseif kind == "thread" then
+      return select_thread(model, st, key)
+    elseif kind == "anchor" then
+      for i, l in ipairs(doc_for(model, st).links) do
+        if l.anchor == key then
+          st.focus = "doc"
+          return select_link(model, st, i)
+        end
+      end
+    end
+    return refuse("nothing to select at " .. tostring(args.target))
+  end
+  if st.readonly then
+    return refuse(st.readonly)
+  end
+  local body = args.body or ""
+  if name == "comment" then
+    local target = target_of(model, st, args.target)
+    if not target then
+      return refuse("no block or part " .. tostring(args.target))
+    end
+    if body:match("^%s*$") then
+      return refuse("a comment needs a body")
+    end
+    local mode = args.mode == "ask" and "ask" or "review"
+    st.outbox[#st.outbox + 1] = { "create", target.type, target.key, mode, body }
+  elseif name == "reply" then
+    if not (args.thread and find_thread(st, args.thread)) or body:match("^%s*$") then
+      return refuse("a reply needs a known thread and a body")
+    end
+    st.outbox[#st.outbox + 1] = { "reply", args.thread, body }
+  elseif name == "resolve" then
+    local t = args.thread and find_thread(st, args.thread)
+    if not t then
+      return refuse("no thread " .. tostring(args.thread))
+    end
+    local status = args.status or (t.status == "resolved" and "open" or "resolved")
+    st.outbox[#st.outbox + 1] = { "status", t.id, status }
+  elseif name == "submit" then
+    local ok = false
+    for _, d in ipairs(DECISIONS) do
+      ok = ok or d == args.decision
+    end
+    if not ok then
+      return refuse("decision is approve, request-changes or close")
+    end
+    st.outbox[#st.outbox + 1] = { "submit", args.decision, body }
+  else
+    return false
+  end
+  st.compose = nil
+  st.notice = "saving to thurview…"
+  return true
+end
+
+--- What `thurbox-cli ui state` shows of the pane: enough to know what it is on
+--- and whether a write landed, without reading the screen.
+function M.public_state(model, st)
+  local pending, open = 0, 0
+  for _, t in ipairs(thread_list(st)) do
+    if not t.submitted then
+      pending = pending + 1
+    elseif t.status == "open" then
+      open = open + 1
+    end
+  end
+  local L = map_layout(model, st)
+  local b = st.block and model.blocks[st.block]
+  return {
+    review = model.review or "",
+    revision = model.revision,
+    focus = st.focus,
+    block = b and b.bid or "",
+    node = L.order[st.node] or "",
+    thread = st.thread or "",
+    anchor = st.anchor or "",
+    composing = st.compose and st.compose.kind or "",
+    flow_step = st.step,
+    flow_playing = st.playing,
+    threads = #thread_list(st),
+    threads_open = open,
+    threads_in_review = pending,
+    review_status = (st.threads and st.threads.status) or "",
+    writable = st.readonly == nil,
+    notice = st.notice or "",
+  }
+end
+
+--- A wheel tick at (x, y) inside the pane: it scrolls whatever is under it.
+function M.scroll(model, st, up, x, y)
+  local g = geometry(st.w, st.h)
+  local region = st.focus
+  if g.wide then
+    region = x < g.doc.w and "doc" or (y < g.map.h and "map" or "inspect")
+  end
+  local d = up and -3 or 3
+  if region == "doc" then
+    local doc = doc_for(model, st)
+    st.scroll = clamp(st.scroll + d, 0, math.max(0, #doc.lines - (g.doc.h - 1)))
+  elseif region == "map" then
+    local L, _, vh = map_layout(model, st)
+    st.pan_y = clamp(st.pan_y + d, 0, math.max(0, L.h - vh))
+  else
+    st.peek = math.max(0, st.peek + d)
+  end
+  return true
 end
 
 -- ---------------------------------------------------------------------------
@@ -671,11 +1193,12 @@ local function caption(text, w, focused)
 end
 
 local function render_doc(model, st, w, h, focused)
-  local doc = build_doc(model, w)
+  local doc = build_doc(model, w - 1, st)
   local max = math.max(0, #doc.lines - (h - 1))
   st.scroll = clamp(st.scroll, 0, max)
   local pct = max == 0 and 100 or math.floor(st.scroll * 100 / max)
   local out = { caption("document · " .. pct .. "%", w, focused) }
+  out[1][1].id = "focus:doc"
   local msgs = doc.msg_line[st.seq]
   local lit = {}
   if st.shown and msgs and msgs[st.step] then
@@ -685,17 +1208,24 @@ local function render_doc(model, st, w, h, focused)
   end
   for r = 1, h - 1 do
     local i = st.scroll + r
-    local spans = {}
-    for k, s in ipairs(doc.lines[i] or {}) do
+    local bi, tid = doc.line_block[i], doc.line_thread[i]
+    local base = tid and ("thread:" .. tid) or (bi and ("block:" .. bi)) or nil
+    local marked = (tid and tid == st.thread) or (not tid and bi and bi == st.block)
+    local spans = { { text = marked and "▌" or " ", st = "sel_block", id = base } }
+    for _, s in ipairs(doc.lines[i] or {}) do
       local style = s.st
       if s.link and s.link == st.link then
         style = "link_sel"
+      elseif tid and tid == st.thread then
+        style = "thread_sel"
       elseif lit[i] and style ~= "muted" then
         style = "flow"
       end
-      spans[k] = { text = s.text, st = style }
+      spans[#spans + 1] = { text = s.text, st = style, id = s.link and ("link:" .. s.link) or base }
     end
-    out[#out + 1] = clip(spans, w)
+    local row = clip(spans, w)
+    row[#row].id = row[#row].id or base
+    out[#out + 1] = row
   end
   return out
 end
@@ -735,6 +1265,7 @@ local function render_map(model, st, w, h, focused)
     end
   end
   local out = { caption(text, w, focused) }
+  out[1][1].id = (st.shown and m) and "btn:play" or "focus:map"
   for r = 1, vh do
     local row = L.cells[st.pan_y + r] or {}
     local spans, cur = {}, nil
@@ -760,10 +1291,11 @@ local function render_map(model, st, w, h, focused)
           end
         end
       end
-      if cur and cur.st == style then
+      local id = cell and cell.node and ("node:" .. cell.node) or nil
+      if cur and cur.st == style and cur.id == id then
         cur.text = cur.text .. ch
       else
-        cur = { text = ch, st = style }
+        cur = { text = ch, st = style, id = id }
         spans[#spans + 1] = cur
       end
     end
@@ -801,7 +1333,39 @@ local function render_inspect(model, st, w, h, focused)
   end
   local title
   local a = st.inspect == "anchor" and st.anchor and model.anchors[st.anchor]
-  if a then
+  local th = st.inspect == "thread" and find_thread(st, st.thread)
+  if th then
+    title = "thread · #" .. th.id
+    local on = th.target == "map" and node_label(model, th.key)
+      or th.target == "review" and "the whole document"
+      or "a block of the document"
+    add({
+      {
+        text = " ✎ " .. (th.mode == "ask" and "question" or "comment") .. " on " .. on,
+        st = "strong",
+      },
+    })
+    add({
+      { text = "   " .. thread_state(th) .. " · revision " .. (th.revision or "?"), st = "muted" },
+    })
+    add({})
+    for _, msg in ipairs(th.messages) do
+      para(
+        (msg.role == "agent" and "agent: " or "you: ") .. msg.body,
+        msg.role == "agent" and "text" or "strong",
+        " ┃ "
+      )
+    end
+    add({})
+    add({
+      {
+        text = " r reply · x "
+          .. (th.status == "resolved" and "reopen" or "resolve")
+          .. " · esc back",
+        st = "muted",
+      },
+    })
+  elseif a then
     title = "anchor · " .. st.anchor
     para(a.title, "strong", " ◆ ")
     if a.file then
@@ -856,6 +1420,18 @@ local function render_inspect(model, st, w, h, focused)
           add({ { text = "   " .. where(model, na) .. " · enter", st = "loc" } })
         end
       end
+      local _, on_node = threads_by_target(st)
+      for _, t in ipairs(on_node[id] or {}) do
+        local last = t.messages[#t.messages]
+        local line =
+          { { text = " ✎ " .. thread_state(t) .. "  ", st = "thread", id = "thread:" .. t.id } }
+        line[2] = {
+          text = last and ((last.role == "agent" and "agent: " or "you: ") .. last.body) or "",
+          st = "text",
+          id = "thread:" .. t.id,
+        }
+        add(line)
+      end
       add({})
       add({ { text = " connections", st = "h3" } })
       for _, e in ipairs(model.map.edges) do
@@ -877,16 +1453,73 @@ local function render_inspect(model, st, w, h, focused)
     end
   end
   local out = { caption(title, w, focused) }
+  out[1][1].id = "focus:inspect"
   for r = 1, h - 1 do
     out[#out + 1] = clip(lines[r] or {}, w)
   end
   return out
 end
 
+--- The composer, three rows across the bottom of the pane, every button a click target.
+local function render_composer(model, st, w)
+  local c = st.compose
+  local title, buttons
+  if c.kind == "submit" then
+    title = " submit your review "
+    buttons = {}
+    for _, d in ipairs(DECISIONS) do
+      buttons[#buttons + 1] = {
+        text = " " .. DECISION_LABEL[d] .. " ",
+        st = d == c.decision and "button_on" or "button",
+        id = "decide:" .. d,
+      }
+      buttons[#buttons + 1] = { text = " ", st = "text" }
+    end
+    buttons[#buttons + 1] = { text = " ⇥ choose · ⏎ submit · ", st = "muted" }
+  elseif c.kind == "reply" then
+    title = " reply to #" .. c.thread .. " "
+    buttons = {
+      { text = " ⏎ Send reply ", st = "button_on", id = "send:reply" },
+      { text = " ", st = "text" },
+    }
+  else
+    title = " comment on " .. c.target.label .. " "
+    buttons = {
+      {
+        text = " Add to review ",
+        st = c.mode == "review" and "button_on" or "button",
+        id = "send:review",
+      },
+      { text = " ", st = "text" },
+      { text = " Ask now ", st = c.mode == "ask" and "button_on" or "button", id = "send:ask" },
+      { text = "  ⇥ switch · ⏎ send · ", st = "muted" },
+    }
+  end
+  buttons[#buttons + 1] = { text = " Cancel ", st = "button", id = "btn:cancel" }
+  local typed = c.text
+  local room = w - 4
+  if D.width(typed) > room then
+    typed = "…" .. typed:sub(utf8.offset(typed, -(room - 1)) or 1)
+  end
+  local _ = model
+  return {
+    clip(
+      { { text = "✎" .. title, st = "focus" }, { text = string.rep("─", w), st = "rule" } },
+      w
+    ),
+    clip({
+      { text = " > ", st = "muted" },
+      { text = typed, st = "text" },
+      { text = "▏", st = "focus" },
+    }, w),
+    clip(buttons, w),
+  }
+end
+
 local HINTS = {
-  doc = "j/k scroll · ]/[ section · n/N anchor · enter peek · tab map",
-  map = "j/k node · ←→ pan · J/K pan down/up · enter peek · tab inspector",
-  inspect = "j/k scroll · esc node · tab document",
+  doc = "j/k scroll · ]/[ section · n/N anchor · J/K block · c comment · t thread · R review · tab map",
+  map = "j/k node · ←→ pan · J/K pan · c comment · t thread · R review · tab inspector",
+  inspect = "j/k scroll · r reply · x resolve · esc back · tab document",
 }
 
 local function status_text(model, st)
@@ -906,7 +1539,25 @@ local function status_text(model, st)
   else
     flow = "▷ space plays “" .. seq.label .. "”"
   end
-  return flow .. " · " .. HINTS[st.focus]
+  local review = ""
+  local pending = 0
+  for _, t in ipairs(thread_list(st)) do
+    if not t.submitted then
+      pending = pending + 1
+    end
+  end
+  if pending > 0 then
+    review = " · ✎ " .. pending .. " in your review, R submits"
+  elseif st.threads and st.threads.status then
+    review = " · review " .. st.threads.status
+  end
+  if st.compose then
+    return flow .. " · composing: esc cancels" .. review
+  end
+  if st.notice then
+    return flow .. " · " .. st.notice .. review
+  end
+  return flow .. review .. " · " .. HINTS[st.focus]
 end
 
 --- One frame for a rect of `ctx.width` × `ctx.height` cells.
@@ -940,6 +1591,12 @@ function M.render(model, st, ctx)
     rows = render_map(model, st, w, g.map.h, true)
   else
     rows = render_inspect(model, st, w, g.inspect.h, true)
+  end
+  if st.compose and #rows >= 3 then
+    local box = render_composer(model, st, w)
+    for i = 1, 3 do
+      rows[#rows - 3 + i] = box[i]
+    end
   end
   local status = status_text(model, st)
   rows[#rows + 1] = clip({ { text = status, st = "status" } }, w)
