@@ -305,6 +305,23 @@ describe.skipIf(!browserBin)("document page, driven by a reader", () => {
     }
   }, 30_000);
 
+  it("marks the first section at the top of a document not much taller than the view", async () => {
+    const tall = await page(1440, 900);
+    const height = await tall.evaluate<number>(`document.querySelector(".center").scrollHeight`);
+    await tall.close();
+    // Less than a view left to scroll, so all of the scroll is the last screen.
+    const p = await page(1440, Math.round(height * 0.6));
+    try {
+      const active = await p.evaluate<string | null>(`(async () => {
+        await new Promise((r) => setTimeout(r, 250));
+        return document.querySelector(".toc a.active")?.textContent ?? null;
+      })()`);
+      expect(active).toBe("Summary");
+    } finally {
+      await p.close();
+    }
+  }, 30_000);
+
   it("hides and shows a section from the keyboard", async () => {
     const p = await page(1440, 900);
     try {

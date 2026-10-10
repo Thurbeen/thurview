@@ -105,8 +105,12 @@ function trackSection(scroller: HTMLElement, toc: HTMLElement, docEl: HTMLElemen
     queued = false;
     if (!docEl.isConnected) return scroller.removeEventListener("scroll", onScroll);
     const view = scroller.getBoundingClientRect();
-    const left = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
-    const end = Math.max(0, 1 - left / scroller.clientHeight);
+    // How far through the scroll's last screen the reader is: a document
+    // shorter than two views starts inside it, so it is measured against what
+    // there is to scroll, and one that does not scroll at all never moves it.
+    const room = scroller.scrollHeight - scroller.clientHeight;
+    const last = Math.min(scroller.clientHeight, room);
+    const end = last > 0 ? Math.max(0, 1 - (room - scroller.scrollTop) / last) : 0;
     const line = view.top + view.height * (0.25 + 0.75 * end);
     let at = -1;
     heads.forEach((el, i) => {
