@@ -112,7 +112,9 @@ export function layoutFlow(
       edge,
       back,
       d: `M${from.cx},${from.y + boxH} V${out} H${laneX} V${into} H${to.cx} V${to.y - 4}`,
-      label: { x: laneX - 6, y: (out + into) / 2, at: "end" },
+      // Named where it leaves its step, beside the stem and above the run out
+      // to the lane: on the lane itself, other loops' lanes and runs cross it.
+      label: { x: from.cx + 6, y: out - 5, at: "start" },
     };
   });
   return { width, height, at, edges };

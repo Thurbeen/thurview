@@ -66,6 +66,7 @@ const FLOW_LABELS = {
   seen: "Poll lists the change request open at head H",
   gate: "Draft, bot, stop label, or H already reviewed?",
   idle: "Idle until the next poll comes round",
+  ci: "Checks concluded on H?",
   lease: "Lease (repo, change request, H); quota allows the runner?",
   run: "Agent runs one review pass in a fresh worktree",
   verify: "Summary marker head is H, and the head is still H?",
@@ -108,8 +109,9 @@ ${filler(4)}
 label: Job lifecycle for one change request at head H
 steps:
   - { id: seen, label: "${FLOW_LABELS.seen}", actor: daemon, next: gate }
-  - { id: gate, label: "${FLOW_LABELS.gate}", actor: daemon, when: [{ case: skip, to: idle }, { case: new head, to: lease }] }
+  - { id: gate, label: "${FLOW_LABELS.gate}", actor: daemon, when: [{ case: skip, to: idle }, { case: new head, to: ci }] }
   - { id: idle, label: "${FLOW_LABELS.idle}", actor: daemon, next: seen }
+  - { id: ci, label: "${FLOW_LABELS.ci}", actor: daemon, when: [{ case: pending, to: idle }, { case: concluded, to: lease }] }
   - { id: lease, label: "${FLOW_LABELS.lease}", actor: daemon, when: [{ case: deferred, to: idle }, { case: granted, to: run }] }
   - { id: run, label: "${FLOW_LABELS.run}", actor: daemon, anchor: loop, next: verify }
   - { id: verify, label: "${FLOW_LABELS.verify}", actor: daemon, when: [{ case: head moved, to: superseded }, { case: failed, to: retry }, { case: verified, to: done }] }
@@ -855,8 +857,8 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
           const outside = steps
             .filter((g) => [...g.querySelectorAll("text")].some((t) => !inside(t.getBBox(), g.querySelector("rect, path").getBBox())))
             .map((g) => g.querySelector("title").textContent);
-          // A forward edge's label sits on no line: not its own, nor a
-          // sibling's. A loop's lane label is left to the lanes' own layout.
+          // An edge's label sits on no line: not its own, nor a sibling's,
+          // nor another loop's lane.
           const segments = [...svg.querySelectorAll("g.edge path")].flatMap((p) => {
             const out = [];
             let x = 0, y = 0;
@@ -869,7 +871,7 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
             }
             return out;
           });
-          const crossed = [...svg.querySelectorAll("g.edge:not(.back) text")]
+          const crossed = [...svg.querySelectorAll("g.edge text")]
             .filter((t) => {
               const b = t.getBBox();
               return segments.some((s) => s.minX <= b.x + b.width && s.maxX >= b.x && s.minY <= b.y + b.height && s.maxY >= b.y);
