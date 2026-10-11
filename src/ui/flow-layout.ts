@@ -16,11 +16,14 @@ export interface FlowEdge {
   d: string;
   /** an edge that climbs to an earlier row: a loop, drawn dashed */
   back: boolean;
-  label: { x: number; y: number; at: string };
+  /** `room`, when set, is the width the label is cut to */
+  label: { x: number; y: number; at: string; room?: number };
 }
 
 export const boxW = 210;
+/** A box's height when its label fits one line; a flow with longer labels passes its own. */
 export const boxH = 46;
+const BOX_H = boxH;
 const gapX = 40;
 const gapY = 58;
 const pad = 14;
@@ -28,13 +31,18 @@ const pad = 14;
 // type: a two-wide flow would draw its 12px labels at nearer 17. A floor on
 // the viewBox keeps a small flow close to 1:1 and centres it in the frame.
 const minW = 700;
+/** An edge label's character width: `.flow .edge text` is 10.5px mono. */
+const edgeCharW = 10.5 * 0.605;
 
 /**
  * Layers come from a walk forward from the first step, so an edge that points
  * back to a layer already placed - a retry loop, which is what a real journey
  * does - is routed down a lane on the right instead of crossing the boxes.
  */
-export function layoutFlow(b: Flow): {
+export function layoutFlow(
+  b: Flow,
+  boxH: number = BOX_H,
+): {
   width: number;
   height: number;
   at: (id: string) => FlowBox;
@@ -76,6 +84,48 @@ export function layoutFlow(b: Flow): {
     return { x, y: pad + band + li * (boxH + gapY), cx: x + boxW / 2, li };
   };
 
+  // Where a step's loops are named, beside its stem: two lines above the run
+  // out to the lanes and one below it. A named branch into the next row takes
+  // the line its own label sits on - above when it turns, below when it runs
+  // straight down - and an unnamed edge takes none. A loop takes the first
+  // line wide enough for its name before the next line across it (a stem
+  // beside it above the run, a drop into the next row below), or the widest,
+  // where its name is cut.
+  const laneXs = loops.map((_, i) => width - lane + 17 + i * laneGap);
+  const named = new Map<Flow["edges"][number], { line: number; room?: number }>();
+  for (const s of b.steps) {
+    const li = layer.get(s.id)!;
+    const cx = at(s.id).cx;
+    const across = (line: number) =>
+      [...(line === 2 ? (rows[li + 1] ?? []) : rows[li]!.filter((id) => id !== s.id))].map(
+        (id) => at(id).cx,
+      );
+    const room = (line: number) =>
+      Math.min(
+        width - pad,
+        ...[...across(line), ...laneXs].filter((x) => x > cx + 6).map((x) => x - 4),
+      ) -
+      (cx + 6);
+    const free = [0, 1, 2].filter(
+      (line) =>
+        !b.edges.some((e) => {
+          if (e.from !== s.id || !e.case || layer.get(e.to)! !== li + 1) return false;
+          const dx = at(e.to).cx - cx;
+          return line === 0 ? dx !== 0 : line === 2 && dx === 0;
+        }),
+    );
+    for (const e of loops
+      .filter((e) => e.from === s.id && e.case)
+      .sort((p, q) => b.edges.indexOf(p) - b.edges.indexOf(q))) {
+      if (!free.length) break;
+      const w = e.case!.length * edgeCharW;
+      const line =
+        free.find((l) => room(l) >= w) ?? free.reduce((a, l) => (room(l) > room(a) ? l : a));
+      free.splice(free.indexOf(line), 1);
+      named.set(e, room(line) >= w ? { line } : { line, room: room(line) });
+    }
+  }
+
   const edges = b.edges.map((edge): FlowEdge => {
     const from = at(edge.from);
     const to = at(edge.to);
@@ -84,11 +134,17 @@ export function layoutFlow(b: Flow): {
     const back = to.li < from.li;
     if (to.li > from.li) {
       const mid = from.y + boxH + (to.y - from.y - boxH) / 2;
+      // A label centred on an edge that runs straight down would sit on the
+      // line itself, so that one starts beside it instead, below the run its
+      // siblings branch out along.
+      const straight = from.cx === to.cx;
       return {
         edge,
         back,
         d: `M${from.cx},${from.y + boxH} V${mid} H${to.cx} V${to.y - 4}`,
-        label: { x: (from.cx + to.cx) / 2 + 6, y: mid - 5, at: "middle" },
+        label: straight
+          ? { x: from.cx + 6, y: mid + 15, at: "start" }
+          : { x: (from.cx + to.cx) / 2 + 6, y: mid - 5, at: "middle" },
       };
     }
     // Out through the band below this row, up the lane, and back in through
@@ -97,11 +153,23 @@ export function layoutFlow(b: Flow): {
     const laneX = width - lane + 17 + loops.indexOf(edge) * laneGap;
     const out = from.y + boxH + gapY / 2;
     const into = to.y - gapY / 2;
+    // Named where it leaves its step, beside the stem: on the lane itself,
+    // other loops' lanes and runs cross it. Only a fourth named edge from one
+    // step is left to its lane.
+    const name = named.get(edge);
     return {
       edge,
       back,
       d: `M${from.cx},${from.y + boxH} V${out} H${laneX} V${into} H${to.cx} V${to.y - 4}`,
-      label: { x: laneX - 6, y: (out + into) / 2, at: "end" },
+      label:
+        name === undefined
+          ? { x: laneX - 6, y: (out + into) / 2, at: "end" }
+          : {
+              x: from.cx + 6,
+              y: [out - 5, out - 17, out + 15][name.line]!,
+              at: "start",
+              ...(name.room === undefined ? {} : { room: name.room }),
+            },
     };
   });
   return { width, height, at, edges };

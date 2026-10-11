@@ -69,6 +69,28 @@ export function timeAgo(iso: string): string {
   return `${Math.floor(d / 86400)} d ago`;
 }
 
+/**
+ * Where a click asks for its popover: beside the pointer, or under the control
+ * when the keyboard pressed it, since a key press has no pointer and reports 0,0.
+ */
+export function clickPoint(e: MouseEvent, dx = 10, dy = 0): { x: number; y: number } {
+  if (e.detail > 0) return { x: e.pageX + dx, y: e.pageY + dy };
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  return { x: r.left + window.scrollX, y: r.bottom + window.scrollY + 6 };
+}
+
+/** A clickable element that is not a button answers the keyboard the way one does. */
+export function asButton<T extends HTMLElement>(el: T): T {
+  el.setAttribute("role", "button");
+  el.tabIndex = 0;
+  el.addEventListener("keydown", (e) => {
+    if (e.target !== el || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    el.click();
+  });
+  return el;
+}
+
 /** One popover at a time; closes on outside click or Escape. */
 let openPopover: HTMLElement | null = null;
 export function popover(el: HTMLElement, at: { x: number; y: number }): HTMLElement {
@@ -101,11 +123,34 @@ export function closePopover(): void {
   document.removeEventListener("keydown", onKey);
 }
 
+let dialogs = 0;
+/**
+ * A modal: focus moves into it and goes back where it came from, and Escape or
+ * a click outside closes it, as either does a popover.
+ */
 export function dialog(content: HTMLElement): { close: () => void } {
-  const overlay = h("div", { class: "overlay" }, h("div", { class: "dialog" }, content));
+  const back = document.activeElement as HTMLElement | null;
+  const box = h("div", { class: "dialog", role: "dialog", "aria-modal": "true" }, content);
+  const title = box.querySelector("h3");
+  if (title) {
+    title.id = `dialog-title-${++dialogs}`;
+    box.setAttribute("aria-labelledby", title.id);
+  }
+  const overlay = h("div", { class: "overlay" }, box);
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && !openPopover) close();
+  };
+  const close = () => {
+    if (!overlay.isConnected) return;
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+    back?.focus();
+  };
   overlay.addEventListener("mousedown", (e) => {
-    if (e.target === overlay) overlay.remove();
+    if (e.target === overlay) close();
   });
+  document.addEventListener("keydown", onKey);
   document.body.appendChild(overlay);
-  return { close: () => overlay.remove() };
+  box.querySelector<HTMLElement>("textarea, input, select, button")?.focus();
+  return { close };
 }

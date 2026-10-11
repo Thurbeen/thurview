@@ -1,5 +1,6 @@
-import { api } from "./api.js";
-import { h, closePopover, dialog, timeAgo } from "./dom.js";
+import { api, published } from "./api.js";
+import { isNote } from "./notes.js";
+import { h, closePopover, dialog, timeAgo, asButton } from "./dom.js";
 import { state, emit, describeTarget, navigate, readOnly, kind } from "./state.js";
 import type { Thread, ThreadTarget } from "../store.js";
 import type { Presence } from "../presence.js";
@@ -32,8 +33,13 @@ const RECEIPT: Record<Delivery, string> = {
   closed: "Resolved. Writing here reopens it.",
 };
 
+/** On a published copy nothing reaches an agent until the reader exports it. */
+const NOTES_LINE =
+  "Notes stay in this browser. Export for agent turns them into Markdown to hand to an agent.";
+
 /** The one line that says whether asking now would reach anybody. */
 function listeningLine(): string {
+  if (published) return NOTES_LINE;
   return agent().attached
     ? "An agent is listening to this document now."
     : "No agent is listening right now. Anything you send is queued until one checks in.";
@@ -68,8 +74,31 @@ export function commentPopover(target: ThreadTarget, quote?: string): HTMLElemen
     focusThread(th.id);
   };
   ta.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void submit("ask");
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void submit(published ? "review" : "ask");
   });
+  if (published)
+    return focusOn(
+      ta,
+      h(
+        "div",
+        { class: "comment-popover" },
+        quote ? h("div", { class: "quote" }, quote) : null,
+        h(
+          "div",
+          { class: "muted", style: { fontSize: "12px", marginBottom: "4px" } },
+          describeTarget(target),
+        ),
+        ta,
+        h(
+          "div",
+          { class: "row" },
+          h("button", { class: "small ok", onclick: () => void submit("review") }, "Add note"),
+          h("span", { style: { flex: "1" } }),
+          h("button", { class: "small ghost", onclick: () => closePopover() }, "Cancel"),
+        ),
+        h("div", { class: "muted", style: { fontSize: "12px", marginTop: "6px" } }, NOTES_LINE),
+      ),
+    );
   const el = h(
     "div",
     { class: "comment-popover" },
@@ -110,6 +139,10 @@ export function commentPopover(target: ThreadTarget, quote?: string): HTMLElemen
       ),
     ),
   );
+  return focusOn(ta, el);
+}
+
+function focusOn(ta: HTMLTextAreaElement, el: HTMLElement): HTMLElement {
   setTimeout(() => ta.focus());
   return el;
 }
@@ -118,7 +151,7 @@ export function commentPopover(target: ThreadTarget, quote?: string): HTMLElemen
 export function threadPinRow(t: Thread): HTMLElement {
   const first = t.messages[0];
   const last = t.messages[t.messages.length - 1];
-  return h(
+  const pin = h(
     "div",
     {
       class: `thread-pin ${t.status === "resolved" ? "resolved" : ""}`,
@@ -152,6 +185,7 @@ export function threadPinRow(t: Thread): HTMLElement {
       : null,
     t.status === "resolved" ? h("span", { class: "badge ok" }, "resolved") : null,
   );
+  return asButton(pin);
 }
 
 export function focusThread(id: string): void {
@@ -189,6 +223,7 @@ export function renderThreadsPanel(container: HTMLElement): void {
       { style: { fontSize: "12px" } },
       h("input", {
         type: "checkbox",
+        name: "show-resolved",
         onchange: (e: Event) => {
           showResolved = (e.target as HTMLInputElement).checked;
           draw();
@@ -222,7 +257,7 @@ export function renderThreadsPanel(container: HTMLElement): void {
           listeningLine(),
         ),
       );
-    if (pending.length && !readOnly()) {
+    if (pending.length && !readOnly() && !published) {
       body.appendChild(
         h(
           "div",
@@ -283,7 +318,11 @@ function threadCard(t: Thread): HTMLElement {
       h("span", { class: "target", onclick: () => goToTarget(t) }, describeTarget(t.target)),
       h("span", { class: `badge ${t.status === "resolved" ? "ok" : ""}` }, t.status),
     ),
-    h("div", { class: `receipt ${delivery}` }, RECEIPT[delivery]),
+    h(
+      "div",
+      { class: `receipt ${delivery}` },
+      isNote(t.id) ? "A note in this browser. Export for agent to send it." : RECEIPT[delivery],
+    ),
     quote
       ? h("div", { class: "quote" }, `“${quote.length > 160 ? quote.slice(0, 160) + "…" : quote}”`)
       : null,
@@ -296,7 +335,8 @@ function threadCard(t: Thread): HTMLElement {
         h("div", null, m.body),
       ),
     ),
-    readOnly()
+    // What was sent is the record on a published copy; only a note is the reader's to change.
+    readOnly() || (published && !isNote(t.id))
       ? null
       : h(
           "div",
@@ -365,10 +405,25 @@ export function submitDialog(): void {
   const explainer = k === "explainer";
   const words =
     k === "explainer"
-      ? { title: "Send this back or finish", accept: "Done reading", back: "Send it back" }
+      ? {
+          title: "Send this back or finish",
+          accept: "Done reading",
+          back: "Send it back",
+          close: "Stop reading",
+        }
       : k === "design"
-        ? { title: "Decide on this design", accept: "Approve the design", back: "Send it back" }
-        : { title: "Submit review", accept: "Approve", back: "Request changes" };
+        ? {
+            title: "Decide on this design",
+            accept: "Approve the design",
+            back: "Send it back",
+            close: "Drop the design",
+          }
+        : {
+            title: "Submit review",
+            accept: "Approve",
+            back: "Request changes",
+            close: "Close the review",
+          };
   const ta = h("textarea", { rows: 4, placeholder: "Summary for the agent (optional)" });
   const d = dialog(
     h(
@@ -397,7 +452,9 @@ export function submitDialog(): void {
                 : "End the review without approving it",
             onclick: () => decide("close"),
           },
-          "Close",
+          // Not "Close": beside "Cancel" that read as a second way out of the
+          // dialog, and it ends the document.
+          words.close,
         ),
         h("button", { onclick: () => decide("request-changes") }, words.back),
         h("button", { class: "ok", onclick: () => decide("approve") }, words.accept),

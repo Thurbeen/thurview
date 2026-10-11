@@ -1,4 +1,4 @@
-import { h, append, popover } from "../dom.js";
+import { h, append, popover, clickPoint } from "../dom.js";
 import { state, navigate, threadsFor, kind, canWrite } from "../state.js";
 import { openAnchorPeek } from "../code.js";
 import { commentPopover, threadPinRow } from "../threads.js";
@@ -420,10 +420,7 @@ export function renderMap(root: HTMLElement): void {
               {
                 class: "small",
                 onclick: (e: MouseEvent) =>
-                  popover(commentPopover({ type: "map", node: n.id }), {
-                    x: e.pageX,
-                    y: e.pageY + 8,
-                  }),
+                  popover(commentPopover({ type: "map", node: n.id }), clickPoint(e, 0, 8)),
               },
               "Comment on this node",
             ),

@@ -328,6 +328,15 @@ kbd {
   flex: 1 1 auto;
   min-width: 3rem;
 }
+/* A branch name can be as long as the title; it gives way too, rather than
+   running under the tabs, and its tooltip keeps the whole of it. */
+.topbar .bar-binding {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .topbar .tabs {
   display: flex;
   gap: 2px;
@@ -494,6 +503,14 @@ kbd {
   border-collapse: collapse;
   margin: 10px 0;
 }
+/* A table the author wrote scrolls inside itself when it is wider than the
+   column, so the page never does. Only prose: a code peek's table is laid
+   out by .code and must stay a table to keep its lines full width. */
+.doc .prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
 .doc th,
 .doc td {
   border: 1px solid var(--line);
@@ -517,11 +534,9 @@ kbd {
   transition: opacity 0.1s;
 }
 .block:hover > .block-actions,
+.block > .block-actions:focus-within,
 .block.has-threads > .block-actions {
   opacity: 1;
-}
-.published .block-actions button:not(.count) {
-  display: none;
 }
 .block-actions button {
   width: 26px;
@@ -541,9 +556,14 @@ kbd {
 }
 .heading-toggle {
   margin-left: 10px;
+  padding: 0 2px;
   font-family: var(--font-mono);
   font-size: 11px;
+  font-weight: 400;
   color: var(--muted);
+  background: none;
+  border: none;
+  box-shadow: none;
   cursor: pointer;
   user-select: none;
 }
@@ -1746,6 +1766,10 @@ kbd {
 .ifd-entry:hover {
   background: var(--bg3);
 }
+.ifd-entry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .ifd-entry > .badge {
   flex: 0 0 auto;
   min-width: 66px;
@@ -1804,14 +1828,20 @@ kbd {
   .bar-binding {
     display: none;
   }
-  /* Only the tabs scroll: Threads and the decision must stay reachable without
-     the reader discovering that the bar scrolls sideways. */
+  /* The bar wraps rather than scrolls: a tab clipped by a strip with no
+     scrollbar is a tab the reader never learns exists. Threads and the
+     decision stay on screen too. The tabs scroll only when they alone are
+     wider than the screen. */
   .bar-actions {
     overflow: visible;
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding-top: 4px;
+    padding-bottom: 4px;
   }
   .bar-actions .tabs {
-    flex: 1 1 auto;
-    min-width: 0;
+    flex: none;
+    max-width: 100%;
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -1974,8 +2004,7 @@ kbd {
     margin-left: -4px;
     margin-right: -4px;
   }
-  .bar-rev,
-  .topbar select {
+  .bar-rev {
     display: none;
   }
   .doc h3 {

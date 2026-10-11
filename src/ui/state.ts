@@ -1,5 +1,6 @@
-import { published, type Payload } from "./api.js";
+import type { Payload } from "./api.js";
 import type { DocumentKind, Thread, ThreadTarget } from "../store.js";
+import { published } from "./published.js";
 
 export type View = "review" | "commits" | "files" | "map" | "coverage";
 
@@ -108,11 +109,15 @@ export function isTerminal(): boolean {
   return s === "accepted" || s === "closed";
 }
 
+/** A published copy's notes are the reader's own, so a finished review does not lock them. */
 export function readOnly(): boolean {
-  return isTerminal() || !canWrite();
+  return (!published && isTerminal()) || !canWrite();
 }
 
-/** Whether the reader may start a thread: not on an older revision, nor on a published copy. */
+/**
+ * Whether the reader may start a thread: not on an older revision. On a
+ * published copy what they start is a note kept in their browser.
+ */
 export function canWrite(): boolean {
-  return state.viewingRevision === null && !published;
+  return state.viewingRevision === null;
 }

@@ -6,6 +6,8 @@ import type { ChangedFile, Commit } from "../git.js";
 import type { SymbolDef } from "../symbols.js";
 import type { Presence } from "../presence.js";
 import type { QueueRow } from "../queue.js";
+import { published } from "./published.js";
+import { notes, isNote } from "./notes.js";
 
 export interface Payload {
   review: ReviewState;
@@ -32,25 +34,7 @@ export interface FileLines {
   lines: string[];
 }
 
-/**
- * A page written by `thurview export` carries its data in place of a server:
- * the document, commits, diffs and the whole of every file it shows. Null when
- * the page is served, which is every other time.
- */
-export interface Snapshot {
-  banner?: { revision: number; sha: string; liveUrl?: string };
-  markdown?: string;
-  payload: Payload;
-  commits: Commit[];
-  diffs: Record<string, FileDiff>;
-  /** keyed `head:<path>` or `base:<path>`, every line of the file */
-  files: Record<string, FileLines>;
-}
-
-export const published: Snapshot | null = (() => {
-  const el = document.getElementById("thurview-snapshot");
-  return el?.textContent ? (JSON.parse(el.textContent) as Snapshot) : null;
-})();
+export { published, type Snapshot } from "./published.js";
 
 /** What a published page answers for `url`, or throws: it has no server to ask. */
 function offline<T>(url: string): T {
@@ -100,14 +84,24 @@ function post<T>(url: string, body: unknown): Promise<T> {
   });
 }
 
+/**
+ * On a published copy a note is the only thing the reader can write, and it
+ * goes to this browser rather than to a server the copy does not have.
+ */
+const local = <T>(write: () => T): Promise<T> => Promise.resolve().then(write);
+
 export const api = {
   export: (id: string, revision: number) =>
-    j<{ markdown: string; filename: string; revision: number; threads: number; open: number }>(
-      `/api/reviews/${id}/export?revision=${revision}`,
-    ),
+    published
+      ? local(() => notes.markdown())
+      : j<{ markdown: string; filename: string; revision: number; threads: number; open: number }>(
+          `/api/reviews/${id}/export?revision=${revision}`,
+        ),
   reviews: () => j<(ReviewState & { openThreads: number; queue: QueueRow })[]>("/api/reviews"),
-  review: (id: string, revision?: number) =>
-    j<Payload>(`/api/reviews/${id}${revision ? `?revision=${revision}` : ""}`),
+  review: async (id: string, revision?: number) => {
+    const p = await j<Payload>(`/api/reviews/${id}${revision ? `?revision=${revision}` : ""}`);
+    return published ? { ...p, threads: [...p.threads, ...notes.list()] } : p;
+  },
   revisions: (id: string) =>
     j<{ revision: number; at: string; title: string }[]>(`/api/reviews/${id}/revisions`),
   commits: (id: string) => j<Commit[]>(`/api/reviews/${id}/commits`),
@@ -128,14 +122,26 @@ export const api = {
       target: ThreadTarget;
       body: string;
     },
-  ) => post<Thread>(`/api/reviews/${id}/threads`, input),
+  ) =>
+    published
+      ? local(() => notes.add(input.target, input.body))
+      : post<Thread>(`/api/reviews/${id}/threads`, input),
   reply: (id: string, tid: string, body: string) =>
-    post<Thread>(`/api/reviews/${id}/threads/${tid}/reply`, { body, role: "reviewer" }),
+    published && isNote(tid)
+      ? local(() => notes.reply(tid, body))
+      : post<Thread>(`/api/reviews/${id}/threads/${tid}/reply`, { body, role: "reviewer" }),
   resolve: (id: string, tid: string) =>
-    post<Thread>(`/api/reviews/${id}/threads/${tid}/resolve`, {}),
-  reopen: (id: string, tid: string) => post<Thread>(`/api/reviews/${id}/threads/${tid}/reopen`, {}),
+    published && isNote(tid)
+      ? local(() => notes.setStatus(tid, "resolved"))
+      : post<Thread>(`/api/reviews/${id}/threads/${tid}/resolve`, {}),
+  reopen: (id: string, tid: string) =>
+    published && isNote(tid)
+      ? local(() => notes.setStatus(tid, "open"))
+      : post<Thread>(`/api/reviews/${id}/threads/${tid}/reopen`, {}),
   deleteThread: (id: string, tid: string) =>
-    post<{ ok: true }>(`/api/reviews/${id}/threads/${tid}/delete`, {}),
+    published && isNote(tid)
+      ? local(() => (notes.remove(tid), { ok: true as const }))
+      : post<{ ok: true }>(`/api/reviews/${id}/threads/${tid}/delete`, {}),
   submit: (id: string, decision: "approve" | "request-changes" | "close", body: string) =>
     post<{ review: ReviewState }>(`/api/reviews/${id}/submit`, { decision, body }),
   dismiss: (id: string, dismissed: boolean) =>

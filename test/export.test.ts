@@ -79,6 +79,7 @@ const SNIPPETS = [
   "export function audit(user: string) {",
   "return user.length > 0;",
 ];
+const VERDICT = "Keep the audit out of the login path.";
 const THREAD = "Should a failed login be audited too?";
 
 beforeAll(async () => {
@@ -144,6 +145,12 @@ beforeAll(async () => {
       body: THREAD,
     }),
   });
+  // and a verdict with words of its own, which --no-threads keeps out as well
+  await fetch(`http://127.0.0.1:${server.port}/api/reviews/${reviewId}/submit`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ decision: "request-changes", body: VERDICT }),
+  });
   await server.close();
 
   withThreads = join(tmp, "out", "review.html");
@@ -195,6 +202,7 @@ describe("thurview export", () => {
   it("writes a folder target as its index.html, and leaves threads out when asked", async () => {
     const bare = await readFile(join(withoutThreads, "index.html"), "utf8");
     expect(bare).not.toContain(THREAD);
+    expect(bare).not.toContain(VERDICT);
     expect(bare).toContain("The audit call");
   });
 
@@ -321,9 +329,9 @@ describe.skipIf(!browserBin)("an exported document in a browser, offline", () =>
     const text = await p.evaluate<string>("document.body.innerText");
     for (const s of SECTIONS) expect.soft(text).toContain(s);
     for (const s of SNIPPETS) expect.soft(text).toContain(s);
-    // nothing to write with: a published copy is read only
+    // a published copy takes notes in the browser, but no decision reaches anyone from it
     const decide = await p.evaluate<number>(
-      `[...document.querySelectorAll("button")].filter((b) => b.offsetParent && /^(Decide|Submit.*|\\+|Comment on .*)$/.test(b.textContent)).length`,
+      `[...document.querySelectorAll("button")].filter((b) => b.offsetParent && /^(Decide|Submit.*)$/.test(b.textContent)).length`,
     );
     p.close();
     expect.soft(decide).toBe(0);

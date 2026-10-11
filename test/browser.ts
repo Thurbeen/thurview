@@ -16,8 +16,15 @@ export interface Browser {
   close(): Promise<void>;
 }
 
-/** Start the browser with `profile` as its data dir and wait until DevTools answers. */
-export async function launchBrowser(profile: string, timeoutMs = 60_000): Promise<Browser> {
+/**
+ * Start the browser with `profile` as its data dir and wait until DevTools answers.
+ * `args` adds switches, such as the Blink settings that give it a mouse.
+ */
+export async function launchBrowser(
+  profile: string,
+  timeoutMs = 60_000,
+  args: string[] = [],
+): Promise<Browser> {
   const proc: ChildProcess = spawn(
     browserBin!,
     [
@@ -26,6 +33,7 @@ export async function launchBrowser(profile: string, timeoutMs = 60_000): Promis
       "--disable-gpu",
       `--user-data-dir=${profile}`,
       "--remote-debugging-port=0",
+      ...args,
       "about:blank",
     ],
     { stdio: "ignore" },

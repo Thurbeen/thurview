@@ -61,6 +61,19 @@ name, never its absolute location or remote URL with possible credentials.
 Anchors must be relative to the repository. Exports contain the selected text
 and reader feedback, so inspect that content before sharing it.
 
+## Notes from a published copy
+
+A published copy (`thurview export` or `publish-static`) has no server, so a
+reader there takes **notes** instead: they stay in that browser, keyed to the
+revision and head, and the copy's **Export for agent** adds them to what was
+already sent. A note is an ordinary item in the same shape, numbered after the
+sent ones and on the checklist while open, with one extra line,
+`Origin: Written on a published copy; the agent has not seen it.`, and a thread
+id starting `note-`. That id exists only in the reader's browser: act on the
+item, answer the reader where they handed you the Markdown, and do not pass it
+to `thurview threads`. A copy made with `--no-threads` carries nothing that
+was sent, verdicts included, so its export holds the notes alone.
+
 Use a thread id from the export to answer and resolve the item:
 
 ```sh
