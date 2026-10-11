@@ -1,6 +1,6 @@
 ---
 name: thurview-pr-review
-description: Review an opened GitHub PR or GitLab MR in one flow - check publishing setup, author and serve the anchored thurview page, publish a public snapshot and Markdown export, then post or edit one summary with both links and follow new pushes. Use for PR/MR review requests, including browser walkthroughs of opened change requests, or /thurview-pr-review. For a local branch or commit range use thurview; for fixes use thurview-fix.
+description: Review an opened GitHub PR or GitLab MR in one flow - check publishing setup, author and seal the anchored thurview page, publish a public snapshot and Markdown export, then post or edit one summary with both links and follow new pushes. Use for PR/MR review requests, including browser walkthroughs of opened change requests, or /thurview-pr-review. For a local branch or commit range use thurview; for fixes use thurview-fix.
 user-invocable: true
 argument-hint: "<PR or MR number or URL> [--once] [--stop]"
 ---
@@ -20,7 +20,7 @@ snapshot assets. Never deploy an empty replacement after losing the archive.
 ```mermaid
 flowchart LR
   P[Check publishing setup] --> R[Review and author pinned page]
-  R --> L[Seal and serve privately]
+  R --> L[Seal pinned revision]
   L --> C[Publish public snapshot and Markdown]
   C --> S[Edit one summary with both links]
   S --> W[Wait for push]
@@ -44,6 +44,9 @@ $ARGUMENTS
 - Never approve, merge, close or push to the change request. The verdict is
   the summary's confidence. The command has no verb for any of those, and you
   do not reach around it with `gh` or `glab`.
+- Never start a local server, open a live page or wait for live document
+  feedback in this workflow. Do not use `--open` with `publish`. Explicitly
+  requested standalone interactive reviews use `thurview` instead.
 - Never post a second summary. `sync` edits the one it finds.
 - Never post a finding you are not sure of. Leave it out and say in a risk
   bullet that something was not confirmed.
@@ -81,9 +84,9 @@ authorized protected target before proceeding. Do not turn a saved target
 into authorization to expose another private repository.
 
 A summary must have both links on the first pass and every update. Do not
-post a partial summary with a missing link or a `pending` placeholder. Keep
-the interactive live URL private, and leave `allowLiveLink: false` in the
-cloud configuration so the snapshot cannot disclose it either.
+post a partial summary with a missing link or a `pending` placeholder. Leave
+`allowLiveLink: false` in the cloud configuration so the snapshot cannot
+disclose a separately running interactive page.
 
 ## 1. Where the review stands
 
@@ -155,7 +158,7 @@ An open blocking finding caps confidence at 2; `sync` refuses more. Only a 5
 opens the summary with `Next: merge`; a 4 sends the author to the open
 non-blocking findings, or to the risk when none is open.
 
-## 4. Author, serve and publish this head
+## 4. Author, seal and publish this head
 
 Use the same source worktree and publishing store throughout:
 
@@ -182,12 +185,12 @@ otherwise leave `nodes: []` and say why.
 
 ```sh
 thurview publish --review <id>
-thurview open --review <id>
 thurview publish-static <id> --to cloudflare
 ```
 
-Fix all publish errors before proceeding. `open` starts the live server;
-give its URL only to the operator. The snapshot command returns
+Fix all publish errors before proceeding. `publish` validates and seals
+the pinned revision without starting a server; `publish-static` renders and
+deploys that revision without local serving. The snapshot command returns
 `snapshot.url`, updates the same random path and retains earlier documents'
 assets. Initialize its archive only on the first use of a dedicated Worker
 with no snapshots (see setup); otherwise restore a lost archive.
@@ -306,28 +309,20 @@ It blocks until there is something to do and prints one `event`:
 | Event                         | Do                                            |
 | ----------------------------- | --------------------------------------------- |
 | `push`                        | steps 0–5 again, with `since` as the old head |
-| `none`                        | check live feedback, then wait again          |
+| `none`                        | wait on the forge again                       |
 | `merged`, `closed`, `stopped` | stop: the summary already says so             |
 
-Between forge waits, run `thurview wait --review <id> --timeout 60` to receive
-live questions and decisions. Answer the returned threads using the lifecycle
-reference, resolve only what you addressed, then seal and refresh the snapshot
-and summary if its content changed. A browser approval is not a forge approval
-and does not authorize modifying or merging the source branch. Return to the
-forge wait afterward; the PR/MR's merge, close or stop ends this workflow.
-Only the document wait advertises an agent listening on the live page; do not
-claim continuous live listening while the forge wait runs.
-
-With `--once`, stop after the first complete publish and sync. Follow the
-[Lifecycle](../thurview/references/lifecycle.md) for private page feedback.
+Read and address feedback on the forge; keep finding assessments and the
+summary current when a push arrives. Do not run a document wait or claim an
+agent is listening on a live page. The PR/MR's merge, close or stop ends this
+workflow. With `--once`, stop after the first complete publish and sync.
 Do not change the source branch as part of this review.
 
 A reader stops the loop with the `thurview:stop` label or a comment that
 starts `/thurview stop`; you stop it with `thurview pr-review stop`. A stopped
 review resumes with `thurview pr-review start --change <ref>` once the label
 is gone. Report what you posted, the summary comment URL, the public page and the
-Markdown link when the loop ends. Say whether the live page has an agent
-listening; questions asked without one are queued.
+Markdown link when the loop ends.
 
 How GitHub and GitLab differ, and what each supports, is in
 [Forges](references/forges.md).

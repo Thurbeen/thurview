@@ -87,7 +87,8 @@ will succeed. Require a successful upload and both reachable links before
 posting the review summary.
 
 Reuse the saved values without another setup question. The public snapshot
-is read only; comments go through the private live page. Do not put that
-page's address in the public snapshot or forge summary. A private repository
+is read only; review feedback goes on the forge. This workflow never starts
+a local server. Keep any separately requested interactive page's address
+out of the public snapshot and forge summary. A private repository
 needs existing authorization for public sharing, or an authorized protected
 target; the existence of this target file alone does not grant it.
