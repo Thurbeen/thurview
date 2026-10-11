@@ -10,8 +10,8 @@ import type { Payload, FileLines } from "./api.js";
 export interface Snapshot {
   banner?: { revision: number; sha: string; liveUrl?: string };
   markdown?: string;
-  /** what was sent, as `thurview export --format md` writes it */
-  feedback?: string;
+  /** what was sent, as `thurview export --format md` writes it, and its item count */
+  feedback?: { markdown: string; items: number };
   payload: Payload;
   commits: Commit[];
   diffs: Record<string, FileDiff>;

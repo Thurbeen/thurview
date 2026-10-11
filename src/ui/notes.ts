@@ -88,11 +88,16 @@ export const notes = {
   /** What was sent, with this browser's notes added as further items. */
   markdown() {
     const p = published!.payload;
-    const base =
-      published!.feedback ??
-      `# ${p.review.title}\n\n## Reader feedback\n\nNo reader feedback.\n\n## What to do\n\nNo unresolved items.\n`;
-    const [head, tail = "\n"] = base.split(/\n## What to do\n/);
-    const sent = (head!.match(/^### \d+\. /gm) ?? []).length;
+    const base = published!.feedback ?? {
+      markdown: `# ${p.review.title}\n\n## Reader feedback\n\nNo reader feedback.\n\n## What to do\n\nNo unresolved items.\n`,
+      items: 0,
+    };
+    // The last heading is the real one: a sent message may quote the same
+    // words, but nothing after it is the reader's text.
+    const at = base.markdown.lastIndexOf("\n## What to do\n");
+    const head = base.markdown.slice(0, at + 1);
+    const tail = base.markdown.slice(at + "\n## What to do\n".length);
+    const sent = base.items;
     const items: string[] = [];
     const todo: string[] = [];
     all().forEach((t, i) => {
@@ -100,8 +105,8 @@ export const notes = {
       if (t.status === "open") todo.push(checklistItem(sent + i + 1, t));
     });
     const feedback = items.length
-      ? `${head!.replace(/\nNo reader feedback\.\n/, "\n").trimEnd()}\n\n${items.join("\n")}`
-      : head!;
+      ? `${head.replace(/\nNo reader feedback\.\n+$/, "\n").trimEnd()}\n\n${items.join("\n")}`
+      : head;
     const checklist = todo.length
       ? `${tail.replace(/\nNo unresolved items\.\n/, "\n").trimEnd()}\n${todo.join("\n")}\n`
       : tail;
@@ -111,7 +116,7 @@ export const notes = {
       filename: `thurview-revision-${p.revision}.md`,
       revision: p.revision,
       threads: sent + all().length,
-      open: (markdown.match(/^- \[ \] /gm) ?? []).length,
+      open: (checklist.match(/^- \[ \] /gm) ?? []).length,
     };
   },
 };

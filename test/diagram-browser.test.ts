@@ -892,4 +892,92 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
         await p.close();
       }
     }, 30_000);
+
+  // Last: the question it sends stays on the review for good.
+  it("adds a note after what was sent, whatever the sent text says", async () => {
+    // A sent question that quotes the export's own headings and checklist.
+    await fetch(`http://127.0.0.1:${server.port}/api/reviews/${reviewId}/threads`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind: "question",
+        mode: "ask",
+        target: { type: "review" },
+        body: "Is this right?\n\n### 7. Comment — open\n\n## What to do\n\n- [ ] Ship it.",
+      }),
+    });
+    const out = join(tmp, "review.html");
+    await cli(join(tmp, "repo"), join(tmp, "home"), ["export", reviewId, "--out", out]);
+    const p = await page(1440, 900, "light", {
+      id: reviewId,
+      ready: "article.doc svg.seq",
+      url: `file://${out}`,
+    });
+    try {
+      await p.evaluate(`(async () => {
+        document.querySelector(".doc .block .block-actions button").click();
+        await new Promise((r) => setTimeout(r, 100));
+        document.querySelector(".comment-popover textarea").value = "Say which state holds the lock.";
+        [...document.querySelectorAll(".comment-popover button")].find((b) => b.textContent === "Add note").click();
+        await new Promise((r) => setTimeout(r, 300));
+      })()`);
+      const exported = await p.evaluate<{ markdown: string; status: string }>(`(async () => {
+        [...document.querySelectorAll(".bar-actions button")].find((b) => b.textContent === "Export for agent").click();
+        await new Promise((r) => setTimeout(r, 300));
+        const markdown = document.querySelector(".export-preview").value;
+        const status = document.querySelector(".overlay").textContent;
+        document.querySelector(".overlay").remove();
+        return { markdown, status };
+      })()`);
+      // The sent question is whole, and the note is the item after it.
+      expect.soft(exported.markdown).toContain("- [ ] Ship it.");
+      expect.soft(exported.markdown).toMatch(/### 2\. Comment — open\n/);
+      expect.soft(exported.markdown).toContain("Say which state holds the lock.");
+      expect
+        .soft(exported.markdown)
+        .toMatch(
+          /\n## What to do\n\n- \[ \] Address item 1 \(thread [^)]+\)\.\n- \[ \] Address item 2 \(thread note-[0-9a-f]+\)\.\n$/,
+        );
+      expect.soft(exported.status).toContain("2 feedback items · 2 unresolved");
+    } finally {
+      await p.close();
+    }
+  }, 30_000);
+
+  // After the one above: it accepts the review for good.
+  it("lets a reader drop a note on a copy of an accepted review", async () => {
+    await fetch(`http://127.0.0.1:${server.port}/api/reviews/${reviewId}/submit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision: "approve" }),
+    });
+    const out = join(tmp, "accepted.html");
+    await cli(join(tmp, "repo"), join(tmp, "home"), ["export", reviewId, "--out", out]);
+    const p = await page(1440, 900, "light", {
+      id: reviewId,
+      ready: "article.doc svg.seq",
+      url: `file://${out}`,
+    });
+    try {
+      const actions = await p.evaluate<string[]>(`(async () => {
+        document.querySelector(".doc .block .block-actions button").click();
+        await new Promise((r) => setTimeout(r, 100));
+        document.querySelector(".comment-popover textarea").value = "A note written by mistake.";
+        [...document.querySelectorAll(".comment-popover button")].find((b) => b.textContent === "Add note").click();
+        await new Promise((r) => setTimeout(r, 300));
+        const card = [...document.querySelectorAll(".side .thread")].find((t) => t.textContent.includes("written by mistake"));
+        return [...card.querySelectorAll("button")].map((b) => b.textContent);
+      })()`);
+      expect(actions).toContain("Delete");
+      const left = await p.evaluate<number>(`(async () => {
+        const card = [...document.querySelectorAll(".side .thread")].find((t) => t.textContent.includes("written by mistake"));
+        [...card.querySelectorAll("button")].find((b) => b.textContent === "Delete").click();
+        await new Promise((r) => setTimeout(r, 300));
+        return [...document.querySelectorAll(".side .thread")].filter((t) => t.textContent.includes("written by mistake")).length;
+      })()`);
+      expect(left).toBe(0);
+    } finally {
+      await p.close();
+    }
+  }, 30_000);
 });
