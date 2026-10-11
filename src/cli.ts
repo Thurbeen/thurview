@@ -1045,7 +1045,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       help: [
         `Edit ${join(dir, "review.md")} and data.yaml, then run \`thurview publish --review ${short(review.id)}\``,
         `Run \`git grep -n -w <symbol> ${head.slice(0, 12)} --\` in ${worktree} for who reaches a symbol the change moved`,
-        stat.additions + stat.deletions < 300
+        binding.kind !== "pr" && stat.additions + stat.deletions < 300
           ? `Small change: run \`thurview publish --review ${short(review.id)} --view files --open\` now, then write the document`
           : `Run \`git diff ${base.slice(0, 12)} ${head.slice(0, 12)}\` in ${worktree} to study the change`,
       ],
@@ -1348,12 +1348,18 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       };
     if (rows.length) out["diagnostics"] = rows;
     if (warnings.length) out["warnings"] = warnings;
-    out["help"] = [
-      url
-        ? `Give the reader ${url}`
-        : `Run \`thurview open --review ${short(review.id)}\` to start the server and get the url`,
-      `Run \`thurview wait --review ${short(review.id)}\` to block until the reader responds`,
-    ];
+    out["help"] =
+      review.binding.kind === "pr" && !bool(p, "open")
+        ? [
+            `Run \`thurview publish-static ${short(review.id)} --to cloudflare\` to publish the sealed snapshot and Markdown export`,
+            `Run \`thurview pr-review status --change ${review.binding.name}\` for the current forge head and findings`,
+          ]
+        : [
+            url
+              ? `Give the reader ${url}`
+              : `Run \`thurview open --review ${short(review.id)}\` to start the server and get the url`,
+            `Run \`thurview wait --review ${short(review.id)}\` to block until the reader responds`,
+          ];
     return out;
   },
 
