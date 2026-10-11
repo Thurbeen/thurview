@@ -81,15 +81,26 @@ export function layoutFlow(
     return { x, y: pad + band + li * (boxH + gapY), cx: x + boxW / 2, li };
   };
 
-  // A step whose branch into the next row is named in the band below it,
-  // where that step's loops are named too.
-  const beside = (id: string) =>
-    b.edges.some(
-      (e) => e.from === id && layer.get(e.to)! === layer.get(id)! + 1 && at(e.to).cx !== at(id).cx,
+  // Where a step's loops are named, beside its stem: two lines above the run
+  // out to the lanes and one below it. A named branch into the next row takes
+  // the line its own label sits on - above when it turns right, below when it
+  // runs straight down - and an unnamed edge takes none.
+  const lines = new Map<Flow["edges"][number], number>();
+  for (const s of b.steps) {
+    const from = layer.get(s.id)!;
+    const free = [0, 1, 2].filter(
+      (line) =>
+        !b.edges.some((e) => {
+          if (e.from !== s.id || !e.case || layer.get(e.to)! !== from + 1) return false;
+          const dx = at(e.to).cx - at(s.id).cx;
+          return line === 0 ? dx > 0 : line === 2 && dx === 0;
+        }),
     );
-  // How many edges leave the same step for a lane before this one.
-  const earlier = (edge: Flow["edges"][number]) =>
-    loops.filter((e) => e.from === edge.from && b.edges.indexOf(e) < b.edges.indexOf(edge)).length;
+    for (const e of loops
+      .filter((e) => e.from === s.id && e.case)
+      .sort((p, q) => b.edges.indexOf(p) - b.edges.indexOf(q)))
+      if (free.length) lines.set(e, free.shift()!);
+  }
 
   const edges = b.edges.map((edge): FlowEdge => {
     const from = at(edge.from);
@@ -118,19 +129,18 @@ export function layoutFlow(
     const laneX = width - lane + 17 + loops.indexOf(edge) * laneGap;
     const out = from.y + boxH + gapY / 2;
     const into = to.y - gapY / 2;
-    // Named where it leaves its step, beside the stem and above the run out
-    // to the lane: on the lane itself, other loops' lanes and runs cross it.
-    // The band under the step holds two lines, the first taken when a branch
-    // to the next row is named there too; a loop past those is named on its lane.
-    const line = (beside(edge.from) ? 1 : 0) + earlier(edge);
+    // Named where it leaves its step, beside the stem: on the lane itself,
+    // other loops' lanes and runs cross it. Only a fourth named edge from one
+    // step is left to its lane.
+    const line = lines.get(edge);
     return {
       edge,
       back,
       d: `M${from.cx},${from.y + boxH} V${out} H${laneX} V${into} H${to.cx} V${to.y - 4}`,
       label:
-        line < 2
-          ? { x: from.cx + 6, y: out - 5 - line * 13, at: "start" }
-          : { x: laneX - 6, y: (out + into) / 2, at: "end" },
+        line === undefined
+          ? { x: laneX - 6, y: (out + into) / 2, at: "end" }
+          : { x: from.cx + 6, y: line === 2 ? out + 15 : out - 5 - line * 13, at: "start" },
     };
   });
   return { width, height, at, edges };

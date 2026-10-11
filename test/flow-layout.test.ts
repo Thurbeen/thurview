@@ -70,13 +70,16 @@ describe("flow layout", () => {
         { from: "check", to: "email", case: "start over" },
       ],
     };
-    const { edges } = layoutFlow(branchy);
+    const { edges, at } = layoutFlow(branchy);
     const mine = edges.filter((e) => e.edge.from === "check");
     const loops = mine.filter((e) => e.back);
     expect(loops).toHaveLength(2);
     // Each loop's name is a text line away from every other label of its step.
-    for (const loop of loops)
+    for (const loop of loops) {
+      // beside its stem, where no other loop's lane runs
+      expect(loop.label).toMatchObject({ x: at("check").cx + 6, at: "start" });
       for (const other of mine.filter((e) => e !== loop))
         expect(Math.abs(loop.label.y - other.label.y)).toBeGreaterThanOrEqual(13);
+    }
   });
 });
