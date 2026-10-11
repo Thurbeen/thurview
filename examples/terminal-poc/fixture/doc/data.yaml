@@ -1,0 +1,66 @@
+actors:
+  sender: { label: Event sender, map: sender }
+  receiver: { label: Receiver, map: relay.receiver }
+  outbox: { label: Outbox, map: relay.outbox }
+  router: { label: Fan-out router, map: relay.router }
+  worker: { label: Delivery worker, map: relay.worker }
+  subscriber: { label: Subscriber, map: subscriber }
+  deadletter: { label: Dead-letter queue, map: relay.deadletter }
+
+anchors:
+  receive:
+    title: the receive path verifies, stores once and answers 202
+    map: relay.receiver
+    peek: { file: src/http/receive.ts, from: 17, to: 22 }
+  verify:
+    title: the sender's HMAC is checked before anything is stored
+    map: relay.receiver
+    peek: { file: src/http/receive.ts, from: 10, to: 15 }
+  enqueue:
+    title: one outbox row per event, whatever the number of subscribers
+    map: relay.outbox
+    peek: { file: src/outbox/outbox.ts, from: 10, to: 13 }
+  lease:
+    title: a worker leases the oldest due row for thirty seconds
+    map: relay.outbox
+    peek: { file: src/outbox/outbox.ts, from: 15, to: 22 }
+  tick:
+    title: one pass posts to every subscriber and shares one attempt counter
+    map: relay.worker
+    peek: { file: src/worker/deliver.ts, from: 9, to: 25 }
+  backoff:
+    title: doubling backoff, capped at ten minutes
+    map: relay.worker
+    peek: { file: src/worker/deliver.ts, from: 4, to: 7 }
+  dropped:
+    title: an event out of attempts is deleted with no trace
+    map: relay.worker
+    detail: The dead-letter queue replaces this branch.
+    peek: { file: src/worker/deliver.ts, from: 18, to: 20 }
+  schema:
+    title: the outbox table every row lands in before the 202
+    map: relay.store
+    peek: { file: src/store/db.ts, from: 6, to: 12 }
+  config:
+    title: subscribers, retry base and attempt budget come from the environment
+    map: relay.config
+    peek: { file: src/config.ts, from: 12, to: 19 }
+
+stores: {}
+
+interfaces:
+  deliveries:
+    name: deliveries table
+    change: added
+    capability: Holds one row per event and subscriber, so each endpoint retries on its own counter.
+    anchor: enqueue
+  deadLetter:
+    name: dead_letter table
+    change: added
+    capability: Keeps every event that ran out of attempts, for the operator to inspect and replay.
+    anchor: dropped
+  replay:
+    name: POST /admin/replay
+    change: added
+    capability: Moves parked deliveries back into the queue with a fresh attempt budget.
+    anchor: dropped

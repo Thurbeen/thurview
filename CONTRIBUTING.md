@@ -75,6 +75,9 @@ locally.
 - `test/e2e.test.ts`: the suite, driving the CLI and the server end to end.
 - `test/forge.test.ts`: the same, with a fake `gh` and `glab` on PATH, so both
   forge adapters are driven rather than asserted.
+- `examples/terminal-poc/`: a proof of concept drawing a published document in
+  a thurbox terminal pane; not shipped. Its README says how to run it, and
+  `test/terminal-poc.test.ts` drives it.
 
 ## Demo media
 
