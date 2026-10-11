@@ -154,10 +154,14 @@ export async function exportReview(
     banner: opts.banner,
     markdown: opts.markdown,
     // What was sent, as the agent reads it: the page adds the reader's own
-    // notes to it, and it has no way to fetch even its own feedback.md.
-    feedback: (
-      await exportMarkdown(review, review.revision, { sentOnly: true, threads: opts.threads })
-    ).markdown,
+    // notes to it, and it has no way to fetch even its own feedback.md. A copy
+    // without threads carries none of it, verdicts included.
+    feedback:
+      opts.threads === false
+        ? undefined
+        : await exportMarkdown(review, review.revision, { sentOnly: true }).then(
+            ({ markdown, threads }) => ({ markdown, items: threads }),
+          ),
   };
   const js = (await readFile(join(UI_DIR, "app.js"), "utf8"))
     .replace(/\n\/\/# sourceMappingURL=.*\s*$/, "\n")

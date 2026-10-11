@@ -79,6 +79,7 @@ const SNIPPETS = [
   "export function audit(user: string) {",
   "return user.length > 0;",
 ];
+const VERDICT = "Keep the audit out of the login path.";
 const THREAD = "Should a failed login be audited too?";
 
 beforeAll(async () => {
@@ -144,6 +145,12 @@ beforeAll(async () => {
       body: THREAD,
     }),
   });
+  // and a verdict with words of its own, which --no-threads keeps out as well
+  await fetch(`http://127.0.0.1:${server.port}/api/reviews/${reviewId}/submit`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ decision: "request-changes", body: VERDICT }),
+  });
   await server.close();
 
   withThreads = join(tmp, "out", "review.html");
@@ -195,6 +202,7 @@ describe("thurview export", () => {
   it("writes a folder target as its index.html, and leaves threads out when asked", async () => {
     const bare = await readFile(join(withoutThreads, "index.html"), "utf8");
     expect(bare).not.toContain(THREAD);
+    expect(bare).not.toContain(VERDICT);
     expect(bare).toContain("The audit call");
   });
 

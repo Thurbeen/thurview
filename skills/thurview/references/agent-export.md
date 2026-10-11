@@ -71,7 +71,8 @@ sent ones and on the checklist while open, with one extra line,
 `Origin: Written on a published copy; the agent has not seen it.`, and a thread
 id starting `note-`. That id exists only in the reader's browser: act on the
 item, answer the reader where they handed you the Markdown, and do not pass it
-to `thurview threads`.
+to `thurview threads`. A copy made with `--no-threads` carries nothing that
+was sent, verdicts included, so its export holds the notes alone.
 
 Use a thread id from the export to answer and resolve the item:
 

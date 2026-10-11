@@ -107,7 +107,7 @@ Copy it or download it as `.md`; agents can fetch the same document with
 ## Sharing with someone who does not run thurview
 
 `thurview export --out review.html` writes the published revision as one HTML
-file: the same page, read only, with every snippet, diagram and diff resolved
+file: the same page without a server, with every snippet, diagram and diff resolved
 at the pinned commits and the reader's threads shown as notes (`--no-threads`
 leaves them out). It opens from disk, fetches nothing, and names no server and
 no local path. Point `--out` at a folder for `<folder>/index.html`, such as a
@@ -116,7 +116,8 @@ repository's Pages folder.
 Whoever opens a copy can still comment: the `+` beside a paragraph, a line
 number or a selection adds a note that stays in their browser.
 _Export for agent_ then gives the Markdown of what was sent with their notes
-added, to hand to an agent. Nothing they write reaches the review or its
+added, to hand to an agent; a `--no-threads` copy carries nothing that was
+sent, so its Markdown holds their notes alone. Nothing they write reaches the review or its
 agent unless they send that Markdown.
 
 For a link instead of a file, `thurview publish-static` deploys a durable

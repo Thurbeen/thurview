@@ -169,7 +169,7 @@ async function context(thread: Thread, snapshot: Sealed, review: ReviewState) {
 export async function exportMarkdown(
   review: ReviewState,
   revision = review.revision,
-  opts: { sentOnly?: boolean; threads?: boolean } = {},
+  opts: { sentOnly?: boolean } = {},
 ) {
   if (!Number.isInteger(revision) || revision < 1 || revision > review.revision)
     throw new Error("export requires a published revision between 1 and the current revision");
@@ -178,10 +178,7 @@ export async function exportMarkdown(
   snapshots.set(revision, current);
   const feedback = await readThreads(review.id);
   const threads = feedback.threads.filter(
-    (t) =>
-      opts.threads !== false &&
-      t.revision <= revision &&
-      (!opts.sentOnly || t.submitted || t.mode === "ask"),
+    (t) => t.revision <= revision && (!opts.sentOnly || t.submitted || t.mode === "ask"),
   );
   for (const t of threads) {
     if (t.revision > 0 && !snapshots.has(t.revision))
