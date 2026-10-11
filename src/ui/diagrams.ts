@@ -344,8 +344,12 @@ export function flowDiagram(b: Flow, doc: CompiledDocument): HTMLElement {
   for (const { edge, d, back, label } of edges) {
     const g = svg("g", { class: back ? "edge back" : "edge" });
     g.appendChild(svg("path", { d, fill: "none", "marker-end": "url(#flow-arr)" }));
-    if (edge.case)
-      g.appendChild(svg("text", { x: label.x, y: label.y, "text-anchor": label.at }, edge.case));
+    if (edge.case) {
+      const shown = label.room === undefined ? edge.case : fit(edge.case, label.room, 10.5);
+      const text = svg("text", { x: label.x, y: label.y, "text-anchor": label.at }, shown);
+      if (shown !== edge.case) text.appendChild(svg("title", {}, edge.case));
+      g.appendChild(text);
+    }
     el.appendChild(g);
   }
 
