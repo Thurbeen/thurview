@@ -49,4 +49,34 @@ describe("flow layout", () => {
     const straight = { ...flow, edges: flow.edges.filter((e) => e.case !== "no") };
     expect(layoutFlow(straight).edges.some((e) => e.back)).toBe(false);
   });
+
+  it("names each loop leaving one step on a line of its own", () => {
+    // A check that can send the reader back to either earlier step, and on
+    // to one of two steps side by side below it.
+    const branchy: Flow = {
+      ...flow,
+      steps: [
+        ...flow.steps.slice(0, 2),
+        { id: "check", label: "Code valid?", anchor: "check", decision: true },
+        { id: "done", label: "Account created", anchor: "create", decision: false },
+        { id: "help", label: "Ask for help", decision: false },
+      ],
+      edges: [
+        { from: "email", to: "send" },
+        { from: "send", to: "check" },
+        { from: "check", to: "done", case: "yes" },
+        { from: "check", to: "help", case: "stuck" },
+        { from: "check", to: "send", case: "resend" },
+        { from: "check", to: "email", case: "start over" },
+      ],
+    };
+    const { edges } = layoutFlow(branchy);
+    const mine = edges.filter((e) => e.edge.from === "check");
+    const loops = mine.filter((e) => e.back);
+    expect(loops).toHaveLength(2);
+    // Each loop's name is a text line away from every other label of its step.
+    for (const loop of loops)
+      for (const other of mine.filter((e) => e !== loop))
+        expect(Math.abs(loop.label.y - other.label.y)).toBeGreaterThanOrEqual(13);
+  });
 });
