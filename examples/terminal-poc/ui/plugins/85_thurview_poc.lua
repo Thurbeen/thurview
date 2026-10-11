@@ -36,7 +36,8 @@ local keys_seen = 0
 -- and a hidden pane is not drawn.
 local LIST, LIST_EVERY = "thurview.threads", 30
 local WRITE_OPTS = { machine = "local", timeout = 30 }
-local writes, write_seq, last_list = {}, 0, nil
+-- The run keys of the writes not answered yet.
+local writes, last_list = {}, nil
 -- When the next listing is due, on the render clock. Asked on a schedule of
 -- our own: re-asking a run on every frame runs it again and again.
 local list_due = nil
@@ -59,11 +60,12 @@ local function readonly()
     return "read-only: this model came from no thurview store"
   end
   if not run then
-    return "read-only: grant run to thurview in Ctrl+, → ] (t) to comment"
+    return "read-only: grant run to thurview in F6 → ] (t) to comment"
   end
 end
 
---- Hand the view's writes to the bridge, each as its own run.
+--- Hand the view's writes to the bridge, each as its own run. The bridges take
+--- turns on the review themselves, so a write never waits for the pane to draw.
 local function flush()
   if not run or readonly() then
     view.take_outbox(st)
@@ -80,10 +82,12 @@ local function flush()
     else
       args = { "submit", model.review, w[2], threads.hex(w[3] or "") }
     end
-    write_seq = write_seq + 1
-    local pending = { key = "thurview.write." .. write_seq, cmd = bridge(args) }
-    run(pending.key, pending.cmd, WRITE_OPTS)
-    writes[#writes + 1] = pending
+    -- Counted in `state`, which outlives a reload, so a key never names an
+    -- answer held from before it.
+    state.write_seq = (state.write_seq or 0) + 1
+    local key = "thurview.write." .. state.write_seq
+    run(key, bridge(args), WRITE_OPTS)
+    writes[#writes + 1] = key
   end
 end
 
@@ -110,7 +114,7 @@ local function collect(now)
   end
   local i = 1
   while writes[i] do
-    local answer = runs[writes[i].key]
+    local answer = runs[writes[i]]
     if answer and answer.state ~= "pending" then
       if answer.stdout and answer.stdout ~= "" then
         -- Every answer is the review's whole thread state, so it replaces the listing.

@@ -21,7 +21,9 @@
 //
 // It reads THURVIEW_HOME like the CLI does, and needs `pnpm build` (dist/).
 import { createThread, replyThread, setThreadStatus, submitReview } from "../../dist/threads.js";
-import { readReview, readThreads } from "../../dist/store.js";
+import { home, readReview, readThreads } from "../../dist/store.js";
+import { mkdir, rmdir, stat } from "node:fs/promises";
+import { join } from "node:path";
 
 const hex = (s) => Buffer.from(s ?? "", "utf8").toString("hex");
 const text = (h) => Buffer.from(h ?? "", "hex").toString("utf8");
@@ -66,8 +68,40 @@ async function state(review) {
   return out.map((r) => r.join("\t")).join("\n") + "\n";
 }
 
+// thurview rewrites threads.json whole, so two writes at once would lose one.
+// The pane runs one bridge per write, so the bridges take turns: a directory
+// is the lock, since creating one either succeeds or fails, atomically.
+async function locked(review, write) {
+  const dir = join(home(), "terminal-poc-locks");
+  const lock = join(dir, review);
+  await mkdir(dir, { recursive: true });
+  for (let waited = 0; ; waited += 25) {
+    try {
+      await mkdir(lock);
+      break;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+      // A bridge killed mid-write leaves its lock behind; no write takes a minute.
+      const age = Date.now() - (await stat(lock).catch(() => ({ mtimeMs: Date.now() }))).mtimeMs;
+      if (age > 60_000) await rmdir(lock).catch(() => {});
+      if (waited > 30_000) throw new Error("another write to this review is still running");
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  }
+  try {
+    await write();
+  } finally {
+    await rmdir(lock).catch(() => {});
+  }
+}
+
 async function main([command, review, ...rest]) {
   if (!review) throw new Error("usage: bridge.mjs <list|create|reply|status|submit> <review> ...");
+  if (command !== "list") await locked(review, () => write(command, review, rest));
+  process.stdout.write(await state(review));
+}
+
+async function write(command, review, rest) {
   if (command === "create") {
     const [type, key, mode, body] = rest;
     if (mode !== "review" && mode !== "ask")
@@ -91,10 +125,9 @@ async function main([command, review, ...rest]) {
     if (!["approve", "request-changes", "close"].includes(decision))
       throw new Error(`decision must be approve, request-changes or close`);
     await submitReview(review, decision, body ? text(body) : undefined);
-  } else if (command !== "list") {
+  } else {
     throw new Error(`unknown command ${command}`);
   }
-  process.stdout.write(await state(review));
 }
 
 main(process.argv.slice(2)).catch((e) => {

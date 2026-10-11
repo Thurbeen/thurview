@@ -20,7 +20,7 @@
 #
 # Needs: node and this checkout's dependencies (pnpm install), git, tmux,
 # thurbox and thurbox-cli on PATH. Commenting needs the `run` grant, which only
-# you can give: Ctrl+, then ] in the sandboxed thurbox, select thurview, press t.
+# you can give: F6 then ] in the sandboxed thurbox, select thurview, press t.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,7 +96,7 @@ else
     fi
     revision="$(find "$(cat "$root/design-dir")/revisions" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
     review="$(basename "$(cat "$root/design-dir")")"
-    if [[ " $* " == *" --seed "* ]] && ! grep -q '"threads": *\[ *{' "$(cat "$root/design-dir")/threads.json" 2>/dev/null; then
+    if [[ " $* " == *" --seed "* ]] && ! node -e 'process.exit(require(process.argv[1]).threads?.length ? 0 : 1)' "$(cat "$root/design-dir")/threads.json" 2>/dev/null; then
         # The reader asks through the bridge, the agent answers through the CLI:
         # the same two paths a real review takes.
         block="$(node -e 'const d=require(process.argv[1]); console.log(d.blocks.find((b)=>b.type==="heading"&&b.text==="How a delivery works today").id)' "$revision/document.json")"

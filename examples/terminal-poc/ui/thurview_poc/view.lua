@@ -48,7 +48,7 @@ local function clip(spans, w)
     else
       local rest = w - used
       if rest > 0 then
-        out[#out + 1] = { text = cut(s.text, rest), st = s.st, link = s.link }
+        out[#out + 1] = { text = cut(s.text, rest), st = s.st, link = s.link, id = s.id }
       end
       break
     end
@@ -481,9 +481,12 @@ end
 
 --- Take the bridge's answer: the threads as thurview now has them.
 function M.set_threads(st, parsed)
-  st.threads = parsed
-  st.tv = st.tv + 1
   st.notice = parsed.error and ("thurview: " .. parsed.error) or nil
+  -- A refused write answers with the reason alone: what is shown still stands.
+  if parsed.status then
+    st.threads = parsed
+    st.tv = st.tv + 1
+  end
 end
 
 --- The writes asked for since the last call, each a list of fields:

@@ -377,6 +377,13 @@ export async function project(revisionDir: string): Promise<TerminalModel> {
   };
 }
 
+/** Valid thurview ids that Lua refuses as a bare table key. */
+const LUA_KEYWORDS = new Set(
+  "and break do else elseif end false for function goto if in local nil not or repeat return then true until while".split(
+    " ",
+  ),
+);
+
 function luaValue(value: unknown, indent: string): string {
   const inner = indent + "  ";
   if (value === null || value === undefined) return "nil";
@@ -390,7 +397,7 @@ function luaValue(value: unknown, indent: string): string {
         .filter(([, v]) => v !== undefined)
         .map(
           ([k, v]) =>
-            `${inner}${/^[A-Za-z_]\w*$/.test(k) ? k : `[${JSON.stringify(k)}]`} = ${luaValue(v, inner)}`,
+            `${inner}${/^[A-Za-z_]\w*$/.test(k) && !LUA_KEYWORDS.has(k) ? k : `[${JSON.stringify(k)}]`} = ${luaValue(v, inner)}`,
         );
   return entries.length ? `{\n${entries.join(",\n")},\n${indent}}` : "{}";
 }

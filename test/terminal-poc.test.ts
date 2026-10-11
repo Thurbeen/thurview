@@ -200,62 +200,93 @@ const bridge = (...args: string[]) =>
 const bidOf = (text: string) =>
   model.blocks.find((b) => b.t === "heading" && b.text === text)!.bid!;
 
-describe("writing comments and reviews through thurview's own threads module", () => {
-  it("holds a review comment until the review is submitted, as the browser does", async () => {
-    const created = await bridge(
-      "create",
-      reviewId,
-      "document",
-      hex(bidOf("Migration")),
-      "review",
-      hex("Drain first?"),
-    );
-    expect(created.stdout).toMatch(/^T\t\w+\tcomment\treview\topen\t0\tdocument\t/m);
-    expect(created.stdout).toContain(`M\treviewer\t${hex("Drain first?")}`);
-    // Held: listed, but not yet something the agent is asked to answer.
-    const drain = (list: Record<string, any>) =>
-      (list["threads"] as { last: string; needsAgent: boolean }[]).find((t) =>
-        t.last.includes("Drain first?"),
+describe(
+  "writing comments and reviews through thurview's own threads module",
+  { timeout: 60_000 },
+  () => {
+    it("holds a review comment until the review is submitted, as the browser does", async () => {
+      const created = await bridge(
+        "create",
+        reviewId,
+        "document",
+        hex(bidOf("Migration")),
+        "review",
+        hex("Drain first?"),
       );
-    expect(
-      drain(await cli(repo, home, ["threads", "list", "--review", reviewId]))?.needsAgent,
-    ).toBe(false);
-    const submitted = await bridge("submit", reviewId, "request-changes", hex("see the migration"));
-    expect(submitted.stdout).toMatch(/^R\tawaiting-agent-updates\t/m);
-    expect(submitted.stdout).toMatch(/^D\trequest-changes\t1\t/m);
-    expect(
-      drain(await cli(repo, home, ["threads", "list", "--review", reviewId]))?.needsAgent,
-    ).toBe(true);
-  });
+      expect(created.stdout).toMatch(/^T\t\w+\tcomment\treview\topen\t0\tdocument\t/m);
+      expect(created.stdout).toContain(`M\treviewer\t${hex("Drain first?")}`);
+      // Held: listed, but not yet something the agent is asked to answer.
+      const drain = (list: Record<string, any>) =>
+        (list["threads"] as { last: string; needsAgent: boolean }[]).find((t) =>
+          t.last.includes("Drain first?"),
+        );
+      expect(
+        drain(await cli(repo, home, ["threads", "list", "--review", reviewId]))?.needsAgent,
+      ).toBe(false);
+      const submitted = await bridge(
+        "submit",
+        reviewId,
+        "request-changes",
+        hex("see the migration"),
+      );
+      expect(submitted.stdout).toMatch(/^R\tawaiting-agent-updates\t/m);
+      expect(submitted.stdout).toMatch(/^D\trequest-changes\t1\t/m);
+      expect(
+        drain(await cli(repo, home, ["threads", "list", "--review", reviewId]))?.needsAgent,
+      ).toBe(true);
+    });
 
-  it("asks a question at once, shows the agent's answer, and resolves it", async () => {
-    const asked = await bridge(
-      "create",
-      reviewId,
-      "map",
-      hex("relay.outbox"),
-      "ask",
-      hex("Why one table?"),
-    );
-    const id = /^T\t(\w+)\tquestion\task\topen\t1\tmap\t/m.exec(asked.stdout)?.[1];
-    expect(id).toBeTruthy();
-    await cli(repo, home, ["threads", "reply", id!, "--review", reviewId, "--body", "One writer."]);
-    const listed = await bridge("list", reviewId);
-    expect(listed.stdout).toContain(`M\tagent\t${hex("One writer.")}`);
-    const resolved = await bridge("status", reviewId, id!, "resolved");
-    expect(resolved.stdout).toMatch(new RegExp(`^T\\t${id}\\tquestion\\task\\tresolved\\t`, "m"));
-    const replied = await bridge("reply", reviewId, id!, hex("Thanks"));
-    expect(replied.stdout).toMatch(new RegExp(`^T\\t${id}\\tquestion\\task\\topen\\t`, "m"));
-  });
+    it("asks a question at once, shows the agent's answer, and resolves it", async () => {
+      const asked = await bridge(
+        "create",
+        reviewId,
+        "map",
+        hex("relay.outbox"),
+        "ask",
+        hex("Why one table?"),
+      );
+      const id = /^T\t(\w+)\tquestion\task\topen\t1\tmap\t/m.exec(asked.stdout)?.[1];
+      expect(id).toBeTruthy();
+      await cli(repo, home, [
+        "threads",
+        "reply",
+        id!,
+        "--review",
+        reviewId,
+        "--body",
+        "One writer.",
+      ]);
+      const listed = await bridge("list", reviewId);
+      expect(listed.stdout).toContain(`M\tagent\t${hex("One writer.")}`);
+      const resolved = await bridge("status", reviewId, id!, "resolved");
+      expect(resolved.stdout).toMatch(new RegExp(`^T\\t${id}\\tquestion\\task\\tresolved\\t`, "m"));
+      const replied = await bridge("reply", reviewId, id!, hex("Thanks"));
+      expect(replied.stdout).toMatch(new RegExp(`^T\\t${id}\\tquestion\\task\\topen\\t`, "m"));
+    });
 
-  it("refuses what thurview would refuse, with the reason on stdout and exit 1", async () => {
-    const bad = await bridge("create", reviewId, "document", hex("x"), "later", hex("?")).catch(
-      (e) => e,
-    );
-    expect(bad.code).toBe(1);
-    expect(bad.stdout).toMatch(/^E\t/m);
-  });
-});
+    it("keeps every write when several land at once", async () => {
+      const bodies = ["c1", "c2", "c3", "c4", "c5", "c6"];
+      await Promise.all(
+        bodies.map((b) =>
+          bridge("create", reviewId, "map", hex("relay.store"), "review", hex(`race ${b}`)),
+        ),
+      );
+      const listed = (await bridge("list", reviewId)).stdout;
+      for (const b of bodies) expect(listed).toContain(hex(`race ${b}`));
+    });
+
+    it("refuses what thurview would refuse, with the reason on stdout and exit 1", async () => {
+      const bad = await bridge("create", reviewId, "document", hex("x"), "later", hex("?")).catch(
+        (e) => e,
+      );
+      expect(bad.code).toBe(1);
+      expect(bad.stdout).toMatch(/^E\t/m);
+      const unknown = await bridge("status", reviewId, "nosuch", "resolved").catch((e) => e);
+      expect(unknown.code).toBe(1);
+      expect(unknown.stdout).toMatch(/^E\t[0-9a-f]+\n$/);
+    });
+  },
+);
 
 interface Frame {
   rows: string[];
@@ -470,6 +501,60 @@ describe.skipIf(!luaBin)("the pane's view, in the Lua the host embeds", () => {
       "submit\tclose\tsuperseded",
     ]);
     expect(commented!.status).toContain("no block or part block:nope");
+  });
+
+  it("loads a model whose ids are Lua keywords", async () => {
+    const file = join(tmp, "keywords.lua");
+    const first = Object.values(model.anchors)[0]!;
+    await writeFile(
+      file,
+      toLua({ ...model, anchors: { ...model.anchors, until: first, end: first } }),
+    );
+    const out = execFileSync(luaBin!, ["-"], {
+      input: `local m = dofile(${JSON.stringify(file)})\nio.write(m.anchors["until"].file, " ", m.anchors["end"].file)`,
+      encoding: "utf8",
+    });
+    expect(out).toBe(`${first.file} ${first.file}`);
+  });
+
+  it("keeps the threads it shows when thurview refuses a write, and says why", async () => {
+    const listed = join(tmp, "threads-before.txt");
+    const refused = join(tmp, "threads-refused.txt");
+    await writeFile(
+      listed,
+      `R\taccepted\t1\nT\tt1\tcomment\treview\topen\t1\tdocument\t${hex(bidOf("Migration"))}\t1\nM\treviewer\t${hex("Drain first?")}\n`,
+    );
+    await writeFile(refused, `E\t${hex("review is accepted")}\n`);
+    const [before, after] = drive([
+      "size 120 40",
+      `threads ${listed}`,
+      "key G",
+      "render 0",
+      `threads ${refused}`,
+      "render 0",
+    ]);
+    expect(screen(before!)).toContain("Drain first?");
+    expect(screen(after!)).toContain("Drain first?");
+    expect(after!.status).toContain("thurview: review is accepted");
+  });
+
+  it("keeps a thread clickable where its line is cut at the pane's edge", async () => {
+    const file = join(tmp, "threads-long.txt");
+    const body = "LONGBODY " + "word ".repeat(40);
+    await writeFile(
+      file,
+      `R\topen\t1\nT\tt1\tcomment\treview\topen\t1\tmap\t${hex("relay.outbox")}\t1\nM\treviewer\t${hex(body)}\n`,
+    );
+    const [shown, clicked] = drive([
+      "size 120 40",
+      `threads ${file}`,
+      "act select target=node:relay.outbox",
+      "render 0",
+      "clicktext LONGBODY",
+      "render 0",
+    ]);
+    expect(screen(shown!)).toMatch(/LONGBODY.*…/);
+    expect(screen(clicked!)).toContain("thread · #t1");
   });
 
   it("stops by itself after one pass, and resumes where it was after being hidden", async () => {

@@ -86,6 +86,10 @@ The pane writes the way the reader does in the browser, through the same code.
 `bridge.mjs` calls thurview's own `src/threads.ts`: `createThread`,
 `replyThread`, `setThreadStatus` and `submitReview`. Those are the functions its
 HTTP API and its CLI call, so there is no second writer and no second store.
+Those functions rewrite `threads.json` whole with no lock, so bridges take turns
+on a lock directory under `$THURVIEW_HOME/terminal-poc-locks`. The lock covers
+bridges only: a write from the server or the CLI at the same moment is not
+held back by it.
 
 - **Add to review** holds a comment until you submit, as the browser does. The
   agent sees it listed but is not asked to answer it.
