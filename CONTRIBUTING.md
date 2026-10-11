@@ -61,9 +61,9 @@ locally.
 - `src/pr-review/`: `thurview pr-review` - the summary and finding markers,
   the closed category set, and the follow loop, all on the forge seam.
 - `skills/thurview-pr-review/`: the entrypoint for an opened PR/MR: publishing
-  preflight, page authoring and serving, a durable snapshot and Markdown
-  download, and one forge summary linking both on every update. It follows
-  until merge, close or stop. Its `references/cloudflare-setup.md` owns the
+  preflight, page authoring and sealing without a local server, a durable
+  snapshot and Markdown download, and one forge summary linking both on every
+  update. It follows until merge, close or stop. Its `references/cloudflare-setup.md` owns the
   one-time setup procedure.
 - `skills/thurview-publish/`: the skill that uploads `thurview export`'s page
   to the user's own Azure, S3, Cloud Storage or Cloudflare Pages account with

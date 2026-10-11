@@ -42,8 +42,9 @@ and open it.
 ```
 
 For an opened PR or MR, ask `Use thurview-pr-review to review <URL>`: it
-checks the cloud setup, authors and publishes the review, and keeps one linked
-summary on the change request up to date on every push.
+checks the cloud setup, seals a pinned review, publishes a public HTML snapshot
+and Markdown export, and keeps one linked summary on the change request up to
+date on every push. It never starts a local server or waits for live page feedback.
 
 ```mermaid
 flowchart LR
