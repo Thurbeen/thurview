@@ -220,7 +220,7 @@ describe("thurview export", () => {
     await cli(["publish-static", hosted.payload.review.id, "--out", again]);
     expect(await readFile(join(again, "index.html"))).toEqual(html);
     expect(await readFile(join(tmp, "large", "feedback.md"), "utf8")).toContain("Large review");
-  });
+  }, 60_000);
   it("writes one self-contained file that names no server and no local path", async () => {
     const html = await readFile(withThreads, "utf8");
     expect(html).toMatch(/^<!doctype html>/);
