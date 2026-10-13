@@ -1,4 +1,4 @@
-import { readFile, mkdir, rm, access } from "node:fs/promises";
+import { readFile, mkdir, rm, access, readdir, stat } from "node:fs/promises";
 import { join, basename, resolve, dirname } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
@@ -15,7 +15,7 @@ import {
   reviewDir,
   type ReviewState,
 } from "./store.js";
-import { exportReview } from "./export.js";
+import { exportReview, compressSnapshotHtml } from "./export.js";
 
 const execFileP = promisify(execFile);
 export async function renderStatic(review: ReviewState, out: string, liveUrl?: string) {
@@ -33,6 +33,37 @@ export async function renderStatic(review: ReviewState, out: string, liveUrl?: s
   await mkdir(out, { recursive: true });
   await writeText(join(out, "index.html"), html);
   return { revision: review.revision, directory: out };
+}
+
+const ASSET_LIMIT = 25 * 1024 * 1024;
+
+async function compactArchive(directory: string): Promise<void> {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await compactArchive(path);
+      continue;
+    }
+    if ((await stat(path)).size <= ASSET_LIMIT) continue;
+    if (entry.name !== "index.html")
+      throw new Error(
+        "static archive contains a non-HTML asset exceeding Cloudflare's 25 MiB limit",
+      );
+    let compact: string;
+    try {
+      compact = compressSnapshotHtml(await readFile(path, "utf8"));
+    } catch {
+      throw new Error(
+        "oversized archived snapshot cannot be compacted; preserve and restore its original export before deploying",
+      );
+    }
+    if (Buffer.byteLength(compact) > ASSET_LIMIT)
+      throw new Error(
+        "static snapshot still exceeds Cloudflare's 25 MiB asset limit after compression",
+      );
+    // Atomic replacement leaves the old snapshot recoverable on write failure.
+    await writeText(path, compact);
+  }
 }
 
 const Config = z
@@ -191,6 +222,7 @@ export async function publishStatic(
     const liveUrl = live ? `http://${live.hosts[0]}:${live.port}/review/${review.id}` : undefined;
     await renderStatic(review, join(assets, path), liveUrl);
     await writeJson(indexPath, index);
+    await compactArchive(assets);
     const wrangler = join(root, "wrangler.json");
     await writeJson(wrangler, {
       name: config.name,

@@ -4,9 +4,10 @@
 // every time it is exported.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFile } from "node:child_process";
-import { mkdtemp, writeFile, mkdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, readFile, rm, chmod } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -26,15 +27,16 @@ let staticPage: string;
 let largePage: string;
 let largeHead: string;
 let largeOriginal: string;
+let migratedPage: string;
 
 // The built command, the one a user runs: the export inlines the bundled UI.
-async function cli(args: string[]) {
+async function cli(args: string[], env: Record<string, string> = {}) {
   const { stdout } = await execFileP(
     process.execPath,
     [join(ROOT, "bin", "thurview.js"), ...args],
     {
       cwd: repo,
-      env: { ...process.env, THURVIEW_HOME: home },
+      env: { ...process.env, THURVIEW_HOME: home, ...env },
     },
   );
   return decode(stdout.trim()) as Record<string, any>;
@@ -214,13 +216,119 @@ describe("thurview export", () => {
     );
     const offline = JSON.parse(embedded(original));
     delete hosted.banner;
-    delete hosted.markdown;
     expect(hosted).toEqual(offline);
     const again = join(tmp, "large-again");
     await cli(["publish-static", hosted.payload.review.id, "--out", again]);
     expect(await readFile(join(again, "index.html"))).toEqual(html);
-    expect(await readFile(join(tmp, "large", "feedback.md"), "utf8")).toContain("Large review");
+    expect(existsSync(join(tmp, "large", "feedback.md"))).toBe(false);
   }, 60_000);
+  it("repairs an oversized retained snapshot when deploying a different review", async () => {
+    const { exportReview } = await import(join(ROOT, "dist", "export.js"));
+    const { readReview } = await import(join(ROOT, "dist", "store.js"));
+    const original = await readFile(largeOriginal, "utf8");
+    const raw = JSON.parse(/id="thurview-snapshot">([\s\S]*?)<\/script>/.exec(original)![1]!);
+    const large = await readReview(raw.payload.review.id);
+    const legacy = await exportReview(large, {
+      threads: true,
+      banner: { revision: 2, sha: largeHead },
+    });
+    expect(Buffer.byteLength(legacy)).toBeGreaterThan(25 * 1024 * 1024);
+    const name = "retained-fixtures";
+    const root = join(home, "static", createHash("sha256").update(name).digest("hex"));
+    const retained = `r/repo/legacy/${"a".repeat(32)}/`;
+    const prior = `r/repo/prior/${"b".repeat(32)}/`;
+    migratedPage = join(root, "assets", retained, "index.html");
+    await mkdir(join(root, "assets", retained), { recursive: true });
+    await mkdir(join(root, "assets", prior), { recursive: true });
+    await writeFile(migratedPage, legacy);
+    const md = "# Legacy large review feedback\n";
+    await writeFile(join(root, "assets", retained, "feedback.md"), md);
+    const oldPage = await readFile(staticPage);
+    const oldMd = "# Legacy review feedback\n";
+    await writeFile(join(root, "assets", prior, "index.html"), oldPage);
+    await writeFile(join(root, "assets", prior, "feedback.md"), oldMd);
+    await writeFile(
+      join(root, "index.json"),
+      JSON.stringify({
+        account_id: null,
+        snapshots: { [large.id]: retained, "archived-only": prior },
+      }),
+    );
+    // The archive is authoritative even if its author's local review is gone.
+    await rm(join(home, "reviews", large.id), { recursive: true, force: true });
+    const config = join(tmp, "retained-cloudflare.json");
+    await writeFile(config, JSON.stringify({ name, publicUrl: "https://reviews.example.com" }));
+    const bin = join(tmp, "bin");
+    await mkdir(bin);
+    await writeFile(
+      join(bin, "wrangler"),
+      `#!/usr/bin/env node
+const fs = require("node:fs"); const path = require("node:path");
+const config = JSON.parse(fs.readFileSync(process.argv[process.argv.indexOf("--config")+1]));
+function check(dir) { for (const e of fs.readdirSync(dir, {withFileTypes:true})) {
+  const file = path.join(dir,e.name); if(e.isDirectory()) check(file);
+  else if(fs.statSync(file).size > 25*1024*1024) { fs.writeFileSync(${JSON.stringify(join(tmp, "asset-too-large"))}, file); console.error("Asset too large"); process.exit(1); }
+} }
+check(config.assets.directory);
+fs.appendFileSync(${JSON.stringify(join(tmp, "deploy-called"))}, "deploy\\n");
+`,
+    );
+    await chmod(join(bin, "wrangler"), 0o755);
+    const small = JSON.parse(
+      /id="thurview-snapshot">([\s\S]*?)<\/script>/.exec(oldPage.toString())![1]!,
+    );
+    const requested = (
+      await cli([
+        "scaffold",
+        "--new",
+        "--base",
+        small.payload.review.pins.base,
+        "--head",
+        small.payload.review.pins.head,
+      ])
+    ).review;
+    await writeFile(join(requested.dir, "review.md"), REVIEW);
+    await writeFile(join(requested.dir, "data.yaml"), DATA);
+    await cli(["publish", "--review", requested.uuid]);
+    const env = { PATH: `${bin}:${process.env["PATH"]}` };
+    const deployed = await cli(
+      ["publish-static", requested.uuid, "--to", "cloudflare", "--config", config],
+      env,
+    ).catch(async (e: { stdout: string }) => {
+      expect((decode(e.stdout.trim()) as Record<string, any>).error).toContain(
+        "wrangler deploy failed",
+      );
+      expect(await readFile(join(tmp, "asset-too-large"), "utf8")).toContain("legacy");
+      throw new Error("retained legacy archive deployment: Asset too large");
+    });
+    expect(deployed.snapshot.snapshots).toBe(3);
+    const repaired = await readFile(migratedPage, "utf8");
+    expect(Buffer.byteLength(repaired)).toBeLessThanOrEqual(25 * 1024 * 1024);
+    const data = /id="thurview-snapshot">([\s\S]*?)<\/script>/.exec(repaired)![1]!;
+    expect(JSON.parse(gunzipSync(Buffer.from(data, "base64")).toString())).toEqual(
+      JSON.parse(/id="thurview-snapshot">([\s\S]*?)<\/script>/.exec(legacy)![1]!),
+    );
+    expect(existsSync(join(root, "assets", retained, "feedback.md"))).toBe(false);
+    expect(await readFile(join(root, "assets", prior, "index.html"))).toEqual(oldPage);
+    expect(existsSync(join(root, "assets", prior, "feedback.md"))).toBe(false);
+    const index = JSON.parse(await readFile(join(root, "index.json"), "utf8"));
+    expect(index.snapshots[large.id]).toBe(retained);
+    await cli(["publish-static", requested.uuid, "--to", "cloudflare", "--config", config], env);
+    expect(await readFile(migratedPage, "utf8")).toBe(repaired);
+    const unsupported = join(root, "assets", "unsupported", "index.html");
+    await mkdir(join(root, "assets", "unsupported"));
+    const unrecognized = Buffer.alloc(25 * 1024 * 1024 + 1, "x");
+    await writeFile(unsupported, unrecognized);
+    const calls = await readFile(join(tmp, "deploy-called"));
+    const refused = await cli(
+      ["publish-static", requested.uuid, "--to", "cloudflare", "--config", config],
+      env,
+    ).catch((e: { stdout: string }) => decode(e.stdout.trim()) as Record<string, any>);
+    expect(refused.error).toContain("oversized archived snapshot cannot be compacted");
+    expect(Buffer.compare(await readFile(unsupported), unrecognized)).toBe(0);
+    expect(await readFile(join(tmp, "deploy-called"))).toEqual(calls);
+  }, 60_000);
+
   it("writes one self-contained file that names no server and no local path", async () => {
     const html = await readFile(withThreads, "utf8");
     expect(html).toMatch(/^<!doctype html>/);
@@ -353,9 +461,9 @@ describe.skipIf(!browserBin)("an exported document in a browser, offline", () =>
 
   it("opens the large sealed snapshot with retained anchors and diffs offline", async () => {
     const p = await open(
-      largePage,
+      migratedPage,
       "",
-      `document.body.innerText.includes("file-72-line-499-retained")`,
+      `document.body?.innerText.includes("file-72-line-499-retained")`,
     );
     try {
       const text = await p.evaluate<string>("document.body.innerText");
