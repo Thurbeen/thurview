@@ -27,6 +27,7 @@ export async function renderStatic(review: ReviewState, out: string, liveUrl?: s
   const sealed = { ...review, title: meta.title, pins: meta.pins };
   const html = await exportReview(sealed, {
     threads: true,
+    compress: true,
     banner: { revision: review.revision, sha: meta.pins.head, liveUrl },
   });
   await mkdir(out, { recursive: true });

@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Coverage } from "./coverage.js";
@@ -142,6 +143,7 @@ export async function exportReview(
   review: ReviewState,
   opts: {
     threads: boolean;
+    compress?: boolean;
     banner?: { revision: number; sha: string; liveUrl?: string };
   },
 ): Promise<string> {
@@ -155,6 +157,21 @@ export async function exportReview(
     .replace(/\n\/\/# sourceMappingURL=.*\s*$/, "\n")
     .replace(/<\/script/gi, "<\\/script");
   const json = JSON.stringify(snap).replace(/</g, "\\u003c");
+  // Hosted snapshots keep the offline, single-file contract. Compress only
+  // large payloads; small pages and ordinary exports retain their old format.
+  const compressed = opts.compress && Buffer.byteLength(json) > 1024 * 1024;
+  const embedded = compressed ? gzipSync(json).toString("base64") : json;
+  const script = compressed
+    ? `(async () => {
+  const el = document.getElementById("thurview-snapshot");
+  const bytes = Uint8Array.from(atob(el.textContent), c => c.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  el.textContent = await new Response(stream).text();
+${js}
+})().catch(() => {
+  document.getElementById("app").textContent = "This snapshot could not be decoded. Open it in a current browser with gzip DecompressionStream support.";
+});`
+    : js;
   const csp =
     "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src data:; img-src data:";
   return `<!doctype html>
@@ -174,9 +191,9 @@ ${await appCss()}
   </head>
   <body>
     <div id="app"></div>
-    <script type="application/json" id="thurview-snapshot">${json}</script>
+    <script type="application/json" id="thurview-snapshot">${embedded}</script>
     <script>
-${js}
+${script}
     </script>
   </body>
 </html>
