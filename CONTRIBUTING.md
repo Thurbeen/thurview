@@ -83,10 +83,15 @@ locally.
 stills beside them from scratch: it builds the demo repository
 (`make-repo.sh`), publishes the review under `scripts/demo/review/` and answers
 the reader's question, all off camera, then records the reader driving the
-interface as a Chromium screencast (`record-browser.mjs`) and encodes it with
-ffmpeg. The demo is of the UI, so nothing of the agent's terminal is filmed. It
-needs `ffmpeg`, `chromium` (or `$CHROMIUM`) and `thurview` on PATH, and touches
-nothing outside a temporary directory. Re-record it when the UI changes.
+interface as a Chromium screencast (`record-browser.mjs`), in the dark palette,
+and encodes it with ffmpeg. The demo is of the UI, so nothing of the agent's
+terminal is filmed. It needs `ffmpeg`, `chromium` (or `$CHROMIUM`) and
+`thurview` on PATH, and touches nothing outside a temporary directory. Re-record it when the UI changes.
+
+`media/process.svg`, the README's process diagram, is drawn by hand. It
+follows the light palette and switches under `prefers-color-scheme: dark`;
+its motion stops under `prefers-reduced-motion`. Redraw it when a skill's
+steps change, and keep it to what the skills do.
 
 ## The skills and the command
 
