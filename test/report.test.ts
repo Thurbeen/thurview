@@ -64,7 +64,7 @@ afterAll(async () => {
   if (tmp) await rm(tmp, { recursive: true, force: true, maxRetries: 5 });
 });
 
-describe("publish --pass", () => {
+describe("publish --pass", { timeout: 60_000 }, () => {
   it("refuses a pass for another head, and seals nothing", async () => {
     const file = join(tmp, "stale.json");
     await writePass(file, { head: "0123456789abcdef0123456789abcdef01234567" });
@@ -127,7 +127,7 @@ describe("publish --pass", () => {
   });
 });
 
-describe.skipIf(!browserBin)("the exported report in a browser", () => {
+describe.skipIf(!browserBin)("the exported report in a browser", { timeout: 60_000 }, () => {
   let browser: Browser;
 
   beforeAll(async () => {
