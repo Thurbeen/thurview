@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 690" width="860" height="690" role="img" aria-labelledby="title desc">
+  <title id="title">How a thurview review runs, step by step</title>
+  <desc id="desc">The agent pins the change to exact commits with thurview scaffold, writes the walkthrough with every claim anchored to a line range, and runs thurview publish, which checks every anchor and seals a revision. The reader then reads it in the browser: the walkthrough, the diff and the map. They ask questions, which the agent answers in the same thread, and they decide. Approving ends the review; closing it ends it without approval. Requesting changes goes back to the agent along one blue loop: it fixes, re-pins, rewrites and publishes again. A panel on the right shows the flow for an opened pull or merge request, with thurview-pr-review: check the publishing setup, review what moved since the last pass, seal the page, deploy a public snapshot, edit one summary on the forge that links it, and wait for a push. A new head goes round again; a merged, closed or stopped change request ends it. No local server runs in that flow. A token travels the path and dashes run along the loops; both stop when reduced motion is preferred.</desc>
+
+  <style>
+    .bg { fill: #ffffff; stroke: #d1d9e0; }
+    .stage { fill: #f6f8fa; stroke: #e1e6eb; }
+    .stage-key { fill: #f0f7ff; stroke: #b6e3ff; }
+    .card { fill: #ffffff; stroke: #d1d9e0; stroke-width: 1.25; }
+    .card-key { fill: #ffffff; stroke: #0969da; stroke-width: 2; }
+    .side { fill: #ffffff; stroke: #d1d9e0; }
+    .pill { fill: #ffffff; stroke: #d1d9e0; stroke-width: 1.25; }
+    .pass { fill: #dafbe1; stroke: #1a7f37; stroke-width: 1.25; }
+    .chip { fill: #e7ecf0; }
+    .chip-key { fill: #0969da; }
+    .spine { fill: none; stroke: #c8d1da; stroke-width: 2; }
+    .flow { fill: none; stroke: #818b98; stroke-width: 1.5; }
+    .loop { fill: none; stroke: #0969da; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .motion { fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 3 21; animation: process-flow 12s linear infinite; }
+    .token { fill: #0969da; opacity: 0; offset-path: path("M240 106 H166 Q158 106 158 114 V496 Q158 504 150 504 H124 Q112 504 112 492 V200 Q112 188 124 188 H150 Q158 188 158 196 V569 Q158 577 166 577 H170"); animation: process-token 12s linear infinite; }
+    .halo { fill: #0969da; opacity: 0.18; }
+    .head-flow { fill: #818b98; }
+    .head-loop { fill: #0969da; }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; fill: #1f2328; }
+    .h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.2px; }
+    .lede { font-size: 13px; fill: #59636e; }
+    .num { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; font-weight: 700; fill: #424a53; text-anchor: middle; }
+    .num-key { fill: #ffffff; }
+    .cmd { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; fill: #59636e; }
+    .name { font-size: 14px; font-weight: 600; }
+    .sub { font-size: 12px; fill: #59636e; }
+    .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1.4px; fill: #59636e; }
+    .eyebrow-key { fill: #0969da; }
+    .note { font-size: 11.5px; fill: #0969da; }
+    .group { font-size: 13px; font-weight: 700; }
+    .label { font-size: 11.5px; font-weight: 600; fill: #0969da; }
+    .muted { font-size: 11.5px; fill: #59636e; }
+    .out-pass { font-size: 13px; font-weight: 600; fill: #1a7f37; text-anchor: middle; }
+    .out-end { font-size: 13px; font-weight: 600; fill: #424a53; text-anchor: middle; }
+    .start { font-size: 13px; font-weight: 600; text-anchor: middle; }
+    @keyframes process-flow { to { stroke-dashoffset: -288; } }
+    @keyframes process-token {
+      0% { offset-distance: 0%; opacity: 0; }
+      4% { opacity: 1; }
+      96% { opacity: 1; }
+      100% { offset-distance: 100%; opacity: 0; }
+    }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; stroke: #3d444d; }
+      .stage { fill: #151b23; stroke: #262c36; }
+      .stage-key { fill: #0b1d33; stroke: #1f4b7f; }
+      .card { fill: #0d1117; stroke: #3d444d; }
+      .card-key { fill: #0d1117; stroke: #4493f8; }
+      .side { fill: #0d1117; stroke: #3d444d; }
+      .pill { fill: #0d1117; stroke: #3d444d; }
+      .pass { fill: #0f2d1a; stroke: #3fb950; }
+      .chip { fill: #262c36; }
+      .chip-key { fill: #4493f8; }
+      .spine { stroke: #3d444d; }
+      .flow { stroke: #9198a1; }
+      .loop { stroke: #4493f8; }
+      .motion { stroke: #0d1117; }
+      .token, .halo { fill: #4493f8; }
+      .head-flow { fill: #9198a1; }
+      .head-loop { fill: #4493f8; }
+      text { fill: #f0f6fc; }
+      .lede, .sub, .eyebrow, .muted, .cmd { fill: #9198a1; }
+      .num { fill: #d1d9e0; }
+      .num-key { fill: #0d1117; }
+      .eyebrow-key, .note, .label { fill: #4493f8; }
+      .out-pass { fill: #3fb950; }
+      .out-end { fill: #d1d9e0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .motion { animation: none; stroke-dashoffset: 0; opacity: 0; }
+      .token { animation: none; opacity: 0; }
+    }
+  </style>
+
+  <defs>
+    <marker id="a-flow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-flow" d="M0 1 L9 5 L0 9 z"/></marker>
+    <marker id="a-loop" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="head-loop" d="M0 1 L9 5 L0 9 z"/></marker>
+  </defs>
+
+  <!-- Card, so the diagram reads on any page background. -->
+  <rect class="bg" x="1" y="1" width="858" height="688" rx="16"/>
+
+  <!-- Heading -->
+  <text class="h1" x="40" y="48">thurview</text>
+  <text class="lede" x="40" y="70">The agent pins the change and writes the review; you read it in the browser, ask, and decide.</text>
+
+  <!--
+    Layout. Stage panels hold the step cards: x 170 to 470, one row every 54.
+    The blue loop on the left, x 112, carries requested changes back to the agent.
+    The panel on the right, from x 530, is the flow for an opened PR or MR.
+  -->
+
+  <!-- Stage panels -->
+  <rect class="stage" x="140" y="136" width="360" height="194" rx="14"/>
+  <text class="eyebrow" x="182" y="156">AGENT</text>
+  <text class="muted" x="482" y="156" text-anchor="end">in your repository</text>
+  <rect class="stage stage-key" x="140" y="344" width="360" height="194" rx="14"/>
+  <text class="eyebrow eyebrow-key" x="182" y="364">YOU</text>
+  <text class="note" x="482" y="364" text-anchor="end">in the browser</text>
+
+  <!-- Spine: one line through every step, in order. -->
+  <rect class="pill" x="240" y="92" width="160" height="28" rx="14"/>
+  <text class="start" x="320" y="111">“review my branch”</text>
+  <path class="spine" d="M320 120 V548"/>
+
+  <!-- Agent steps -->
+  <rect class="card" x="170" y="166" width="300" height="44" rx="10"/>
+  <rect class="chip" x="182" y="178" width="24" height="20" rx="6"/>
+  <text class="num" x="194" y="192">1</text>
+  <text class="name" x="218" y="185">Pin</text>
+  <text class="cmd" x="458" y="185" text-anchor="end">scaffold</text>
+  <text class="sub" x="218" y="201">the base and the head, as exact commits</text>
+  <rect class="card" x="170" y="220" width="300" height="44" rx="10"/>
+  <rect class="chip" x="182" y="232" width="24" height="20" rx="6"/>
+  <text class="num" x="194" y="246">2</text>
+  <text class="name" x="218" y="239">Write</text>
+  <text class="cmd" x="458" y="239" text-anchor="end">review.md</text>
+  <text class="sub" x="218" y="255">every claim anchored to a line range</text>
+  <rect class="card" x="170" y="274" width="300" height="44" rx="10"/>
+  <rect class="chip" x="182" y="286" width="24" height="20" rx="6"/>
+  <text class="num" x="194" y="300">3</text>
+  <text class="name" x="218" y="293">Publish</text>
+  <text class="cmd" x="458" y="293" text-anchor="end">publish</text>
+  <text class="sub" x="218" y="309">checks every anchor, seals a revision</text>
+
+  <!-- Reader steps -->
+  <rect class="card" x="170" y="374" width="300" height="44" rx="10"/>
+  <rect class="chip" x="182" y="386" width="24" height="20" rx="6"/>
+  <text class="num" x="194" y="400">4</text>
+  <text class="name" x="218" y="393">Read</text>
+  <text class="sub" x="218" y="409">the walkthrough, the diff, the map</text>
+  <rect class="card" x="170" y="428" width="300" height="44" rx="10"/>
+  <rect class="chip" x="182" y="440" width="24" height="20" rx="6"/>
+  <text class="num" x="194" y="454">5</text>
+  <text class="name" x="218" y="447">Ask</text>
+  <text class="sub" x="218" y="463">the agent answers in the same thread</text>
+  <rect class="card-key" x="170" y="482" width="300" height="44" rx="10"/>
+  <rect class="chip-key" x="182" y="494" width="24" height="20" rx="6"/>
+  <text class="num num-key" x="194" y="508">6</text>
+  <text class="name" x="218" y="501">Decide</text>
+  <text class="sub" x="218" y="517">approve, or request changes</text>
+
+  <!-- An answered question goes back to reading. -->
+  <path class="flow" d="M470 450 H476 Q486 450 486 440 V406 Q486 396 476 396 H473" marker-end="url(#a-flow)"/>
+
+  <!-- The two ways a review ends -->
+  <path class="flow" d="M320 548 H244 V560 M320 548 H396 V560"/>
+  <rect class="pass" x="170" y="562" width="144" height="30" rx="15"/>
+  <text class="out-pass" x="242" y="582">approved</text>
+  <rect class="pill" x="326" y="562" width="144" height="30" rx="15"/>
+  <text class="out-end" x="398" y="582">closed</text>
+  <text class="muted" x="242" y="610" text-anchor="middle">the agent reports and stops</text>
+  <text class="muted" x="398" y="610" text-anchor="middle">ended without approval</text>
+
+  <!-- Requested changes go back to the agent, which re-pins and publishes again. -->
+  <path class="loop" d="M170 504 H124 Q112 504 112 492 V200 Q112 188 124 188 H166" marker-end="url(#a-loop)"/>
+  <path class="motion" d="M170 504 H124 Q112 504 112 492 V200 Q112 188 124 188 H162"/>
+  <text class="label" x="102" y="500" text-anchor="end">request</text>
+  <text class="label" x="102" y="515" text-anchor="end">changes</text>
+  <text class="label" x="102" y="184" text-anchor="end">fix and</text>
+  <text class="label" x="102" y="199" text-anchor="end">re-pin</text>
+
+  <!-- An opened PR or MR: thurview-pr-review -->
+  <rect class="side" x="530" y="136" width="300" height="456" rx="14"/>
+  <text class="eyebrow" x="548" y="156">AN OPENED PR OR MR</text>
+  <text class="cmd" x="548" y="176">thurview-pr-review</text>
+  <path class="spine" d="M674 210 V450"/>
+  <rect class="card" x="548" y="190" width="252" height="40" rx="10"/>
+  <text class="name" x="562" y="207">Check the setup</text>
+  <text class="cmd" x="562" y="222">publish-static --check</text>
+  <rect class="card" x="548" y="238" width="252" height="40" rx="10"/>
+  <text class="name" x="562" y="255">Review what moved</text>
+  <text class="sub" x="562" y="270">since the last reviewed head</text>
+  <rect class="card" x="548" y="286" width="252" height="40" rx="10"/>
+  <text class="name" x="562" y="303">Seal the page</text>
+  <text class="cmd" x="562" y="318">publish --pass</text>
+  <rect class="card" x="548" y="334" width="252" height="40" rx="10"/>
+  <text class="name" x="562" y="351">Deploy a public snapshot</text>
+  <text class="cmd" x="562" y="366">publish-static --to cloudflare</text>
+  <rect class="card" x="548" y="382" width="252" height="40" rx="10"/>
+  <text class="name" x="562" y="399">Edit one linked summary</text>
+  <text class="cmd" x="562" y="414">pr-review sync</text>
+  <rect class="card" x="548" y="430" width="252" height="40" rx="10"/>
+  <text class="name" x="562" y="447">Wait for a push</text>
+  <text class="cmd" x="562" y="462">pr-review wait</text>
+
+  <!-- A new head goes round again. -->
+  <path class="loop" d="M800 450 H810 Q820 450 820 442 V266 Q820 258 810 258 H804" marker-end="url(#a-loop)"/>
+  <path class="motion" d="M800 450 H810 Q820 450 820 442 V266 Q820 258 810 258 H806"/>
+  <text class="label" x="548" y="494">a new head: review it again</text>
+  <text class="muted" x="548" y="514">merged, closed or stopped: stop</text>
+  <text class="muted" x="548" y="550">No local server runs: the reader opens</text>
+  <text class="muted" x="548" y="566">the snapshot from the summary's link.</text>
+
+  <!-- Travelling token: one review with a round of changes, invisible unless animated. -->
+  <g class="token"><circle class="halo" r="9"/><circle r="4.5"/></g>
+
+  <!-- Legend -->
+  <g transform="translate(40 656)">
+    <path class="flow" d="M0 0 H26" marker-end="url(#a-flow)"/>
+    <text class="muted" x="34" y="4">next step</text>
+    <path class="loop" d="M110 0 H136" marker-end="url(#a-loop)"/>
+    <text class="muted" x="144" y="4">changes requested or a new push: the agent goes again</text>
+  </g>
+</svg>
