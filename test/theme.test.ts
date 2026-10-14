@@ -119,6 +119,8 @@ describe("theme", () => {
           expect(contrast(t[f]!, t[g]!), `${f} on ${g}`).toBeGreaterThanOrEqual(4.5);
       for (const f of ["--accent", "--ok", "--del"])
         expect(contrast(t["--on-fill"]!, t[f]!), `--on-fill on ${f}`).toBeGreaterThanOrEqual(4.5);
+      // the wordmark is text, so thurbox's doom red holds AA on the bar too
+      expect(contrast(t["--doom"]!, t["--bg"]!), "--doom on --bg").toBeGreaterThanOrEqual(4.5);
     });
 
     it(`keeps every code colour at WCAG AA, on plain and tinted rows (${name})`, async () => {

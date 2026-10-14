@@ -1,0 +1,66 @@
+{
+  "head": "HEAD",
+  "confidence": 4,
+  "reason": "The audit trail and the cap work for one caller at a time; two reliability gaps are worth a look before merge.",
+  "risk": [
+    "Every login and logout now writes to audit.log; a failing disk now fails logins that already saved a session.",
+    "The cap is read and written without a lock, so concurrent logins can exceed it.",
+    "Nothing tests the cap or the denied path."
+  ],
+  "change": "login() and logout() append one JSON line per event to audit.log, including denied attempts. A sixth session for the same user is refused.",
+  "findings": [
+    {
+      "category": "reliability",
+      "severity": "non-blocking",
+      "path": "src/auth.ts",
+      "line": 9,
+      "startLine": 8,
+      "title": "Concurrent logins can exceed the cap.",
+      "body": "Two logins for the same user both read four sessions before either saves, so both pass the check and the file ends with six. Serialize login per user, or check again under a lock before saving."
+    },
+    {
+      "category": "reliability",
+      "severity": "non-blocking",
+      "path": "src/auth.ts",
+      "line": 16,
+      "startLine": 15,
+      "title": "A failed audit append fails a login whose session was already saved.",
+      "body": "saveSessions() has written the session when audit() throws, so the caller sees an error and the user holds a session they were told they did not get. Catch and report the audit failure, or record the event before saving and accept an over-reporting trail."
+    },
+    {
+      "category": "tests",
+      "severity": "non-blocking",
+      "path": "src/auth.ts",
+      "line": 12,
+      "startLine": 9,
+      "title": "Neither the cap nor the denied path is tested.",
+      "body": "Add a test that opens five sessions, expects the sixth to throw, and finds one login-denied line in audit.log."
+    },
+    {
+      "category": "maintainability",
+      "severity": "nit",
+      "path": "src/auth.ts",
+      "line": 5,
+      "title": "nit: MAX_SESSIONS does not say it counts per user.",
+      "body": "Rename it MAX_SESSIONS_PER_USER.",
+      "suggestion": "const MAX_SESSIONS_PER_USER = 5;"
+    }
+  ],
+  "ran": [
+    {
+      "kind": "search",
+      "what": "Callers of login() and logout() at the head",
+      "result": "none outside src/auth.ts"
+    },
+    {
+      "kind": "search",
+      "what": "Other writers of sessions.json",
+      "result": "only saveSessions() in src/store.ts"
+    },
+    {
+      "kind": "test",
+      "what": "Test suite",
+      "result": "the repository has no tests; nothing was run"
+    }
+  ]
+}

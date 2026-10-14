@@ -1,5 +1,8 @@
-/* thurview's theme: neutral, one calm blue accent, quiet chrome, in two
-   palettes - light below, dark under :root[data-theme="dark"]. index.html's
+/* thurview's theme, Slate: white and slate neutrals, one quiet blue for links
+   and the selection, severity in muted standard colours, whitespace and
+   hairlines rather than boxes. One nod to thurbox's doom theme: the wordmark in
+   its red, with a thin line of it under the bar. Two palettes - light below,
+   dark under :root[data-theme="dark"]. index.html's
    boot script sets data-theme from the reader's pick in the menu, or from the
    OS until they make one. Every text and code colour holds WCAG AA on every
    ground in both (test/theme.test.ts). Bars, buttons and panels stay out of
@@ -24,26 +27,28 @@
   color-scheme: light;
   --bg: #ffffff;
   --bg2: #f6f7f9;
-  --bg3: #eceef2;
-  --bg-code: #f6f8fa;
-  --fg: #1f2328;
-  --fg2: #4b5563;
-  --muted: #5f6773;
-  --line: #d5dae1;
-  --line2: #e4e7ec;
-  --accent: #1d4ed8;
+  --bg3: #eceff3;
+  --bg-code: #f8f9fb;
+  --fg: #1a1f26;
+  --fg2: #3b4350;
+  --muted: #5d6673;
+  --line: #dde1e7;
+  --line2: #eaedf1;
+  --accent: #2d5b8c;
   --link: var(--accent);
-  --ok: #16723a;
-  --warn: #a14a07;
-  --del: #b42318;
+  --ok: #1f6f43;
+  --warn: #8a5a00;
+  --del: #b4342b;
   /* text on a filled accent, ok or del ground */
   --on-fill: #ffffff;
-  --add-bg: rgb(22 114 58 / 0.09);
-  --del-bg: rgb(180 35 24 / 0.08);
-  --sel: rgb(161 74 7 / 0.12);
-  --accent-bg: rgb(29 78 216 / 0.08);
-  --shadow: 0 1px 2px rgb(16 24 40 / 0.06);
-  --shadow-lg: 0 12px 32px rgb(16 24 40 / 0.14);
+  --add-bg: rgb(31 111 67 / 0.08);
+  --del-bg: rgb(180 52 43 / 0.07);
+  --sel: rgb(138 90 0 / 0.1);
+  --accent-bg: rgb(45 91 140 / 0.08);
+  /* thurbox's doom red, and only on the wordmark and the line under the bar */
+  --doom: #c0392f;
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.05);
+  --shadow-lg: 0 12px 32px rgb(16 24 40 / 0.12);
   --code-fg: #1f2328;
   --code-keyword: #a40e26;
   --code-string: #0a3069;
@@ -62,26 +67,27 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0f1114;
-  --bg2: #161920;
-  --bg3: #1e222a;
-  --bg-code: #0b0d10;
-  --fg: #e6e8eb;
-  --fg2: #a9afb8;
-  --muted: #8a919c;
-  --line: #272c35;
-  --line2: #1e232b;
-  --accent: #6ea8fe;
-  --ok: #4cc38a;
-  --warn: #e5b454;
-  --del: #f06a6a;
-  --on-fill: #0b1220;
-  --add-bg: rgb(76 195 138 / 0.1);
-  --del-bg: rgb(240 106 106 / 0.12);
-  --sel: rgb(229 180 84 / 0.14);
-  --accent-bg: rgb(110 168 254 / 0.14);
+  --bg: #111418;
+  --bg2: #171b20;
+  --bg3: #1f242b;
+  --bg-code: #0d1014;
+  --fg: #e5e8ec;
+  --fg2: #c0c6ce;
+  --muted: #929aa5;
+  --line: #2c323a;
+  --line2: #20252b;
+  --accent: #8ab4e0;
+  --ok: #6cc58f;
+  --warn: #e2a54e;
+  --del: #ec6f66;
+  --on-fill: #111418;
+  --add-bg: rgb(108 197 143 / 0.09);
+  --del-bg: rgb(236 111 102 / 0.11);
+  --sel: rgb(226 165 78 / 0.12);
+  --accent-bg: rgb(138 180 224 / 0.12);
+  --doom: #e0625a;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
   --code-fg: #e6e8eb;
   --code-keyword: #ff7b72;
   --code-string: #a5d6ff;
@@ -104,7 +110,7 @@ body {
 body {
   background: var(--bg);
   color: var(--fg);
-  font: 14px/1.55 var(--font-body);
+  font: 15px/1.6 var(--font-body);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
@@ -276,8 +282,9 @@ kbd {
 .topbar {
   display: flex;
   flex-direction: column;
-  background: var(--bg2);
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
+  box-shadow: inset 0 -2px 0 var(--doom);
 }
 .bar-row {
   display: flex;
@@ -308,8 +315,8 @@ kbd {
 .topbar .brand {
   font-family: var(--font-display);
   font-size: 15px;
-  font-weight: 600;
-  color: var(--accent);
+  font-weight: 700;
+  color: var(--doom);
   letter-spacing: -0.01em;
   white-space: nowrap;
   flex: none;
@@ -319,8 +326,8 @@ kbd {
 }
 /* Grows into the space it has, truncating only when it must; full text in the tooltip. */
 .topbar .title {
-  font-family: var(--font-mono);
-  font-weight: 700;
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
@@ -1815,6 +1822,525 @@ kbd {
   color: var(--muted);
 }
 
+/* ---- The report ----
+   What a reader opening the page from a pull request needs, in order: what the
+   change is, the verdict, the findings with their evidence, the risks, the
+   scope; the document the agent wrote follows as the reasoning. */
+.doc-layout {
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 40px;
+  max-width: 1080px;
+  padding: 32px 32px 96px;
+}
+.doc,
+.report {
+  max-width: 760px;
+  font-size: 16px;
+  line-height: 1.7;
+}
+.doc p,
+.doc ul,
+.doc ol {
+  color: var(--fg);
+  margin: 0 0 14px;
+}
+.doc li::marker {
+  color: var(--muted);
+}
+.doc code {
+  font-size: 0.86em;
+}
+/* "**Summary**" on a line of its own is a label, and reads as one. */
+.doc .prose > p:only-child > strong:only-child {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 20px;
+}
+.report {
+  display: flex;
+  flex-direction: column;
+  gap: 44px;
+}
+.report-section > h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 0 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--line2);
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.report-section > h2 .n {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.part-summary .kicker {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.part-summary h1 {
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  text-wrap: balance;
+  margin: 0 0 12px;
+}
+.part-summary .lede {
+  font-size: 17px;
+  color: var(--fg);
+  margin: 0 0 12px;
+}
+.summary-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.diffstat .a {
+  color: var(--ok);
+}
+.diffstat .d {
+  color: var(--del);
+}
+/* The verdict: the score, what it means, why, and what it counts. */
+.report-verdict {
+  --conf: var(--warn);
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 4px 22px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: inset 4px 0 0 var(--conf);
+  background: var(--bg);
+}
+.report-verdict.c1,
+.report-verdict.c2 {
+  --conf: var(--del);
+}
+.report-verdict.c5 {
+  --conf: var(--ok);
+}
+.report-verdict .score {
+  grid-row: span 4;
+}
+.report-verdict .big {
+  font-size: 46px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.report-verdict .big small {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.report-verdict .pips {
+  display: flex;
+  gap: 3px;
+  margin-top: 8px;
+}
+.report-verdict .pips i {
+  width: 14px;
+  height: 5px;
+  border-radius: 2px;
+  background: var(--line);
+}
+.report-verdict .pips i.on {
+  background: var(--conf);
+}
+.report-verdict .lbl {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.report-verdict .meaning {
+  font-size: 1.1rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.report-verdict .reason {
+  color: var(--fg2);
+  font-size: 15px;
+}
+.report-verdict .counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.report-verdict .verdict-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line2);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.badge {
+  font-family: var(--font-body);
+  border-radius: 999px;
+}
+.badge.warn {
+  background: var(--sel);
+  border-color: transparent;
+}
+.badge.del {
+  background: var(--del-bg);
+  border-color: transparent;
+}
+.badge.ok {
+  background: var(--add-bg);
+  border-color: transparent;
+}
+/* Findings: severity, the claim, where; one step from the diff lines. */
+.findings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.finding {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.finding.sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+button.finding-row {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: baseline;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  box-shadow: none;
+  text-align: left;
+  white-space: normal;
+  font: inherit;
+  line-height: 1.4;
+  color: var(--fg);
+}
+button.finding-row:hover {
+  background: var(--bg2);
+}
+.sev {
+  justify-self: start;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: var(--bg3);
+  color: var(--fg2);
+  white-space: nowrap;
+}
+.sev.blocking {
+  background: var(--del-bg);
+  color: var(--del);
+}
+.sev.non-blocking {
+  background: var(--sel);
+  color: var(--warn);
+}
+.finding-title {
+  font-weight: 600;
+}
+.finding-title .cat {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.finding .loc {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.finding-more {
+  padding: 0 14px 14px;
+}
+.finding-kicker {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.finding-side {
+  padding: 16px;
+}
+.finding-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 14.5px;
+}
+.finding-evidence .fix {
+  margin: 0;
+}
+.finding-evidence > button {
+  align-self: flex-start;
+}
+.ev {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-code);
+}
+.ev-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 7px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line2);
+  font-size: 12.5px;
+}
+.ev-head .t {
+  font-weight: 600;
+}
+.ev-head .p {
+  color: var(--muted);
+}
+.ev-head button {
+  margin-left: auto;
+}
+.ev .loading {
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.ev pre.code {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.code tr.mark {
+  background: var(--sel);
+}
+.code tr.mark td.ln {
+  box-shadow: inset 3px 0 0 var(--warn);
+  color: var(--fg);
+}
+.code td.sg {
+  width: 1%;
+  padding: 0 4px;
+  color: var(--muted);
+  user-select: none;
+}
+.code tr.add td.sg {
+  color: var(--ok);
+}
+ul.risks {
+  margin: 0;
+  padding-left: 1.2em;
+}
+ul.risks li {
+  margin: 6px 0;
+}
+/* Scope: what was reviewed beside what was not. */
+.scope-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+.scope-col {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 14.5px;
+}
+.scope-col.gap {
+  background: var(--sel);
+  border-color: transparent;
+}
+.scope-col h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.scope-col ul {
+  margin: 0;
+  padding-left: 1.1em;
+}
+.scope-col li {
+  margin: 5px 0;
+}
+.unexplained-lines {
+  margin-top: 8px;
+}
+button.linklike {
+  border: 0;
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  font: inherit;
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: normal;
+}
+.cov {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.cov table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+.cov th,
+.cov td {
+  padding: 8px 12px;
+  text-align: left;
+  border-top: 1px solid var(--line2);
+}
+.cov th {
+  border-top: 0;
+  background: var(--bg2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.covtext {
+  margin-right: 10px;
+}
+.covbar {
+  display: inline-flex;
+  width: 96px;
+  height: 7px;
+  vertical-align: 1px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--warn);
+}
+.covbar i {
+  background: var(--ok);
+}
+/* The document's own sections sit under "How the review got there". */
+.report .prose h2 {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 30px;
+  font-size: 1.1rem;
+}
+.report .ifd-verdict {
+  margin: 8px 12px;
+}
+.report .ifd {
+  max-width: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+.report .ifd-head {
+  background: var(--bg);
+  border-color: var(--line);
+  border-radius: 8px 8px 0 0;
+}
+.report .ifd-body {
+  background: var(--bg);
+  border-color: var(--line);
+  border-radius: 0 0 8px 8px;
+}
+/* The outline: the report's parts, then the document's sections under it. */
+.toc-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0 10px 8px;
+}
+.toc a {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  border-left: 0;
+  border-radius: 6px;
+  padding: 5px 10px;
+}
+.toc a .n {
+  color: var(--muted);
+  font-size: 12px;
+}
+.toc a.l4 {
+  padding-left: 34px;
+}
+.toc a:hover,
+.toc a.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.jump {
+  display: none;
+}
+/* Quiet controls: a section's hide toggle shows on intent. */
+.heading-toggle {
+  opacity: 0;
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+.block:hover .heading-toggle,
+.ifd:hover .heading-toggle,
+.heading-toggle:focus-visible,
+.section-collapsed .heading-toggle {
+  opacity: 1;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@media print {
+  .topbar,
+  .toc,
+  .side,
+  .jump,
+  .block-actions {
+    display: none !important;
+  }
+  #app,
+  .center {
+    height: auto;
+    overflow: visible;
+  }
+  body {
+    overflow: visible;
+  }
+  .doc-layout {
+    display: block;
+  }
+}
+
 /* ---- Small screens ----
    One column below 900px: the table-of-contents rail, the split diff and the
    docked side panel all assume a second column that is not there. Touch has no
@@ -2235,4 +2761,130 @@ kbd {
 }
 .cov-link > .muted {
   overflow-wrap: anywhere;
+}
+
+/* One sans for every title and label; mono is for code, paths and numbers. */
+.map-intro h2,
+.map-group h3,
+.map-edges h3,
+.map-side h3,
+.map-node .label,
+.map-node .kind,
+.home .item .t,
+.commit .subject,
+.cov-intro h2,
+.cov-section h3,
+.cov-section h4,
+.thread .msg .who,
+.thread-pin .who,
+.diagram .dhead,
+.code-frame .frame-head .title,
+.empty-state,
+.banner,
+.callstack .row .t {
+  font-family: var(--font-body);
+}
+.map-intro h2 {
+  font-size: 1.15rem;
+  font-weight: 650;
+}
+.home .item {
+  background: var(--bg);
+}
+
+/* ---- The report on a phone ----
+   One column: the verdict stacks, a finding opens in place, the sections sit
+   in a strip that stays at the top, and the comment buttons line up in a
+   narrow right gutter instead of each taking a row. */
+@media (max-width: 900px) {
+  .jump {
+    display: flex;
+    gap: 6px;
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 8px 14px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line2);
+  }
+  .jump::-webkit-scrollbar {
+    display: none;
+  }
+  .jump a {
+    flex: none;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--bg2);
+    color: var(--fg2);
+    text-decoration: none;
+  }
+  .report {
+    gap: 34px;
+  }
+  .doc-layout {
+    padding: 16px 34px 64px 16px;
+  }
+  .report-verdict {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+  .report-verdict .score {
+    grid-row: auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .report-verdict .pips {
+    margin: 0;
+  }
+  .report-verdict .lbl {
+    margin: 0;
+  }
+  button.finding-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    min-height: 48px;
+  }
+  .scope-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .covbar {
+    display: none;
+  }
+  .report .block > .block-actions {
+    position: absolute;
+    left: auto;
+    right: -32px;
+    top: 2px;
+    margin: 0;
+    display: block;
+    opacity: 0.6;
+  }
+  .report .block > .block-actions button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 999px;
+  }
+  .report .ifd .block-actions {
+    position: static;
+  }
+  .published .doc-layout {
+    padding-right: 16px;
+  }
+  /* a published copy starts no thread, so only a block that has some keeps the gutter */
+  .published .report .block:not(.has-threads) > .block-actions {
+    display: none;
+  }
+  .published .report .block.has-threads > .block-actions {
+    right: 0;
+  }
+}
+@media (hover: none) {
+  .heading-toggle {
+    opacity: 1;
+  }
 }

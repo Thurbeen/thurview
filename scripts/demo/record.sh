@@ -22,7 +22,9 @@ cd "$repo"
 uuid="$(thurview scaffold --title "Audit every login" | sed -n 's/^ *uuid: //p')"
 [ -n "$uuid" ] || { echo "scaffold printed no uuid" >&2; exit 1; }
 cp "$root/scripts/demo/review/review.md" "$root/scripts/demo/review/data.yaml" "$root/scripts/demo/review/map.yaml" "$THURVIEW_HOME/reviews/$uuid/"
-thurview publish --review "$uuid" >"$work/publish.log" 2>&1 ||
+# The pass names the head it reviewed; the demo repository is built fresh, so fill it in.
+sed "s/\"HEAD\"/\"$(git rev-parse HEAD)\"/" "$root/scripts/demo/review/pass.json" >"$work/pass.json"
+thurview publish --review "$uuid" --pass "$work/pass.json" >"$work/publish.log" 2>&1 ||
   { tail -20 "$work/publish.log" >&2; exit 1; }
 
 thurview serve --port "$port" >"$work/server.log" 2>&1 &

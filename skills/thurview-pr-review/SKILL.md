@@ -183,8 +183,13 @@ the pins, include the findings and tests actually checked, answer `security`
 and declare the interface changes. Add a map when it explains boundaries;
 otherwise leave `nodes: []` and say why.
 
+Then write `pass.json` for this head, in the shape step 5 shows, without
+`reviewUrl` yet. The page is the review's report: `--pass` seals its verdict,
+findings, risks and what the review ran with the revision, so the reader sees
+them first, and refuses a pass for any head but the pinned one.
+
 ```sh
-thurview publish --review <id>
+thurview publish --review <id> --pass pass.json
 thurview publish-static <id> --to cloudflare
 ```
 
@@ -195,7 +200,7 @@ deploys that revision without local serving. The snapshot command returns
 assets. Initialize its archive only on the first use of a dedicated Worker
 with no snapshots (see setup); otherwise restore a lost archive.
 
-Set `reviewUrl` to the returned snapshot URL. Fetch it and require HTTP 200
+Set `reviewUrl` in `pass.json` to the returned snapshot URL. Fetch it and require HTTP 200
 before syncing. Check the snapshot's sealed revision/head against
 this pass; never reuse an older URL record as proof of a current deploy. If
 deployment or the fetch fails, stop and report it to the operator; leave
@@ -204,8 +209,9 @@ push and publish again before syncing.
 
 ## 5. Sync
 
-Write `pass.json` for this head. `findings` holds only what is new; `assessments`
-holds a decision and evidence for every own finding returned by `reassess`:
+`pass.json` is the file the page was sealed with, now carrying `reviewUrl`.
+`findings` holds only what is new; `assessments` holds a decision and
+evidence for every own finding returned by `reassess`:
 
 ```json
 {
@@ -234,6 +240,10 @@ holds a decision and evidence for every own finding returned by `reassess`:
       "status": "fixed",
       "evidence": "src/upload.ts now returns on a 4xx; the retry test passes at this head."
     }
+  ],
+  "ran": [
+    { "kind": "search", "what": "Callers of upload()", "result": "two, both in src/sync.ts" },
+    { "kind": "test", "what": "pnpm test src/upload", "result": "12 passed" }
   ]
 }
 ```
@@ -282,6 +292,9 @@ holds a decision and evidence for every own finding returned by `reassess`:
 - A finding's `title` is the claim in one line, `body` the fix. Title, body
   and sign-off together fit five lines. `suggestion` replaces the lines from
   `startLine` to `line` and is optional.
+- `ran` lists what the review ran to reach its verdict - each search, test
+  or command with what it found - and is shown on the page under the scope.
+  Say so when a suite does not exist or did not run. The summary leaves it out.
 - `reviewUrl` is required by this workflow on **every** pass, even when there
   are no findings. Use only the public snapshot from step 4. Never use the
   live URL on a public repository. The CLI keeps the field optional for other

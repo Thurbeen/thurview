@@ -76,10 +76,57 @@ const PassSchema = z.object({
       }),
     )
     .default([]),
+  /** What the review ran to reach its verdict: searches, tests, commands. Shown on the page only. */
+  ran: z
+    .array(
+      z.object({
+        kind: z.enum(["search", "test", "command", "read"]),
+        what: z.string().trim().min(1),
+        result: z.string().trim().min(1),
+      }),
+    )
+    .default([]),
 });
 
 export type Finding = z.input<typeof Finding>;
 export type Pass = z.input<typeof PassSchema>;
+
+/**
+ * What a published page carries of a pass: the verdict and its grounds, as the
+ * summary on the change request states them. The link, sign-off and the
+ * assessments of earlier findings are for the forge and stay there.
+ */
+export interface Verdict {
+  head: string;
+  confidence: number;
+  reason: string;
+  risk: string[];
+  change: string;
+  findings: {
+    category: Category;
+    severity: Severity;
+    path: string;
+    line: number;
+    startLine?: number;
+    side?: "head" | "base";
+    title: string;
+    body: string;
+    suggestion?: string;
+  }[];
+  ran: { kind: "search" | "test" | "command" | "read"; what: string; result: string }[];
+}
+
+export function verdictOf(p: Pass): Verdict {
+  return {
+    head: p.head,
+    confidence: p.confidence,
+    reason: p.reason,
+    risk: p.risk,
+    change: p.change,
+    findings: (p.findings ?? []).map(({ id: _id, body, ...f }) => ({ ...f, body: body ?? "" })),
+    ran: p.ran ?? [],
+  };
+}
 
 export function parsePass(text: string, file: string): Pass {
   let raw: unknown;

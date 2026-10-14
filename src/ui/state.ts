@@ -27,9 +27,11 @@ export function view(): View {
 }
 
 export interface SideState {
-  kind: "none" | "peek" | "threads";
+  kind: "none" | "peek" | "threads" | "finding";
   anchor?: string;
   activeThread?: string;
+  /** the selected finding, as `path:line:title` */
+  finding?: string;
 }
 
 export interface State {
