@@ -538,7 +538,8 @@ function toggleButton(shown: boolean, set: (shown: boolean) => void): HTMLButton
 }
 
 function scrollToBlock(id: string): void {
-  const el = document.querySelector(`[data-block="${id}"]`) as HTMLElement | null;
+  // Only in the document: the links that jump here carry the same data-block.
+  const el = document.querySelector<HTMLElement>(`article.report [data-block="${id}"]`);
   if (!el) return;
   el.closest(".section")?.classList.remove("section-collapsed");
   el.scrollIntoView({ block: "start", behavior: "smooth" });

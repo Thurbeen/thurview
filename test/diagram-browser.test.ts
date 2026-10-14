@@ -238,7 +238,19 @@ async function page(
     ws.close();
     return fetch(`http://127.0.0.1:${devtools}/json/close/${target.id}`).then(() => {});
   };
-  return { evaluate, press, reload: open, close };
+  // A real mouse click at the middle of the element, as a reader makes it.
+  const click = async (selector: string) => {
+    const at = await evaluate<{ x: number; y: number } | null>(`(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+    if (!at) throw new Error(`nothing matches ${selector}`);
+    for (const type of ["mousePressed", "mouseReleased"])
+      await call("Input.dispatchMouseEvent", { type, ...at, button: "left", clickCount: 1 });
+  };
+  return { evaluate, press, click, reload: open, close };
 }
 
 /** The design, which the reader-facing checks below drive. */
@@ -707,6 +719,38 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
       await p.close();
     }
   }, 30_000);
+
+  for (const [name, open] of [
+    ["served", reader],
+    ["published copy", publishedCopy],
+  ] as const)
+    it(`scrolls to the section an On this page entry names (${name})`, async () => {
+      const p = await open(1440, 900);
+      try {
+        for (const text of ["Migration", "Decisions needed", "Summary"]) {
+          const entry = await p.evaluate<string | null>(
+            `[...document.querySelectorAll(".toc a")].find((e) => e.textContent === ${JSON.stringify(text)})?.dataset.block ?? null`,
+          );
+          expect(entry, text).toBeTruthy();
+          await p.click(`.toc a[data-block="${entry}"]`);
+          const where = await p.evaluate<{
+            top: number;
+            active: string | null;
+          }>(`new Promise((ok) => setTimeout(() => {
+            const el = document.querySelector('article.report [data-block="${entry}"]');
+            ok({ top: Math.round(el.getBoundingClientRect().top), active: document.querySelector(".toc a.active")?.textContent ?? null });
+          }, 1200))`);
+          // The heading lands at the top of the view, under the bar, and is the
+          // one marked - but for the summary, too short for the next heading to
+          // leave the top quarter, so it is the one marked from the start.
+          expect.soft(where.top, text).toBeGreaterThanOrEqual(0);
+          expect.soft(where.top, text).toBeLessThan(200);
+          if (text !== "Summary") expect.soft(where.active, text).toBe(text);
+        }
+      } finally {
+        await p.close();
+      }
+    }, 30_000);
 
   it("keeps a published copy read only, with nothing to export", async () => {
     const p = await publishedCopy(1440, 900);
