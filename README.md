@@ -41,10 +41,11 @@ Use the thurview skill to review my current branch against up-to-date main
 and open it.
 ```
 
-For an opened PR or MR, ask `Use thurview-pr-review to review <URL>`: it
-checks the cloud setup, seals a pinned review, publishes a public HTML snapshot,
-and keeps one linked summary on the change request up to date on every push.
-It never starts a local server or waits for live page feedback.
+For an opened PR or MR, ask `Review this PR` or `Review <URL>`, and the agent
+picks thurview-pr-review: it checks the cloud setup, seals a pinned review,
+publishes a public HTML snapshot, and keeps one linked summary on the change
+request up to date on every push. It never starts a local server or waits for
+live page feedback.
 
 ```mermaid
 flowchart LR
