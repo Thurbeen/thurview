@@ -422,7 +422,6 @@ describe("following the change request", () => {
       confidence: 2,
       findings: [UNBOUNDED],
       reviewUrl: "https://reviews.example.com/7/",
-      markdownUrl: "https://reviews.example.com/7/feedback.md",
     });
     const content = forge.summaries()[0]!.body.split("\n").slice(2);
     await stopReview(ctx(forge));

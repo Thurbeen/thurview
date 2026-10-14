@@ -1,7 +1,7 @@
 <!-- thurview-pr-review {"head":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111","state":"active","seen":"0"} -->
 Next: merge — **Confidence 5/5 · no blocking findings.**
 
-[**Full review**](https://reviews.example.com/r/7/) · [Markdown export](https://reviews.example.com/r/7/feedback.md)
+[**Full review**](https://reviews.example.com/r/7/)
 
 The upload checks pass.
 

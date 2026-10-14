@@ -15,7 +15,6 @@ import {
   reviewDir,
   type ReviewState,
 } from "./store.js";
-import { exportMarkdown } from "./export-markdown.js";
 import { exportReview } from "./export.js";
 
 const execFileP = promisify(execFile);
@@ -26,15 +25,12 @@ export async function renderStatic(review: ReviewState, out: string, liveUrl?: s
   );
   if (!meta) throw new Error("sealed revision is unavailable");
   const sealed = { ...review, title: meta.title, pins: meta.pins };
-  const feedback = await exportMarkdown(sealed, sealed.revision, { sentOnly: true });
   const html = await exportReview(sealed, {
     threads: true,
     banner: { revision: review.revision, sha: meta.pins.head, liveUrl },
-    markdown: "feedback.md",
   });
   await mkdir(out, { recursive: true });
   await writeText(join(out, "index.html"), html);
-  await writeText(join(out, "feedback.md"), feedback.markdown);
   return { revision: review.revision, directory: out };
 }
 
@@ -175,10 +171,12 @@ export async function publishStatic(
     for (const prior of Object.values(index.snapshots)) {
       try {
         await access(join(assets, prior, "index.html"));
-        await access(join(assets, prior, "feedback.md"));
       } catch {
         throw new Error("static archive is incomplete; restore its assets before deploying");
       }
+      // Snapshots published before the Markdown export was removed still hold
+      // one; deploying without it takes it off the public site.
+      await rm(join(assets, prior, "feedback.md"), { force: true });
     }
     const path =
       index.snapshots[review.id] ??

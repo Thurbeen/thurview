@@ -1,6 +1,6 @@
 ---
 name: thurview-pr-review
-description: Review an opened GitHub PR or GitLab MR in one flow - check publishing setup, author and seal the anchored thurview page, publish a public snapshot and Markdown export, then post or edit one summary with both links and follow new pushes. Use for PR/MR review requests, including browser walkthroughs of opened change requests, or /thurview-pr-review. For a local branch or commit range use thurview; for fixes use thurview-fix.
+description: Review an opened GitHub PR or GitLab MR in one flow - check publishing setup, author and seal the anchored thurview page, publish a public snapshot, then post or edit one summary linking it and follow new pushes. Use for PR/MR review requests, including browser walkthroughs of opened change requests, or /thurview-pr-review. For a local branch or commit range use thurview; for fixes use thurview-fix.
 user-invocable: true
 argument-hint: "<PR or MR number or URL> [--once] [--stop]"
 ---
@@ -21,8 +21,8 @@ snapshot assets. Never deploy an empty replacement after losing the archive.
 flowchart LR
   P[Check publishing setup] --> R[Review and author pinned page]
   R --> L[Seal pinned revision]
-  L --> C[Publish public snapshot and Markdown]
-  C --> S[Edit one summary with both links]
+  L --> C[Publish public snapshot]
+  C --> S[Edit one summary with its link]
   S --> W[Wait for push]
   W -->|new head| R
   W -->|merged, closed, stopped| E[Stop]
@@ -83,8 +83,8 @@ repository, get the user's publication authorization or use their already
 authorized protected target before proceeding. Do not turn a saved target
 into authorization to expose another private repository.
 
-A summary must have both links on the first pass and every update. Do not
-post a partial summary with a missing link or a `pending` placeholder. Leave
+A summary must have the public review link on the first pass and every update.
+Do not post a summary with a missing link or a `pending` placeholder. Leave
 `allowLiveLink: false` in the cloud configuration so the snapshot cannot
 disclose a separately running interactive page.
 
@@ -195,11 +195,10 @@ deploys that revision without local serving. The snapshot command returns
 assets. Initialize its archive only on the first use of a dedicated Worker
 with no snapshots (see setup); otherwise restore a lost archive.
 
-Set `reviewUrl` to the returned snapshot URL and `markdownUrl` to
-`feedback.md` resolved relative to that URL. Fetch both links and require
-HTTP 200 before syncing. Check the snapshot's sealed revision/head against
+Set `reviewUrl` to the returned snapshot URL. Fetch it and require HTTP 200
+before syncing. Check the snapshot's sealed revision/head against
 this pass; never reuse an older URL record as proof of a current deploy. If
-deployment or either fetch fails, stop and report it to the operator; leave
+deployment or the fetch fails, stop and report it to the operator; leave
 the previous summary intact. If the forge head moved, re-pin, review the new
 push and publish again before syncing.
 
@@ -216,7 +215,6 @@ holds a decision and evidence for every own finding returned by `reassess`:
   "risk": ["Every upload goes through the changed retry path.", "No test covers a 4xx."],
   "change": "Retries a failed upload three times with exponential backoff.",
   "reviewUrl": "https://reviews.example.com/pr-7/",
-  "markdownUrl": "https://reviews.example.com/pr-7/feedback.md",
   "signoff": "<the user's sign-off line, when they keep one>",
   "findings": [
     {
@@ -248,7 +246,7 @@ holds a decision and evidence for every own finding returned by `reassess`:
   anything touching security, data, infra or a public API; `change` is two or
   three sentences.
 - The compact summary opens with the next action and confidence on one line,
-  followed by the public review and Markdown links. Stop, resume, merge and
+  followed by the public review link. Stop, resume, merge and
   close replace the action while keeping the reviewed confidence score. Its
   two-column findings
   table lists severity, category and title beside a `file:line` thread link,
@@ -284,11 +282,10 @@ holds a decision and evidence for every own finding returned by `reassess`:
 - A finding's `title` is the claim in one line, `body` the fix. Title, body
   and sign-off together fit five lines. `suggestion` replaces the lines from
   `startLine` to `line` and is optional.
-- `reviewUrl` and `markdownUrl` are required by this workflow on **every**
-  pass, even when there are no findings. Use only the public snapshot and
-  its Markdown download from step 4. Never use the live URL on a public
-  repository. The CLI keeps the fields optional for other callers; that
-  compatibility does not make the links optional here.
+- `reviewUrl` is required by this workflow on **every** pass, even when there
+  are no findings. Use only the public snapshot from step 4. Never use the
+  live URL on a public repository. The CLI keeps the field optional for other
+  callers; that compatibility does not make the link optional here.
 
 ```sh
 thurview pr-review sync --change <ref> --file pass.json --dry-run
@@ -321,8 +318,8 @@ Do not change the source branch as part of this review.
 A reader stops the loop with the `thurview:stop` label or a comment that
 starts `/thurview stop`; you stop it with `thurview pr-review stop`. A stopped
 review resumes with `thurview pr-review start --change <ref>` once the label
-is gone. Report what you posted, the summary comment URL, the public page and the
-Markdown link when the loop ends.
+is gone. Report what you posted, the summary comment URL and the public page when the
+loop ends.
 
 How GitHub and GitLab differ, and what each supports, is in
 [Forges](references/forges.md).

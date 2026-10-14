@@ -178,9 +178,8 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
     expect(JSON.parse(inline.body).body).toContain("```suggestion\n");
     const summary = logged.find((c) => c.args.join(" ").includes("issues/7/comments --method"))!;
     expect(JSON.parse(summary.body).body).toMatch(/^<!-- thurview-pr-review /);
-    expect(JSON.parse(summary.body).body).toContain(
-      "[Markdown export](https://reviews.example.com/r/7/feedback.md)",
-    );
+    // A pass written for an older skill still carries markdownUrl; nothing links it.
+    expect(JSON.parse(summary.body).body).not.toMatch(/Markdown export|feedback\.md/);
     // A pass never touches the change request's own state.
     expect(logged.some((c) => /pulls\/7\/(merge|reviews)/.test(c.args.join(" ")))).toBe(false);
   });
@@ -205,7 +204,6 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
         confidence: 5,
         findings: [],
         reviewUrl: "https://reviews.example.com/r/7/",
-        markdownUrl: "https://reviews.example.com/r/7/feedback.md",
       }),
     );
     const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
@@ -221,7 +219,7 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
         (await calls()).find((c) => c.args.join(" ").includes("issues/comments/9 --method PATCH"))!
           .body,
       ).body,
-    ).toContain("[Markdown export](https://reviews.example.com/r/7/feedback.md)");
+    ).not.toContain("Markdown export");
     const made = (await calls()).map((c) => c.args.join(" "));
     expect(made.filter((a) => a.includes("--method POST"))).toEqual([]);
     expect(made.some((a) => a.includes("issues/comments/9 --method PATCH"))).toBe(true);
@@ -385,7 +383,6 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
       JSON.stringify({
         ...PASS,
         reviewUrl: "https://reviews.example.com/r/7/",
-        markdownUrl: "https://reviews.example.com/r/7/feedback.md",
       }),
     );
     const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], gitlab);
@@ -402,12 +399,10 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
     expect(sent.body).toContain("```suggestion:-2+0\n");
     const note = logged.find((c) => c.args.join(" ").includes("notes --method POST"))!;
     expect(note.args.find((a) => a.startsWith("body="))).toMatch(/^body=<!-- thurview-pr-review /);
-    expect(note.args.find((a) => a.startsWith("body="))).toContain(
-      "[Markdown export](https://reviews.example.com/r/7/feedback.md)",
-    );
+    expect(note.args.find((a) => a.startsWith("body="))).not.toContain("Markdown export");
   });
 
-  it("updates both public links on the same note for the next head", async () => {
+  it("updates the public link on the same note for the next head", async () => {
     await fixtures([
       { cli: "glab", match: ["merge_requests/7/notes/9", "PUT"], body: {} },
       {
@@ -425,7 +420,6 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
         confidence: 5,
         findings: [],
         reviewUrl: "https://reviews.example.com/r/7/",
-        markdownUrl: "https://reviews.example.com/r/7/feedback.md",
       }),
     );
     const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], gitlab);
@@ -436,7 +430,7 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
       .find((c) => c.args.join(" ").includes("notes/9 --method PUT"))!
       .args.find((a) => a.startsWith("body="))!;
     expect(body).toContain("[**Full review**](https://reviews.example.com/r/7/)");
-    expect(body).toContain("[Markdown export](https://reviews.example.com/r/7/feedback.md)");
+    expect(body).not.toContain("Markdown export");
     expect(body).toContain(HEAD);
   });
 
@@ -509,7 +503,6 @@ describe("GitLab notes and threads", { timeout: 30_000 }, () => {
 const GOLDENS = join(ROOT, "test", "fixtures", "pr-summary");
 const PUBLIC_LINKS = {
   reviewUrl: "https://reviews.example.com/r/7/",
-  markdownUrl: "https://reviews.example.com/r/7/feedback.md",
 };
 
 // Assert the Markdown sent by the real CLI, not only the formatter's return value.

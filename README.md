@@ -42,9 +42,9 @@ and open it.
 ```
 
 For an opened PR or MR, ask `Use thurview-pr-review to review <URL>`: it
-checks the cloud setup, seals a pinned review, publishes a public HTML snapshot
-and Markdown export, and keeps one linked summary on the change request up to
-date on every push. It never starts a local server or waits for live page feedback.
+checks the cloud setup, seals a pinned review, publishes a public HTML snapshot,
+and keeps one linked summary on the change request up to date on every push.
+It never starts a local server or waits for live page feedback.
 
 ```mermaid
 flowchart LR
@@ -72,25 +72,25 @@ decision, and the queue on the home page) is in [docs/READER.md](docs/READER.md)
 
 ## CLI
 
-| Command                                                     | Purpose                                                                             |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `thurview scaffold [--pr N \| --base R --head R]`           | Create a review pinned to exact commits (`--update` re-pins)                        |
-| `thurview explain [<path>] [--commit R]`                    | Create an explainer of a codebase or subsystem at one commit                        |
-| `thurview design [<path>] [--commit R]`                     | Create a design, pinned to the commit it argues from                                |
-| `thurview info [--all]`                                     | Documents bound to this worktree                                                    |
-| `thurview publish [--review ID] [--view T] [--open]`        | Validate the document and map, seal a revision                                      |
-| `thurview open [--review ID] [--view T]`                    | Start the server if needed and open the browser                                     |
-| `thurview wait [--review ID] [--timeout S]`                 | Block until the reader needs the agent                                              |
-| `thurview threads list\|get\|reply\|resolve`                | Read and answer threads                                                             |
-| `thurview export [<id>] [--out PATH] [--format md]`         | Write the published revision as one HTML file, or the reader's feedback as Markdown |
-| `thurview publish-static --check --to cloudflare`           | Check the Cloudflare target, login and project, uploading nothing                   |
-| `thurview publish-static <id> --out DIR \| --to cloudflare` | Render a read-only snapshot, or deploy it to Cloudflare                             |
-| `thurview forge status\|prior\|pass\|submit\|reply`         | Read a change request, and post a review back to it                                 |
-| `thurview pr-review status\|sync\|wait\|stop\|start`        | Follow a change request until it merges                                             |
-| `thurview delete --review ID`                               | Delete a document and what is stored for it                                         |
-| `thurview serve` / `thurview stop`                          | Run the server in the foreground / stop the background one                          |
-| `thurview setup hooks\|skill\|status`                       | Session hooks, agent skills, install state                                          |
-| `thurview update`                                           | Self-update from npm                                                                |
+| Command                                                     | Purpose                                                           |
+| ----------------------------------------------------------- | ----------------------------------------------------------------- |
+| `thurview scaffold [--pr N \| --base R --head R]`           | Create a review pinned to exact commits (`--update` re-pins)      |
+| `thurview explain [<path>] [--commit R]`                    | Create an explainer of a codebase or subsystem at one commit      |
+| `thurview design [<path>] [--commit R]`                     | Create a design, pinned to the commit it argues from              |
+| `thurview info [--all]`                                     | Documents bound to this worktree                                  |
+| `thurview publish [--review ID] [--view T] [--open]`        | Validate the document and map, seal a revision                    |
+| `thurview open [--review ID] [--view T]`                    | Start the server if needed and open the browser                   |
+| `thurview wait [--review ID] [--timeout S]`                 | Block until the reader needs the agent                            |
+| `thurview threads list\|get\|reply\|resolve`                | Read and answer threads                                           |
+| `thurview export [<id>] [--out PATH]`                       | Write the published revision as one HTML file                     |
+| `thurview publish-static --check --to cloudflare`           | Check the Cloudflare target, login and project, uploading nothing |
+| `thurview publish-static <id> --out DIR \| --to cloudflare` | Render a read-only snapshot, or deploy it to Cloudflare           |
+| `thurview forge status\|prior\|pass\|submit\|reply`         | Read a change request, and post a review back to it               |
+| `thurview pr-review status\|sync\|wait\|stop\|start`        | Follow a change request until it merges                           |
+| `thurview delete --review ID`                               | Delete a document and what is stored for it                       |
+| `thurview serve` / `thurview stop`                          | Run the server in the foreground / stop the background one        |
+| `thurview setup hooks\|skill\|status`                       | Session hooks, agent skills, install state                        |
+| `thurview update`                                           | Self-update from npm                                              |
 
 thurview is an [AXI](https://axi.md): output is [TOON](https://toonformat.dev),
 errors carry a `help` to act on, and `thurview` with no arguments shows the
@@ -113,7 +113,6 @@ Tailscale address.
 ## Documentation
 
 - [docs/READER.md](docs/READER.md): every tab, threads, the decision, sharing.
-- [Markdown export](skills/thurview/references/agent-export.md): the feedback handoff to an agent.
 - [docs/INSTALL.md](docs/INSTALL.md): other install routes and upgrades.
 - The document format: [authoring](skills/thurview/references/document-authoring.md),
   [components](skills/thurview/references/components.md),

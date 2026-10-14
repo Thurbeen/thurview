@@ -7,7 +7,6 @@ import { log, showFile } from "./git.js";
 import { readThreads, type ReviewState } from "./store.js";
 import { NOBODY } from "./presence.js";
 import { revisionData, fileDiff, fileLines } from "./server/server.js";
-import { exportMarkdown } from "./export-markdown.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = existsSync(join(HERE, "ui", "app.js"))
@@ -144,7 +143,6 @@ export async function exportReview(
   opts: {
     threads: boolean;
     banner?: { revision: number; sha: string; liveUrl?: string };
-    markdown?: string;
   },
 ): Promise<string> {
   if (!existsSync(join(UI_DIR, "app.js")))
@@ -152,16 +150,6 @@ export async function exportReview(
   const snap = {
     ...(await snapshot(review, opts.threads)),
     banner: opts.banner,
-    markdown: opts.markdown,
-    // What was sent, as the agent reads it: the page adds the reader's own
-    // notes to it, and it has no way to fetch even its own feedback.md. A copy
-    // without threads carries none of it, verdicts included.
-    feedback:
-      opts.threads === false
-        ? undefined
-        : await exportMarkdown(review, review.revision, { sentOnly: true }).then(
-            ({ markdown, threads }) => ({ markdown, items: threads }),
-          ),
   };
   const js = (await readFile(join(UI_DIR, "app.js"), "utf8"))
     .replace(/\n\/\/# sourceMappingURL=.*\s*$/, "\n")

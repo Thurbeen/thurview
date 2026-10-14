@@ -296,7 +296,7 @@ describe.skipIf(!browserBin)("an exported document in a browser, offline", () =>
     return { evaluate, requests, errors, call, close: () => ws.close() };
   }
 
-  it("opens the static snapshot offline with its banner, anchors and Markdown download", async () => {
+  it("opens the static snapshot offline with its banner and anchors", async () => {
     const p = await open(staticPage, "", `document.querySelector("svg.seq")`);
     try {
       const text = await p.evaluate<string>("document.body.innerText");
@@ -306,7 +306,7 @@ describe.skipIf(!browserBin)("an exported document in a browser, offline", () =>
       const links = await p.evaluate<string[]>(
         `[...document.querySelectorAll(".banner a")].map(a => a.getAttribute("href"))`,
       );
-      expect(links).toEqual(["feedback.md"]);
+      expect(links).toEqual([]);
       await p.call("Emulation.setDeviceMetricsOverride", {
         width: 390,
         height: 844,
@@ -314,7 +314,7 @@ describe.skipIf(!browserBin)("an exported document in a browser, offline", () =>
         mobile: false,
       });
       const fits = await p.evaluate<boolean>(
-        `document.querySelector(".banner a").getBoundingClientRect().right <= innerWidth`,
+        `document.querySelector(".banner").getBoundingClientRect().right <= innerWidth`,
       );
       expect(fits).toBe(true);
       expect(p.errors).toEqual([]);
@@ -329,9 +329,9 @@ describe.skipIf(!browserBin)("an exported document in a browser, offline", () =>
     const text = await p.evaluate<string>("document.body.innerText");
     for (const s of SECTIONS) expect.soft(text).toContain(s);
     for (const s of SNIPPETS) expect.soft(text).toContain(s);
-    // a published copy takes notes in the browser, but no decision reaches anyone from it
+    // nothing to write with: a published copy is read only
     const decide = await p.evaluate<number>(
-      `[...document.querySelectorAll("button")].filter((b) => b.offsetParent && /^(Decide|Submit.*)$/.test(b.textContent)).length`,
+      `[...document.querySelectorAll("button")].filter((b) => b.offsetParent && /^(Decide|Submit.*|\\+|Comment on .*|Export for agent)$/.test(b.textContent)).length`,
     );
     p.close();
     expect.soft(decide).toBe(0);

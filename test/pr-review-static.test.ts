@@ -159,15 +159,14 @@ require('node:module').syncBuiltinESMExports();
       if (out.published) expect(out.help.join("\n")).not.toMatch(/thurview (?:open|wait) /);
     }
     expect(snapshot.revision).toBe(1);
-    const markdownUrl = new URL("feedback.md", snapshot.url).href;
     const { createHash } = await import("node:crypto");
     const target = createHash("sha256").update("test-reviews").digest("hex");
     const assets = join(home, "static", target, "assets", new URL(snapshot.url).pathname);
     const html = await readFile(join(assets, "index.html"), "utf8");
     expect(html).toContain(head);
-    expect(html).toContain("feedback.md");
+    expect(html).not.toContain("feedback.md");
     expect(html).not.toContain("http://127.0.0.1");
-    expect(await readFile(join(assets, "feedback.md"), "utf8")).toContain("Change value");
+    expect(existsSync(join(assets, "feedback.md"))).toBe(false);
     const pass = join(dir, "pass.json");
     await writeFile(
       pass,
@@ -180,7 +179,6 @@ require('node:module').syncBuiltinESMExports();
         findings: [],
         assessments: [],
         reviewUrl: snapshot.url,
-        markdownUrl,
       }),
     );
     expect(
@@ -203,7 +201,7 @@ require('node:module').syncBuiltinESMExports();
       .map((line) => JSON.parse(line));
     const summary = calls.find((c) => c.args.includes("POST"));
     expect(JSON.parse(summary.body).body).toContain(snapshot.url);
-    expect(JSON.parse(summary.body).body).toContain(markdownUrl);
+    expect(JSON.parse(summary.body).body).not.toMatch(/Markdown export|feedback\.md/);
     expect(existsSync(attempted), "no listener or serve process was attempted").toBe(false);
     expect(existsSync(join(home, "server.json"))).toBe(false);
   } finally {

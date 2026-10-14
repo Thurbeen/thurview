@@ -3,6 +3,7 @@ import { execFile, spawn } from "node:child_process";
 import { decode } from "@toon-format/toon";
 import { promisify } from "node:util";
 import { mkdtemp, writeFile, mkdir, readFile, chmod, rm, rename } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 
@@ -183,206 +184,20 @@ describe("thurview end to end", () => {
     expect(out["code"]).toBe("VALIDATION_ERROR");
   });
 
-  it("exports reader feedback as stable Markdown through CLI and HTTP", async () => {
-    const fixture = await cli(["scaffold", "--new"]);
-    const id = fixture.review.uuid;
-    const dir = fixture.review.dir;
-    await writeFile(
-      join(dir, "review.md"),
-      "# Export fixture\n\n[Login](anchor:login) checks the user.\n\n## Audit\n\nThe audit records login.\n",
-    );
-    await writeFile(
-      join(dir, "data.yaml"),
-      "anchors:\n  login:\n    title: Login\n    peek: { file: src/auth.ts, from: 3, to: 5 }\n",
-    );
-    await cli(["publish", "--review", id]);
-    const payload = await api<Out>(`/api/reviews/${id}`);
-    const blocks = payload.document.blocks;
-    const question = (await post(`/api/reviews/${id}/threads`, {
-      kind: "question",
-      mode: "ask",
-      target: { type: "file", path: "src/auth.ts", side: "base", line: 1, endLine: 2 },
-      body: "Why keep check?",
-    })) as Out;
-    await cli([
-      "threads",
-      "reply",
-      question.id,
-      "--review",
-      id,
-      "--body",
-      "It validates the user.",
-    ]);
-    await cli(["threads", "resolve", question.id, "--review", id]);
-    await post(`/api/reviews/${id}/threads`, {
-      kind: "comment",
-      mode: "review",
-      target: { type: "document", blockId: blocks[1].id, quote: "Login checks the user." },
-      body: "Handle **empty** users.\nKeep the error explicit.",
-    });
-    await post(`/api/reviews/${id}/submit`, {
-      decision: "request-changes",
-      body: "Please address the open item.",
-    });
-    const output = join(home, "feedback.md");
-    const exported = await cli(["export", "--format", "md", id, "--out", output]);
-    expect(exported.export.threads).toBe(2);
-    const markdown = await readFile(output, "utf8");
-    const normalize = (text: string) =>
-      text
-        .replaceAll(repo.split("/").pop()!, "fixture-repo")
-        .replaceAll(payload.review.pins.base, "BASE_SHA")
-        .replaceAll(payload.review.pins.head, "HEAD_SHA")
-        .replace(/Thread: [a-f0-9]+/g, "Thread: THREAD_ID")
-        .replace(/thread [a-f0-9]+/g, "thread THREAD_ID");
-    expect(normalize(markdown)).toBe(
-      await readFile(join(ROOT, "test/fixtures/agent-export.md"), "utf8"),
-    );
-    expect(markdown).not.toContain(repo);
-    expect(markdown).not.toContain(home);
-    const http = await api<Out>(`/api/reviews/${id}/export?revision=1`);
-    expect(http.markdown).toBe(markdown);
-    expect((await cli(["export", "--format", "md", "--review", id])).markdown).toBe(markdown);
-    const bad = await cli(["export", id, "--format", "pdf"], { expectCode: 2 });
-    expect(bad.error).toContain("md");
-    await cli(["delete", "--review", id]);
-  }, 30_000);
-
-  it("exports empty feedback and refuses absolute anchors without disclosing them", async () => {
+  it("has no Markdown export: an agent reads feedback through wait and threads", async () => {
     const fixture = await cli(["scaffold", "--new"]);
     const id = fixture.review.uuid;
     await cli(["publish", "--review", id]);
-    const empty = await cli(["export", "--format", "md", id]);
-    expect(empty.export).toEqual({ revision: 1, threads: 0, open: 0 });
-    expect(empty.markdown).toContain("No verdict given.");
-    expect(empty.markdown).toContain("No reader feedback.");
-    expect(empty.markdown).toContain("No unresolved items.");
-    await post(`/api/reviews/${id}/threads`, {
-      kind: "comment",
-      mode: "review",
-      target: { type: "file", path: "/outside.ts", side: "head", line: 1 },
-      body: "An invalid target.",
-    });
-    const bad = await cli(["export", "--format", "md", id], { expectCode: 2 });
-    expect(bad.error).toBe("export requires repository-relative anchors");
-    expect(JSON.stringify(bad)).not.toContain("/outside.ts");
+    const md = await cli(["export", "--format", "md", id], { expectCode: 2 });
+    expect(md.error).toContain("unknown flag --format");
+    expect(JSON.stringify(md)).not.toContain("--format md");
     expect((await fetch(`http://127.0.0.1:${server.port}/api/reviews/${id}/export`)).status).toBe(
-      400,
+      404,
     );
+    const help = await cli(["export", "--help"]);
+    expect(JSON.stringify(help)).not.toMatch(/markdown|format md/i);
     await cli(["delete", "--review", id]);
   }, 30_000);
-
-  it.each(["review", "explainer", "design"])(
-    "exports %s history at its sealed pins",
-    async (kind) => {
-      const out = await cli(
-        kind === "review"
-          ? ["scaffold", "--new"]
-          : [kind === "explainer" ? "explain" : "design", "src", "--new"],
-      );
-      const r = out[kind];
-      const id = r.uuid ?? r.id;
-      const dir = r.dir;
-      const draft = await cli(["export", "--format", "md", id], { expectCode: 2 });
-      expect(draft.error).toContain("published revision");
-      await writeFile(
-        join(dir, "review.md"),
-        "# First title\n\n[Login](anchor:login) checks the user.\n",
-      );
-      await writeFile(
-        join(dir, "data.yaml"),
-        "anchors:\n  login: { title: Login, peek: { file: src/auth.ts, from: 3, to: 5 } }\n" +
-          (kind === "design"
-            ? "interfaces:\n  strict: { name: strict login, change: added, capability: Reject empty users, anchor: login }\n"
-            : ""),
-      );
-      await writeFile(
-        join(dir, "map.yaml"),
-        "nodes:\n  - { id: auth, kind: component, label: Authentication, anchor: login, files: [src/auth.ts] }\nedges: []\n",
-      );
-      await cli(["publish", "--review", id]);
-      const payload = await api<Out>(`/api/reviews/${id}`);
-      await post(`/api/reviews/${id}/threads`, {
-        kind: "comment",
-        mode: "review",
-        target: { type: "map", node: "auth" },
-        body: "Keep the map accurate.",
-      });
-      await post(`/api/reviews/${id}/threads`, {
-        kind: "question",
-        mode: "ask",
-        target: { type: "review" },
-        body: "A literal fence: ``` and <tag>",
-      });
-      await post(`/api/reviews/${id}/submit`, {
-        decision: "request-changes",
-        body: "Read it.",
-      });
-      await post(`/api/reviews/${id}/threads`, {
-        kind: "comment",
-        mode: "review",
-        target: {
-          type: "document",
-          blockId: kind === "explainer" ? "coverage" : "interface-delta",
-        },
-        body: "Check this summary.",
-      });
-      const priorThreads = await api<Out[]>(`/api/reviews/${id}/threads`);
-      for (const thread of priorThreads)
-        await cli(["threads", "resolve", thread.id, "--review", id]);
-      const first = (await cli(["export", "--format", "md", id])).markdown;
-      expect(first).toContain(`- Document: ${kind}`);
-      expect(first).toContain(
-        kind === "explainer" ? "Target: Coverage summary" : "Target: Interface summary",
-      );
-      expect(first.indexOf("Check this summary.")).toBeLessThan(
-        first.indexOf("Keep the map accurate."),
-      );
-      expect(first).toContain(`src/auth.ts:3-5 at ${payload.review.pins.head}`);
-      expect(first).toContain("Quoted text:\n\n```text\nAuthentication\n```");
-      expect(first).toContain("````text\nA literal fence: ``` and <tag>\n````");
-      expect(first).toContain("Request changes");
-      await cli(
-        kind === "review"
-          ? ["scaffold", "--update", "--review", id, "--head", "surface"]
-          : [
-              kind === "explainer" ? "explain" : "design",
-              "--update",
-              "--review",
-              id,
-              "--commit",
-              "surface",
-            ],
-      );
-      await writeFile(
-        join(dir, "review.md"),
-        "# Second title\n\n[Login](anchor:login) checks the user.\n",
-      );
-      await cli(["publish", "--review", id]);
-      await post(`/api/reviews/${id}/threads`, {
-        kind: "comment",
-        mode: "review",
-        target: { type: "review" },
-        body: "New revision feedback.",
-      });
-      expect((await cli(["export", "--format", "md", id, "--revision", "1"])).markdown).toBe(first);
-      const second = (await cli(["export", "--format", "md", id])).markdown;
-      expect(second).toContain("# Second title");
-      expect(second).toContain(`src/auth.ts:3-5 at ${payload.review.pins.head}`);
-      expect(second).toContain("New revision feedback.");
-      await post(`/api/reviews/${id}/submit`, {
-        decision: kind === "explainer" ? "close" : "approve",
-      });
-      const terminal = (await cli(["export", "--format", "md", id])).markdown;
-      expect(terminal).toContain(kind === "explainer" ? "Sent back" : "Approve");
-      const invalid = await fetch(
-        `http://127.0.0.1:${server.port}/api/reviews/${id}/export?revision=99`,
-      );
-      expect(invalid.status).toBe(400);
-      await cli(["delete", "--review", id]);
-    },
-    45_000,
-  );
 
   it("names the interfaces a change adds, changes and removes, as the author declared them", async () => {
     const ev = await cli(["scaffold", "--base", "feature", "--head", "surface"]);
@@ -1876,9 +1691,10 @@ describe("static snapshots", () => {
     await cli(["publish", "--review", id]);
     const out = join(home, "early-thread");
     await cli(["publish-static", id, "--out", out]);
-    const md = await readFile(join(out, "feedback.md"), "utf8");
-    expect(md).toContain("A question before first publish");
-    expect(md).toContain("unpublished draft");
+    expect(await readFile(join(out, "index.html"), "utf8")).toContain(
+      "A question before first publish",
+    );
+    expect(existsSync(join(out, "feedback.md"))).toBe(false);
   }, 30_000);
 
   it("renders a self-contained read-only static snapshot and deploys the archive", async () => {
@@ -1934,11 +1750,8 @@ describe("static snapshots", () => {
     expect(snapshot.payload.review.worktree).toBe("");
     expect(html).not.toContain(repo);
 
-    expect(await readFile(join(output, "feedback.md"), "utf8")).toContain("Snapshot answer");
-    expect(await readFile(join(output, "feedback.md"), "utf8")).not.toContain(
-      "Private unsubmitted draft",
-    );
-    expect(await readFile(join(output, "feedback.md"), "utf8")).toContain("Target: Review overall");
+    expect(html).not.toContain("Private unsubmitted draft");
+    expect(existsSync(join(output, "feedback.md"))).toBe(false);
     const config = join(home, "cloudflare.json");
     await writeFile(
       config,
@@ -1989,6 +1802,9 @@ if (fs.existsSync(${JSON.stringify(join(home, "fail-deploy"))})) process.exit(1)
       const relative = new URL(first.snapshot.url).pathname;
       const firstPage = join(deployed.assets.directory, relative, "index.html");
       expect(await readFile(firstPage, "utf8")).toContain("Snapshot fixture");
+      // A snapshot deployed before the Markdown export was removed still holds one.
+      const stale = join(deployed.assets.directory, relative, "feedback.md");
+      await writeFile(stale, "# Old feedback\n");
       const secondFixture = await cli(["scaffold", "--new"]);
       await cli(["publish", "--review", secondFixture.review.uuid]);
       await cli([
@@ -2000,6 +1816,7 @@ if (fs.existsSync(${JSON.stringify(join(home, "fail-deploy"))})) process.exit(1)
         config,
       ]);
       expect(await readFile(firstPage, "utf8")).toContain("Snapshot fixture");
+      expect(existsSync(stale)).toBe(false);
       await writeFile(join(home, "edit-during-deploy"), "");
       const again = await cli(["publish-static", id, "--to", "cloudflare", "--config", config]);
       expect(again.snapshot.url).toBe(first.snapshot.url);
