@@ -1,6 +1,6 @@
 ---
 name: thurview-pr-review
-description: Review an opened GitHub PR or GitLab MR in one flow - check publishing setup, author and seal the anchored thurview page, publish a public snapshot, then post or edit one summary linking it and follow new pushes. Use for PR/MR review requests, including browser walkthroughs of opened change requests, or /thurview-pr-review. For a local branch or commit range use thurview; for fixes use thurview-fix.
+description: Review an opened GitHub PR or GitLab MR in one flow - check publishing setup, author and seal the anchored thurview page, publish a public snapshot, then post or edit one summary linking it and follow new pushes. Use whenever the user asks to review one pull or merge request, by PR number or URL or in plain words - "review this PR", "review PR #12", "can you review my merge request" - including a browser walkthrough of one, or invokes /thurview-pr-review. For a local branch or commit range use thurview; to fix what a review finds use thurview-fix. Not for a pass/fail bug hunt.
 user-invocable: true
 argument-hint: "<PR or MR number or URL> [--once] [--stop]"
 ---

@@ -122,6 +122,41 @@ describe("SKILL.md frontmatter", () => {
     expect(String(loadFrontmatter(thurview)["description"])).toContain("thurview-design");
   });
 
+  // The agent picks a skill from its description alone, so a plain request has
+  // to read as the skill that owns it: "review this PR" must not need the user
+  // to type /thurview-pr-review, and the skills beside it must hand it over
+  // rather than claim it. Each row is a request as a user types it, the skill
+  // that owns it, and the phrase in that skill's description that matches it.
+  describe("routes a plain review request to the skill that owns it", () => {
+    const description = (skill: string) =>
+      String(
+        loadFrontmatter(readFileSync(`${repoRoot}skills/${skill}/SKILL.md`, "utf8"))[
+          "description"
+        ],
+      );
+
+    it.each([
+      ["review this PR", "thurview-pr-review", /"review this PR"/],
+      ["review PR #12", "thurview-pr-review", /PR number/],
+      ["review https://github.com/o/r/pull/12", "thurview-pr-review", /PR number or URL/],
+      ["can you review my merge request", "thurview-pr-review", /merge request/],
+      ["review my branch against main", "thurview", /"review my branch against main"/],
+      ["review and fix PR #12", "thurview-fix", /review and fix/],
+    ])("%s goes to %s", (_request, skill, phrase) => {
+      expect(description(skill)).toMatch(phrase);
+    });
+
+    // A skill that also reviews a change sends a plain PR review on by name,
+    // and does not advertise an opened PR as its own case.
+    it.each(["thurview", "thurview-fix"])("%s hands a plain PR review to thurview-pr-review", (s) => {
+      expect(description(s)).toMatch(/plain "review this PR".*thurview-pr-review/);
+    });
+
+    it("keeps an opened PR out of thurview's own cases", () => {
+      expect(description("thurview")).not.toMatch(/review of a branch, pull request/);
+    });
+  });
+
   it("rejects the unquoted `key: value` that broke the installer", () => {
     // The exact shape shipped on main: `Two kinds: ` inside an unquoted
     // scalar reads as a nested mapping, which no installer will load.
