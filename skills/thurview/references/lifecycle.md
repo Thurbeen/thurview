@@ -141,7 +141,8 @@ ${THURVIEW_HOME:-~/.thurview}/
     ├── map.yaml             you edit
     ├── review.json          binding, pins, status, presented revision
     ├── threads.json         threads and decisions (use the CLI)
-    └── revisions/<n>/       sealed copies plus compiled document.json, map.json
+    └── revisions/<n>/       sealed copies plus compiled document.json, map.json,
+                             and verdict.json when published with `--pass`
 ```
 
 A failed publish leaves the last sealed revision in place. The reader can
