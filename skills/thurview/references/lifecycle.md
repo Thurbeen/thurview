@@ -197,7 +197,12 @@ archive with Wrangler. The first deploy requires `--initialize-archive`,
 only for a Worker with no existing snapshots. Missing archives otherwise
 refuse deployment, even for a review that has never been deployed. Stored
 URLs prevent reinitializing a known publication. The HTML remains read only, with no server requests.
-Its banner identifies the revision and head commit.
+Its banner identifies the revision and head commit. Before deployment, oversized
+legacy snapshot HTML is compacted from its existing embedded data and bundled
+UI, preserving that archived revision, head, source and diffs. Legacy Markdown
+exports are removed from the archive. Other assets and stored paths stay unchanged, even when the original local
+review has been deleted. Unsupported oversized assets or snapshots that still
+exceed Cloudflare's 25 MiB limit block deployment without dropping content.
 
 The target is `THURVIEW_HOME/cloudflare.json`, overridable with `--config`:
 `name` is the Worker project, `publicUrl` its HTTPS origin, optional

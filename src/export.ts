@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Coverage } from "./coverage.js";
@@ -142,6 +143,7 @@ export async function exportReview(
   review: ReviewState,
   opts: {
     threads: boolean;
+    compress?: boolean;
     banner?: { revision: number; sha: string; liveUrl?: string };
   },
 ): Promise<string> {
@@ -157,7 +159,7 @@ export async function exportReview(
   const json = JSON.stringify(snap).replace(/</g, "\\u003c");
   const csp =
     "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src data:; img-src data:";
-  return `<!doctype html>
+  const html = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -181,4 +183,36 @@ ${js}
   </body>
 </html>
 `;
+  return opts.compress ? compressSnapshotHtml(html) : html;
+}
+
+/** Compact a generated page without consulting newer revisions or a worktree. */
+export function compressSnapshotHtml(html: string): string {
+  const scripts =
+    /<script type="application\/json" id="thurview-snapshot">([\s\S]*?)<\/script>\s*<script>\n([\s\S]*?)\n    <\/script>/.exec(
+      html,
+    );
+  if (!scripts) throw new Error("unsupported archived snapshot format");
+  const json = scripts[1]!;
+  // Already compressed or malformed data must never be overwritten as JSON.
+  JSON.parse(json);
+  if (Buffer.byteLength(json) <= 1024 * 1024) return html;
+  const js = scripts[2]!;
+  const embedded = gzipSync(json).toString("base64");
+  const script = `(async () => {
+  const el = document.getElementById("thurview-snapshot");
+  const bytes = Uint8Array.from(atob(el.textContent), c => c.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  el.textContent = await new Response(stream).text();
+${js}
+})().catch(() => {
+  document.getElementById("app").textContent = "This snapshot could not be decoded. Open it in a current browser with gzip DecompressionStream support.";
+});`;
+  return html.replace(
+    scripts[0],
+    () => `<script type="application/json" id="thurview-snapshot">${embedded}</script>
+    <script>
+${script}
+    </script>`,
+  );
 }

@@ -105,6 +105,9 @@ repository's Pages folder.
 
 For a link instead of a file, `thurview publish-static` deploys a durable
 read-only snapshot to Cloudflare (see
-[public static snapshots](../skills/thurview/references/lifecycle.md#public-static-snapshots)),
-and the [thurview-publish](../skills/thurview-publish/SKILL.md) skill puts a
-document in your own cloud account behind a link that expires.
+[public static snapshots](../skills/thurview/references/lifecycle.md#public-static-snapshots)).
+Large snapshots embed gzip-compressed data and need a browser with
+`DecompressionStream` support; they still open offline without fetching source
+or diff assets. Ordinary HTML exports keep their uncompressed format.
+The [thurview-publish](../skills/thurview-publish/SKILL.md) skill puts a document
+in your own cloud account behind a link that expires.
