@@ -130,9 +130,7 @@ describe("SKILL.md frontmatter", () => {
   describe("routes a plain review request to the skill that owns it", () => {
     const description = (skill: string) =>
       String(
-        loadFrontmatter(readFileSync(`${repoRoot}skills/${skill}/SKILL.md`, "utf8"))[
-          "description"
-        ],
+        loadFrontmatter(readFileSync(`${repoRoot}skills/${skill}/SKILL.md`, "utf8"))["description"],
       );
 
     it.each([
@@ -148,9 +146,12 @@ describe("SKILL.md frontmatter", () => {
 
     // A skill that also reviews a change sends a plain PR review on by name,
     // and does not advertise an opened PR as its own case.
-    it.each(["thurview", "thurview-fix"])("%s hands a plain PR review to thurview-pr-review", (s) => {
-      expect(description(s)).toMatch(/plain "review this PR".*thurview-pr-review/);
-    });
+    it.each(["thurview", "thurview-fix"])(
+      "%s hands a plain PR review to thurview-pr-review",
+      (s) => {
+        expect(description(s)).toMatch(/plain "review this PR".*thurview-pr-review/);
+      },
+    );
 
     it("keeps an opened PR out of thurview's own cases", () => {
       expect(description("thurview")).not.toMatch(/review of a branch, pull request/);
