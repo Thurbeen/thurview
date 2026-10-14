@@ -73,6 +73,11 @@ await call("Emulation.setDeviceMetricsOverride", {
   deviceScaleFactor: 1,
   mobile: false,
 });
+// The demo is filmed in the dark palette, which the page picks from the OS
+// preference when the reader has chosen none.
+await call("Emulation.setEmulatedMedia", {
+  features: [{ name: "prefers-color-scheme", value: "dark" }],
+});
 await call("Page.navigate", { url });
 await new Promise((r) => setTimeout(r, 2500));
 
