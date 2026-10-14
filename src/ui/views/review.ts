@@ -6,8 +6,27 @@ import { sequenceDiagram, callstackDiff, databaseLens, flowDiagram } from "../di
 import type { Block, CompiledSecurity } from "../../document/compile.js";
 import type { InterfaceDelta, InterfaceEntry } from "../../interfaces.js";
 import type { Coverage } from "../../coverage.js";
+import {
+  reportSection,
+  summaryFacts,
+  verdictBlock,
+  findingsList,
+  findingKeys,
+  scopeColumns,
+} from "./report.js";
 
+let disposeKeys: (() => void) | undefined;
+
+/**
+ * The document as a report. What a reader opening it from a pull request needs
+ * comes first and in this order: what the change is, the verdict, the findings
+ * with their evidence, the risks, and what was reviewed and what was not. The
+ * document the agent wrote follows as the reasoning behind them. An explainer
+ * or a design has no verdict, so it opens on its summary and its scope.
+ */
 export function renderReview(root: HTMLElement): void {
+  disposeKeys?.();
+  disposeKeys = undefined;
   const doc = state.data?.document;
   if (!doc) {
     root.appendChild(
@@ -21,70 +40,171 @@ export function renderReview(root: HTMLElement): void {
     );
     return;
   }
-  root.appendChild(
-    kind() === "explainer"
-      ? coveragePanel(state.data?.coverage ?? null)
-      : interfaceDelta(doc.interfaces),
-  );
-  // Only a change crosses a trust boundary, so only a review carries the panel.
-  if (kind() === "review") root.appendChild(securityPanel(doc.security));
-  const layout = h("div", { class: "doc-layout" });
-  const toc = h(
-    "nav",
-    { class: "toc" },
-    doc.toc.map((t) =>
-      h(
-        "a",
-        {
-          href: `#/review?block=${t.id}`,
-          class: `l${t.level}`,
-          "data-block": t.id,
-          onclick: (e: Event) => {
-            e.preventDefault();
-            scrollToBlock(t.id);
-          },
-        },
-        t.text,
+  const k = kind();
+  const verdict = k === "review" ? (state.data?.verdict ?? null) : null;
+  const first = doc.blocks.findIndex((b) => b.type === "heading" && b.level === 2);
+  const landing = first < 0 ? doc.blocks : doc.blocks.slice(0, first);
+  const body = first < 0 ? [] : doc.blocks.slice(first);
+  const report = h("article", { class: "doc report" });
+
+  const r = state.data!.review;
+  const kicker =
+    k === "review"
+      ? `Review · ${r.binding.kind === "pr" ? `pull request #${r.binding.name}` : r.binding.name}`
+      : k === "explainer"
+        ? "Explainer"
+        : "Design";
+  const summary = reportSection("summary", null, null, h("div", { class: "kicker" }, kicker));
+  const lede = verdict ? h("p", { class: "lede" }, verdict.change) : null;
+  let placed = false;
+  for (const b of landing) {
+    summary.appendChild(renderBlock(b));
+    if (!placed && b.type === "heading" && b.level === 1 && lede) {
+      summary.appendChild(lede);
+      placed = true;
+    }
+  }
+  if (lede && !placed) summary.insertBefore(lede, summary.children[1] ?? null);
+  summary.appendChild(summaryFacts());
+  report.appendChild(summary);
+
+  if (verdict) {
+    const n = verdict.findings.length;
+    report.append(
+      reportSection("verdict", "Verdict", null, verdictBlock(verdict)),
+      reportSection(
+        "findings",
+        "Findings",
+        n ? `${n}, most severe first` : null,
+        findingsList(verdict),
       ),
-    ),
+      reportSection(
+        "risks",
+        "Risks",
+        null,
+        h(
+          "ul",
+          { class: "risks" },
+          verdict.risk.map((x) => h("li", null, x)),
+        ),
+      ),
+    );
+  }
+
+  const scope = reportSection(
+    "scope",
+    k === "review" ? "Scope" : k === "explainer" ? "Coverage" : "What it proposes",
+    null,
   );
-  const docEl = h("article", { class: "doc" });
+  if (k === "review")
+    scope.append(
+      scopeColumns(verdict),
+      interfaceDelta(doc.interfaces),
+      securityPanel(doc.security),
+    );
+  else if (k === "explainer") scope.append(coveragePanel(state.data?.coverage ?? null));
+  else scope.append(interfaceDelta(doc.interfaces));
+  report.appendChild(scope);
+
+  const docTitle =
+    k === "explainer"
+      ? "The explainer"
+      : k === "design"
+        ? "The design"
+        : verdict
+          ? "How the review got there"
+          : "The review";
+  const docSec = reportSection("document", body.length ? docTitle : null, null);
   let section: HTMLElement | null = null;
-  const sectionLevel = 2;
-  for (const b of doc.blocks) {
+  for (const b of body) {
     const el = renderBlock(b);
-    if (b.type === "heading" && b.level === sectionLevel) {
+    if (b.type === "heading" && b.level === 2) {
       section = h("div", { class: `section ${b.collapsed ? "section-collapsed" : ""}` });
-      docEl.appendChild(section);
+      docSec.appendChild(section);
       const s = section;
       el.querySelector("h2,h1,h3")?.appendChild(
         toggleButton(!b.collapsed, (shown) => s.classList.toggle("section-collapsed", !shown)),
       );
       el.classList.add("heading");
       section.appendChild(el);
-    } else (section ?? docEl).appendChild(el);
+    } else (section ?? docSec).appendChild(el);
   }
-  layout.append(toc, docEl);
+  report.appendChild(docSec);
+
+  const entries: [string, string, string | null][] = [
+    ["report-summary", "Summary", null],
+    ...(verdict
+      ? ([
+          ["report-verdict", "Verdict", null],
+          [
+            "report-findings",
+            "Findings",
+            verdict.findings.length ? String(verdict.findings.length) : null,
+          ],
+          ["report-risks", "Risks", null],
+        ] as [string, string, string | null][])
+      : []),
+    [
+      "report-scope",
+      k === "review" ? "Scope" : k === "explainer" ? "Coverage" : "What it proposes",
+      null,
+    ],
+    ...(body.length
+      ? ([["report-document", docTitle, null]] as [string, string, string | null][])
+      : []),
+  ];
+  const link = (id: string, text: string, cls: string, n: string | null) =>
+    h(
+      "a",
+      {
+        href: `#/review?block=${id}`,
+        class: cls,
+        "data-block": id,
+        onclick: (e: Event) => {
+          e.preventDefault();
+          scrollToBlock(id);
+        },
+      },
+      h("span", null, text),
+      n ? h("span", { class: "n" }, n) : null,
+    );
+  const toc = h(
+    "nav",
+    { class: "toc", "aria-label": "On this page" },
+    h("div", { class: "toc-label" }, "On this page"),
+    entries.map(([id, text, n]) => link(id, text, "l2", n)),
+    doc.toc.map((t) => link(t.id, t.text, `l${t.level + 1}`, null)),
+  );
+  // On a phone the rail is gone; the same sections sit in a strip that scrolls with the page.
+  const jump = h(
+    "nav",
+    { class: "jump", "aria-label": "Jump to" },
+    entries.slice(1).map(([id, text, n]) => link(id, n ? `${text} ${n}` : text, "", null)),
+  );
+  root.appendChild(jump);
+  const layout = h("div", { class: "doc-layout" });
+  layout.append(toc, report);
   root.appendChild(layout);
-  selectionHandler(docEl);
-  docEl.addEventListener("click", (e) => {
+  selectionHandler(report);
+  report.addEventListener("click", (e) => {
     const a = (e.target as HTMLElement).closest("a.anchor-link") as HTMLElement | null;
     if (!a) return;
     e.preventDefault();
     const id = a.dataset["anchor"]!;
     const anchor = doc.anchors[id];
     if (anchor) {
-      docEl.querySelectorAll("a.anchor-link.active").forEach((x) => x.classList.remove("active"));
+      report.querySelectorAll("a.anchor-link.active").forEach((x) => x.classList.remove("active"));
       a.classList.add("active");
       openAnchorPeek(anchor);
     }
   });
+  disposeKeys = findingKeys(report);
   const target = state.params.get("block");
   if (target) setTimeout(() => scrollToBlock(target), 50);
   const anchorParam = state.params.get("anchor");
   if (anchorParam && doc.anchors[anchorParam] && state.side.kind !== "peek")
     openAnchorPeek(doc.anchors[anchorParam]!);
-  trackSection(root, toc, docEl);
+  trackSection(root, toc, report);
 }
 
 /**

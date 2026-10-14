@@ -8,6 +8,8 @@ import type { Presence } from "../presence.js";
 import type { QueueRow } from "../queue.js";
 import { published } from "./published.js";
 
+import type { Verdict } from "../pr-review/format.js";
+
 export interface Payload {
   review: ReviewState;
   revision: number;
@@ -17,6 +19,8 @@ export interface Payload {
   /** explainers only: what the document examined at the pinned commit, and what it did not */
   coverage: Coverage | null;
   meta: { revision: number; at: string; title: string; hasMap: boolean } | null;
+  /** the review's verdict - confidence, findings, risks - when published with its pass */
+  verdict: Verdict | null;
   threads: Thread[];
   decisions: Decision[];
   /** whether an agent is listening to this document right now */

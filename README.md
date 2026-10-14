@@ -78,7 +78,7 @@ decision, and the queue on the home page) is in [docs/READER.md](docs/READER.md)
 | `thurview explain [<path>] [--commit R]`                    | Create an explainer of a codebase or subsystem at one commit      |
 | `thurview design [<path>] [--commit R]`                     | Create a design, pinned to the commit it argues from              |
 | `thurview info [--all]`                                     | Documents bound to this worktree                                  |
-| `thurview publish [--review ID] [--view T] [--open]`        | Validate the document and map, seal a revision                    |
+| `thurview publish [--review ID] [--pass F] [--open]`        | Validate the document and map, seal a revision and its verdict    |
 | `thurview open [--review ID] [--view T]`                    | Start the server if needed and open the browser                   |
 | `thurview wait [--review ID] [--timeout S]`                 | Block until the reader needs the agent                            |
 | `thurview threads list\|get\|reply\|resolve`                | Read and answer threads                                           |

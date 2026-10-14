@@ -16,6 +16,7 @@ import {
 import { renderPeek } from "./code.js";
 import { renderThreadsPanel, submitDialog, reload } from "./threads.js";
 import { renderReview } from "./views/review.js";
+import { renderFindingSide } from "./views/report.js";
 import { renderFiles } from "./views/files.js";
 import { renderCommits } from "./views/commits.js";
 import { renderMap } from "./views/map.js";
@@ -397,6 +398,7 @@ function renderSide(): void {
   side.classList.toggle("hidden", state.side.kind === "none");
   if (state.side.kind === "peek") renderPeek(side);
   else if (state.side.kind === "threads") renderThreadsPanel(side);
+  else if (state.side.kind === "finding") renderFindingSide(side);
 }
 
 function renderBanner(): void {

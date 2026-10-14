@@ -22,16 +22,26 @@ columns empty.
 
 ## The tabs
 
-- **Interface delta**: above the document, what the change added to, changed
+- **Review**: the document as a report, in the order a reader opening it from
+  a pull request needs it. First what the change is about: the title, what it
+  does, the author's summary and its size. Then, when the review was published
+  with its pass (`thurview publish --pass`), the verdict - the confidence from
+  1 to 5 and what it means, the reason, the findings by severity - followed by
+  the findings themselves, most severe first, each one step from its diff
+  lines and its fix, and the risks. Then the scope: what was reviewed beside
+  what was not, how many added lines the document discusses per file, the
+  interface delta and the trust boundaries. The document the agent wrote comes
+  last as the reasoning, with anchor links that open the exact code beside the
+  text. On a phone a finding opens in place and the sections sit in a strip at
+  the top. An explainer opens on its summary and its coverage, a design on its
+  summary and what it proposes.
+- **Interface delta**: in the scope, what the change added to, changed
   in or removed from the surfaces other code can reach - exported functions
   and types, CLI flags, routes, config keys and formats. The agent declares
   each one, and publish holds it to an anchor on lines the diff really moved,
   so an entry cannot invent a feature the change did not deliver. Under it, the
   security entry says where the change lets input cross a trust boundary, or
   "not assessed" when the agent did not look.
-- **Review**: the document with a table of contents. Anchor links open the
-  exact code beside the text; peeks show it inline. Sequence diagrams, call
-  stack diffs and storage views are clickable down to the line.
 - **Files**: split or unified diff of every changed file at the pinned
   commits, with expandable context. Click a line number to comment on it.
   Click an identifier to see where it is defined at that commit; Ctrl-click

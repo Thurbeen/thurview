@@ -150,6 +150,18 @@ require('node:module').syncBuiltinESMExports();
       join(review.dir, "data.yaml"),
       "anchors:\n  value: { title: value, peek: { file: code.ts, from: 1, to: 1 } }\n",
     );
+    // The pass is written before the page is sealed, so the page carries its verdict.
+    const pass = join(repo, "pass.json");
+    const verdict = {
+      head,
+      confidence: 5,
+      reason: "Checked.",
+      risk: ["Only the constant changes."],
+      change: "Changes value to two.",
+      findings: [],
+      assessments: [],
+    };
+    await writeFile(pass, JSON.stringify(verdict));
     let snapshot: Record<string, any> = {};
     for (const command of commands) {
       const args = command.map((arg) => arg.replace("<id>", review.id));
@@ -164,23 +176,11 @@ require('node:module').syncBuiltinESMExports();
     const assets = join(home, "static", target, "assets", new URL(snapshot.url).pathname);
     const html = await readFile(join(assets, "index.html"), "utf8");
     expect(html).toContain(head);
+    expect(html).toContain("Changes value to two.");
     expect(html).not.toContain("feedback.md");
     expect(html).not.toContain("http://127.0.0.1");
     expect(existsSync(join(assets, "feedback.md"))).toBe(false);
-    const pass = join(dir, "pass.json");
-    await writeFile(
-      pass,
-      JSON.stringify({
-        head,
-        confidence: 5,
-        reason: "Checked.",
-        risk: ["Only the constant changes."],
-        change: "Changes value to two.",
-        findings: [],
-        assessments: [],
-        reviewUrl: snapshot.url,
-      }),
-    );
+    await writeFile(pass, JSON.stringify({ ...verdict, reviewUrl: snapshot.url }));
     expect(
       (
         await cli([

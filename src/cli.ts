@@ -59,7 +59,7 @@ import {
 } from "./forge/index.js";
 import { parseSubmission, longComments, buildPass } from "./forge/submission.js";
 import { recordForgeFacts, ciFacts } from "./queue.js";
-import { parsePass } from "./pr-review/format.js";
+import { parsePass, verdictOf, type Verdict } from "./pr-review/format.js";
 import { CATEGORIES, CONFIDENCE } from "./pr-review/categories.js";
 import {
   readState,
@@ -651,8 +651,16 @@ const SPECS: Record<
       },
       view: { kind: "string", help: "tab the reader lands on: review, commits, files, map" },
       open: { kind: "boolean", help: "open the browser after publishing" },
+      pass: {
+        kind: "string",
+        help: "a `pr-review` pass file for the pinned head: the page shows its verdict, findings and risks",
+      },
     },
-    examples: ["thurview publish", "thurview publish --review <id> --view files --open"],
+    examples: [
+      "thurview publish",
+      "thurview publish --review <id> --view files --open",
+      "thurview publish --review <id> --pass pass.json",
+    ],
   },
   open: {
     description: "Start the server if needed and open the review in the browser",
@@ -1156,6 +1164,33 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       throw new AxiError("review.md is missing", "VALIDATION_ERROR", [
         `Write ${join(dir, "review.md")}`,
       ]);
+    // A pass is the verdict on one head: checked before anything is sealed, so a
+    // stale or malformed one leaves the published revisions as they were.
+    let verdict: Verdict | null = null;
+    const passArg = str(p, "pass");
+    if (passArg) {
+      if (kindOf(review) !== "review")
+        throw new AxiError(
+          `a pass is a review's verdict, and this is ${kindOf(review) === "explainer" ? "an explainer" : "a design"}`,
+          "VALIDATION_ERROR",
+          [`Run \`thurview publish --review ${short(review.id)}\` without --pass`],
+        );
+      const file = resolve(process.cwd(), passArg);
+      const text = await readText(file);
+      if (text === null)
+        throw new AxiError(`${passArg} does not exist`, "VALIDATION_ERROR", [
+          "Write the pass file first; `thurview pr-review --help` shows its shape",
+        ]);
+      verdict = verdictOf(parsePass(text, passArg));
+      if (!review.pins.head.startsWith(verdict.head) && !verdict.head.startsWith(review.pins.head))
+        throw new AxiError(
+          `the pass reviewed ${verdict.head.slice(0, 12)}, but this document is pinned to ${review.pins.head.slice(0, 12)}`,
+          "VALIDATION_ERROR",
+          [
+            `Re-pin with \`thurview scaffold --update --review ${short(review.id)}\`, or review the pinned head`,
+          ],
+        );
+    }
     const threads = await readThreads(review.id);
     if (review.revision > 0) {
       const openC = threads.threads.filter(
@@ -1287,6 +1322,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     await writeJson(join(rdir, "map.json"), map);
     await writeJson(join(rdir, "changes.json"), changes);
     await writeJson(join(rdir, "coverage.json"), coverage);
+    await writeJson(join(rdir, "verdict.json"), verdict);
     await writeJson(join(rdir, "meta.json"), {
       revision: n,
       at: now(),
@@ -1327,6 +1363,11 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
                 interfaces: doc.document.interfaces?.verdict ?? "(unavailable)",
                 security: doc.document.security?.verdict ?? "(unavailable)",
               }),
+        ...(verdict
+          ? {
+              verdict: `confidence ${verdict.confidence}/5, ${verdict.findings.length} finding${verdict.findings.length === 1 ? "" : "s"}`,
+            }
+          : {}),
         url: url ?? "(server not running)",
       },
     };
