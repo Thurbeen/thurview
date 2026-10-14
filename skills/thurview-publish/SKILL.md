@@ -8,7 +8,7 @@ argument-hint: "<review id> [--provider azure|aws|gcp|cloudflare] [--days N] [--
 # thurview publish
 
 For an opened PR/MR review, use `thurview-pr-review` as the single entrypoint.
-It owns the durable Workers snapshot and Markdown links in the managed
+It owns the durable Workers snapshot link in the managed
 summary, with configuration in `cloudflare.json`. This skill is for separately
 requested cloud copies of reviews, explainers and designs; its multi-provider
 `publish.yaml` targets are a different contract. Do not copy one configuration

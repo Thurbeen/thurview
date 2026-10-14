@@ -45,8 +45,6 @@ locally.
 - `src/server/`: the HTTP API, SSE and static UI.
 - `src/export.ts`: `thurview export` - the same UI and a published revision's
   data, answered in advance, written as one HTML file that needs no server.
-- `src/export-markdown.ts`: the feedback serializer shared by CLI, reader exports
-  and public static snapshots.
 - `src/ui/`: the browser app, vanilla TypeScript bundled by esbuild.
 - `skills/thurview/`: the agent skill for a review, and the references the
   other skills draw on - the document, `data.yaml` and `map.yaml` shapes, the
@@ -62,7 +60,7 @@ locally.
   the closed category set, and the follow loop, all on the forge seam.
 - `skills/thurview-pr-review/`: the entrypoint for an opened PR/MR: publishing
   preflight, page authoring and sealing without a local server, a durable
-  snapshot and Markdown download, and one forge summary linking both on every
+  snapshot, and one forge summary linking it on every
   update. It follows until merge, close or stop. Its `references/cloudflare-setup.md` owns the
   one-time setup procedure.
 - `skills/thurview-publish/`: the skill that uploads `thurview export`'s page
@@ -96,7 +94,7 @@ nothing outside a temporary directory. Re-record it when the UI changes.
 `thurview-design` author and publish one document kind each,
 `thurview-fix` reviews a change and commits the fixes that pass,
 `thurview-pr-review` authors a PR/MR review page, publishes its public
-snapshot and Markdown export, and keeps one forge summary linked to both,
+snapshot, and keeps one forge summary linked to it,
 and `thurview-publish` uploads an exported document to the
 user's own cloud. Each is
 installed three ways, and only one of them keeps the

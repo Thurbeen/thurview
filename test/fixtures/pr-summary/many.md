@@ -1,7 +1,7 @@
 <!-- thurview-pr-review {"head":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111","state":"active","seen":"0"} -->
 Next: @dev — **Confidence 2/5 · do not merge; fix the 4 blocking findings.**
 
-[**Full review**](https://reviews.example.com/r/7/) · [Markdown export](https://reviews.example.com/r/7/feedback.md)
+[**Full review**](https://reviews.example.com/r/7/)
 
 Four blocking bugs.
 

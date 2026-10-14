@@ -109,15 +109,11 @@ export function isTerminal(): boolean {
   return s === "accepted" || s === "closed";
 }
 
-/** A published copy's notes are the reader's own, so a finished review does not lock them. */
 export function readOnly(): boolean {
-  return (!published && isTerminal()) || !canWrite();
+  return isTerminal() || !canWrite();
 }
 
-/**
- * Whether the reader may start a thread: not on an older revision. On a
- * published copy what they start is a note kept in their browser.
- */
+/** Whether the reader may start a thread: not on an older revision, nor on a published copy. */
 export function canWrite(): boolean {
-  return state.viewingRevision === null;
+  return state.viewingRevision === null && !published;
 }

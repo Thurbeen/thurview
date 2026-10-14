@@ -94,31 +94,14 @@ tailnet can open the same URL. The layout follows: below 900px the rail and the
 split diff give way to one column, the peek and the threads panel become
 full-screen sheets, and the tabs and the decision stay on the bar.
 
-## Handing feedback to an agent
-
-The reader's **Export for agent** action produces one portable Markdown
-handoff: pins, verdicts, anchored feedback, answers and an unresolved checklist.
-Copy it or download it as `.md`; agents can fetch the same document with
-`thurview export <id> --format md --out feedback.md`. The full contract is in
-[Markdown export](../skills/thurview/references/agent-export.md).
-
-![Export for agent dialog with Markdown preview, copy and download](../media/review-export.png)
-
 ## Sharing with someone who does not run thurview
 
 `thurview export --out review.html` writes the published revision as one HTML
-file: the same page without a server, with every snippet, diagram and diff resolved
+file: the same page, read only, with every snippet, diagram and diff resolved
 at the pinned commits and the reader's threads shown as notes (`--no-threads`
 leaves them out). It opens from disk, fetches nothing, and names no server and
 no local path. Point `--out` at a folder for `<folder>/index.html`, such as a
 repository's Pages folder.
-
-Whoever opens a copy can still comment: the `+` beside a paragraph, a line
-number or a selection adds a note that stays in their browser.
-_Export for agent_ then gives the Markdown of what was sent with their notes
-added, to hand to an agent; a `--no-threads` copy carries nothing that was
-sent, so its Markdown holds their notes alone. Nothing they write reaches the review or its
-agent unless they send that Markdown.
 
 For a link instead of a file, `thurview publish-static` deploys a durable
 read-only snapshot to Cloudflare (see

@@ -1,5 +1,4 @@
 import { api, published } from "./api.js";
-import { exportDialog } from "./export.js";
 import { h, append, clear, dialog, timeAgo, asButton, clickPoint } from "./dom.js";
 import {
   state,
@@ -238,8 +237,7 @@ function renderTopbar(): void {
       ),
     ),
     h("span", { class: "spacer" }),
-    h("button", { onclick: () => void exportDialog() }, "Export for agent"),
-    // A published copy with nothing sent and nothing noted has no thread to show.
+    // A published copy with nothing sent has no thread to show.
     published && !d.threads.length
       ? null
       : h(
@@ -413,14 +411,12 @@ function renderBanner(): void {
         "span",
         { class: "snapshot-notice" },
         snapshot
-          ? `Snapshot of revision ${snapshot.revision} at ${snapshot.sha}; comments are made on the live review. Notes you add here stay in this browser until you export them.`
-          : `Published copy of revision ${d.review.revision}, ${d.review.status}. Nothing here reaches the agent: notes you add stay in this browser until you export them.`,
+          ? `Snapshot of revision ${snapshot.revision} at ${snapshot.sha}; comments are made on the live review.`
+          : `Published copy of revision ${d.review.revision}, ${d.review.status}. Read only: nothing here reaches the agent.`,
       ),
     );
     if (snapshot?.liveUrl)
       banner.append(" ", h("a", { href: snapshot.liveUrl }, "Open live review"));
-    if (published.markdown)
-      banner.append(" ", h("a", { href: published.markdown, download: "" }, "Download Markdown"));
   } else if (state.viewingRevision !== null) {
     banner.hidden = false;
     banner.append(
@@ -554,6 +550,7 @@ async function reviewPage(id: string): Promise<void> {
   window.matchMedia(NARROW).addEventListener("change", () => emit("view"));
   emit("data");
   if (published) {
+    // nothing here starts a thread, so the controls that would are not drawn
     document.documentElement.classList.add("published");
     return;
   }

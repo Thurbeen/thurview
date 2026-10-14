@@ -9,8 +9,8 @@ argument-hint: "[<pr-number|pr-url> | --base <ref> --head <ref>]"
 
 An **opened PR or MR** request belongs to `thurview-pr-review`, installed
 beside this skill. Load that entrypoint: it checks publishing first, authors
-and serves the page, publishes the snapshot and Markdown download, and edits
-one summary with both links on every push. Do not split that request between
+and serves the page, publishes the snapshot, and edits one summary linking it
+on every push. Do not split that request between
 this workflow and `thurview-publish`. Everything below handles a local branch
 or commit range.
 

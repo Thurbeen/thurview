@@ -190,10 +190,8 @@ to keep a queue drained: the queue survives you, and the reader is told so.
 ## Public static snapshots
 
 `publish-static <id> --out <directory>` renders the current sealed revision
-as `index.html` with the Markdown feedback exporter alongside as `feedback.md`.
-Both withhold unsubmitted review-mode drafts. Sent threads from revision 0
-remain visible, labelled as unpublished draft context without invented code
-evidence.
+as `index.html`. It withholds unsubmitted review-mode drafts; sent threads
+from revision 0 remain visible.
 `publish-static <id> --to cloudflare` renders and deploys the complete retained
 archive with Wrangler. The first deploy requires `--initialize-archive`,
 only for a Worker with no existing snapshots. Missing archives otherwise
@@ -218,7 +216,7 @@ and target; republishing replaces that review's copy at the same URL.
 `THURVIEW_HOME/static/<worker-name-hash>/index.json` records paths and the
 configured account; changing `publicUrl` preserves the archive and paths,
 while changing the account is refused. `assets/` holds all
-published HTML and Markdown, and `wrangler.json` is generated from the target.
+published HTML, and `wrangler.json` is generated from the target.
 Only `assets/` is uploaded. A directory lock serializes deployments from this
 store, and an unreadable index or incomplete archive blocks the upload.
 Keep one store per Worker and back it up: another store cannot reconstruct
@@ -226,10 +224,3 @@ its existing public assets. A stale lock requires verifying the publisher
 has stopped before removing it. This uses Workers static assets, with no other service or runtime Worker.
 Public copies persist independently of local
 review deletion.
-
-## Exporting reader feedback
-
-`thurview export <id> --format md --out feedback.md` exports the reader's
-annotations, answers and verdicts for every document kind. The reader offers
-**Export for agent** with copy and download actions. See
-[Markdown export](agent-export.md) for the format, ordering and revision rules.

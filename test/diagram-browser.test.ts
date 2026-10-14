@@ -423,65 +423,6 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
     expect((await seen()).theme).toBe("light");
     p.close();
   }, 30_000);
-  for (const width of [1280, 320])
-    it(`exports matching Markdown through the reader controls (${width}px)`, async () => {
-      const p = await page(width, 800);
-      try {
-        const result = await p.evaluate<{
-          preview: boolean;
-          clipboard: boolean;
-          download: boolean;
-          fallback: boolean;
-          fits: boolean;
-        }>(`(async () => {
-          [...document.querySelectorAll("button")].find(b => b.textContent === "Export for agent").click();
-          await new Promise((ok, no) => {
-            const start = Date.now();
-            (function wait() {
-              if (document.querySelector(".export-preview")) return ok();
-              if (Date.now() - start > 5000) return no(new Error("export dialog did not load"));
-              setTimeout(wait, 50);
-            })();
-          });
-          const preview = document.querySelector(".export-preview");
-          const exported = await fetch("/api/reviews/${reviewId}/export").then(r => r.json());
-          let copied;
-          Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
-            writeText: async text => { copied = text; },
-          } });
-          const buttons = [...document.querySelector(".dialog").querySelectorAll("button")];
-          const copy = buttons.find(b => b.textContent === "Copy to clipboard");
-          copy.click();
-          await new Promise(r => setTimeout(r, 10));
-          let download;
-          const original = HTMLAnchorElement.prototype.click;
-          HTMLAnchorElement.prototype.click = function() { download = { url: this.href, name: this.download }; };
-          try { buttons.find(b => b.textContent === "Download .md").click(); }
-          finally { HTMLAnchorElement.prototype.click = original; }
-          const downloaded = await fetch(download.url).then(r => r.text());
-          navigator.clipboard.writeText = async () => { throw new Error("denied"); };
-          copy.click();
-          await new Promise(r => setTimeout(r, 10));
-          const rect = document.querySelector(".dialog").getBoundingClientRect();
-          return {
-            preview: preview.value === exported.markdown && preview.value.includes("## What to do"),
-            clipboard: copied === exported.markdown,
-            download: downloaded === exported.markdown && download.name.endsWith(".md"),
-            fallback: preview.selectionStart === 0 && preview.selectionEnd === preview.value.length,
-            fits: buttons.every(b => { const box = b.getBoundingClientRect(); return box.left >= rect.left && box.right <= rect.right; }),
-          };
-        })()`);
-        expect(result).toEqual({
-          preview: true,
-          clipboard: true,
-          download: true,
-          fallback: true,
-          fits: true,
-        });
-      } finally {
-        p.close();
-      }
-    }, 30_000);
   for (const width of [1100, 1180, 1280, 1440])
     it(`keeps the title row off the tabs at ${width}px`, async () => {
       const p = await page(width, 800);
@@ -767,70 +708,20 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
     }
   }, 30_000);
 
-  it("takes notes on a published copy and exports them for an agent", async () => {
+  it("keeps a published copy read only, with nothing to export", async () => {
     const p = await publishedCopy(1440, 900);
-    const bar = () =>
-      p.evaluate<string[]>(
+    try {
+      const bar = await p.evaluate<string[]>(
         `[...document.querySelectorAll(".bar-actions button")].map((b) => b.textContent)`,
       );
-    try {
-      // Nothing sent and nothing noted yet: no Threads to open, and no decision to make here.
-      const before = await bar();
-      expect.soft(before.some((t) => t.startsWith("Threads"))).toBe(false);
-      expect.soft(before).toContain("Export for agent");
-      expect.soft(before).not.toContain("Decide");
-
-      await p.evaluate(`(() => {
-        const block = [...document.querySelectorAll(".doc .block")].find((b) => b.querySelector(".prose")?.textContent.startsWith("Revision 2."));
-        block.querySelector(".block-actions button").focus();
-      })()`);
-      await p.press("Enter");
-      const offered = await p.evaluate<string[]>(
-        `[...document.querySelectorAll(".comment-popover button")].map((b) => b.textContent)`,
+      // Nothing was sent: no Threads to open, no decision to make, nothing to hand an agent.
+      expect.soft(bar.some((t) => t.startsWith("Threads"))).toBe(false);
+      expect.soft(bar).not.toContain("Export for agent");
+      expect.soft(bar).not.toContain("Decide");
+      const write = await p.evaluate<number>(
+        `[...document.querySelectorAll(".doc .block-actions button:not(.count)")].filter((b) => b.offsetParent).length`,
       );
-      expect(offered).toEqual(["Add note", "Cancel"]);
-      await p.evaluate(`(async () => {
-        document.querySelector(".comment-popover textarea").value = "Name the runner the first repository uses.";
-        [...document.querySelectorAll(".comment-popover button")].find((b) => b.textContent === "Add note").click();
-        await new Promise((r) => setTimeout(r, 300));
-      })()`);
-      expect
-        .soft(
-          await p.evaluate<string>(
-            `document.querySelector(".side:not(.hidden) .thread")?.textContent ?? ""`,
-          ),
-        )
-        .toContain("Name the runner the first repository uses.");
-      expect.soft((await bar()).some((t) => t.startsWith("Threads"))).toBe(true);
-
-      // A note outlives a reload: it is kept in this browser.
-      await p.reload();
-      expect(await p.evaluate<number>(`document.querySelectorAll(".doc .thread-pin").length`)).toBe(
-        1,
-      );
-
-      const markdown = await p.evaluate<string>(`(async () => {
-        [...document.querySelectorAll(".bar-actions button")].find((b) => b.textContent === "Export for agent").click();
-        await new Promise((r) => setTimeout(r, 300));
-        const text = document.querySelector(".export-preview").value;
-        document.querySelector(".overlay").remove();
-        return text;
-      })()`);
-      expect.soft(markdown).toContain("# A scheduler for recurring reviews");
-      expect.soft(markdown).toContain("Target: review.md:");
-      expect.soft(markdown).toContain("Name the runner the first repository uses.");
-      expect.soft(markdown).toContain("Written on a published copy");
-      expect.soft(markdown).toMatch(/- \[ \] Address item 1 /);
-      expect.soft(markdown).not.toContain("No reader feedback.");
-
-      // Deleting the last note takes Threads away again.
-      await p.evaluate(`(async () => {
-        document.querySelector(".doc .thread-pin").click();
-        await new Promise((r) => setTimeout(r, 200));
-        [...document.querySelectorAll(".side .thread button")].find((b) => b.textContent === "Delete").click();
-        await new Promise((r) => setTimeout(r, 300));
-      })()`);
-      expect.soft((await bar()).some((t) => t.startsWith("Threads"))).toBe(false);
+      expect.soft(write).toBe(0);
     } finally {
       await p.close();
     }
@@ -892,92 +783,4 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
         await p.close();
       }
     }, 30_000);
-
-  // Last: the question it sends stays on the review for good.
-  it("adds a note after what was sent, whatever the sent text says", async () => {
-    // A sent question that quotes the export's own headings and checklist.
-    await fetch(`http://127.0.0.1:${server.port}/api/reviews/${reviewId}/threads`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        kind: "question",
-        mode: "ask",
-        target: { type: "review" },
-        body: "Is this right?\n\n### 7. Comment — open\n\n## What to do\n\n- [ ] Ship it.",
-      }),
-    });
-    const out = join(tmp, "review.html");
-    await cli(join(tmp, "repo"), join(tmp, "home"), ["export", reviewId, "--out", out]);
-    const p = await page(1440, 900, "light", {
-      id: reviewId,
-      ready: "article.doc svg.seq",
-      url: `file://${out}`,
-    });
-    try {
-      await p.evaluate(`(async () => {
-        document.querySelector(".doc .block .block-actions button").click();
-        await new Promise((r) => setTimeout(r, 100));
-        document.querySelector(".comment-popover textarea").value = "Say which state holds the lock.";
-        [...document.querySelectorAll(".comment-popover button")].find((b) => b.textContent === "Add note").click();
-        await new Promise((r) => setTimeout(r, 300));
-      })()`);
-      const exported = await p.evaluate<{ markdown: string; status: string }>(`(async () => {
-        [...document.querySelectorAll(".bar-actions button")].find((b) => b.textContent === "Export for agent").click();
-        await new Promise((r) => setTimeout(r, 300));
-        const markdown = document.querySelector(".export-preview").value;
-        const status = document.querySelector(".overlay").textContent;
-        document.querySelector(".overlay").remove();
-        return { markdown, status };
-      })()`);
-      // The sent question is whole, and the note is the item after it.
-      expect.soft(exported.markdown).toContain("- [ ] Ship it.");
-      expect.soft(exported.markdown).toMatch(/### 2\. Comment — open\n/);
-      expect.soft(exported.markdown).toContain("Say which state holds the lock.");
-      expect
-        .soft(exported.markdown)
-        .toMatch(
-          /\n## What to do\n\n- \[ \] Address item 1 \(thread [^)]+\)\.\n- \[ \] Address item 2 \(thread note-[0-9a-f]+\)\.\n$/,
-        );
-      expect.soft(exported.status).toContain("2 feedback items · 2 unresolved");
-    } finally {
-      await p.close();
-    }
-  }, 30_000);
-
-  // After the one above: it accepts the review for good.
-  it("lets a reader drop a note on a copy of an accepted review", async () => {
-    await fetch(`http://127.0.0.1:${server.port}/api/reviews/${reviewId}/submit`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ decision: "approve" }),
-    });
-    const out = join(tmp, "accepted.html");
-    await cli(join(tmp, "repo"), join(tmp, "home"), ["export", reviewId, "--out", out]);
-    const p = await page(1440, 900, "light", {
-      id: reviewId,
-      ready: "article.doc svg.seq",
-      url: `file://${out}`,
-    });
-    try {
-      const actions = await p.evaluate<string[]>(`(async () => {
-        document.querySelector(".doc .block .block-actions button").click();
-        await new Promise((r) => setTimeout(r, 100));
-        document.querySelector(".comment-popover textarea").value = "A note written by mistake.";
-        [...document.querySelectorAll(".comment-popover button")].find((b) => b.textContent === "Add note").click();
-        await new Promise((r) => setTimeout(r, 300));
-        const card = [...document.querySelectorAll(".side .thread")].find((t) => t.textContent.includes("written by mistake"));
-        return [...card.querySelectorAll("button")].map((b) => b.textContent);
-      })()`);
-      expect(actions).toContain("Delete");
-      const left = await p.evaluate<number>(`(async () => {
-        const card = [...document.querySelectorAll(".side .thread")].find((t) => t.textContent.includes("written by mistake"));
-        [...card.querySelectorAll("button")].find((b) => b.textContent === "Delete").click();
-        await new Promise((r) => setTimeout(r, 300));
-        return [...document.querySelectorAll(".side .thread")].filter((t) => t.textContent.includes("written by mistake")).length;
-      })()`);
-      expect(left).toBe(0);
-    } finally {
-      await p.close();
-    }
-  }, 30_000);
 });

@@ -538,6 +538,9 @@ kbd {
 .block.has-threads > .block-actions {
   opacity: 1;
 }
+.published .block-actions button:not(.count) {
+  display: none;
+}
 .block-actions button {
   width: 26px;
   height: 26px;
@@ -2232,18 +2235,4 @@ kbd {
 }
 .cov-link > .muted {
   overflow-wrap: anywhere;
-}
-
-.export-preview {
-  width: 100%;
-  min-width: 0;
-  height: 45vh;
-  resize: vertical;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  margin-bottom: 16px;
-}
-
-.export-actions {
-  flex-wrap: wrap;
 }

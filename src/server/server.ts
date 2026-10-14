@@ -22,7 +22,6 @@ import {
   type ThreadTarget,
   type ReviewState,
 } from "../store.js";
-import { exportMarkdown } from "../export-markdown.js";
 import { queue } from "../queue.js";
 import {
   createThread,
@@ -270,14 +269,6 @@ export async function startServer(
       };
     }
 
-    if (sub === "export" && method === "GET") {
-      try {
-        const revision = url.searchParams.get("revision");
-        return await exportMarkdown(review, revision === null ? undefined : Number(revision));
-      } catch (e) {
-        throw new HttpError(400, (e as Error).message);
-      }
-    }
     if (sub === "events") {
       throw new HttpError(500, "handled elsewhere");
     }

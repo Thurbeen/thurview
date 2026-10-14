@@ -64,7 +64,6 @@ const PassSchema = z.object({
   risk: z.array(z.string().min(1)).min(1).max(5),
   change: z.string().min(1),
   reviewUrl: z.string().url().optional(),
-  markdownUrl: z.string().url().optional(),
   signoff: z.string().optional(),
   findings: z.array(Finding).default([]),
   fixed: z.array(z.string()).default([]),
@@ -301,12 +300,9 @@ export function renderSummary(
       "VALIDATION_ERROR",
       ["Cut reason, risk, change and signoff; folded prose still counts"],
     );
-  const links: string[] = [];
-  if (p.reviewUrl) links.push(`[**Full review**](${p.reviewUrl})`);
-  if (p.markdownUrl) links.push(`[Markdown export](${p.markdownUrl})`);
   const parts = [
     `${marker(SUMMARY_TAG, m)}\n${statusLine(m) ?? headline(p, author, open)}`,
-    ...(links.length ? [links.join(" · ")] : []),
+    ...(p.reviewUrl ? [`[**Full review**](${p.reviewUrl})`] : []),
     p.reason.trim(),
     table(open),
   ];

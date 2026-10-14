@@ -1,7 +1,7 @@
 <!-- thurview-pr-review {"head":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111","state":"active","seen":"9"} -->
 Next: @dev — **Confidence 4/5 · look at the non-blocking findings before merge.**
 
-[**Full review**](https://reviews.example.com/r/7/) · [Markdown export](https://reviews.example.com/r/7/feedback.md)
+[**Full review**](https://reviews.example.com/r/7/)
 
 The blocking retry bug is fixed.
 

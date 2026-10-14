@@ -69,7 +69,6 @@ import {
   waitForEvent,
   STOP_LABEL,
 } from "./pr-review/follow.js";
-import { exportMarkdown } from "./export-markdown.js";
 import { VERSION } from "./version.js";
 
 const execFileP = promisify(execFile);
@@ -696,20 +695,14 @@ const SPECS: Record<
     ],
   },
   export: {
-    description:
-      "Export a published document as self-contained HTML or reader feedback as Markdown",
+    description: "Export a published document as self-contained HTML",
     args: "[<review>]",
     flags: {
-      format: { kind: "string", help: "export format (html or md)", default: "html" },
-      revision: { kind: "string", help: "sealed revision for Markdown (default: current)" },
       review: {
         kind: "string",
         help: "review id prefix (default: the review for this worktree)",
       },
-      out: {
-        kind: "string",
-        help: "HTML file/folder, or Markdown file (omit for Markdown in TOON)",
-      },
+      out: { kind: "string", help: "HTML file, or a folder for <folder>/index.html" },
       threads: {
         kind: "boolean",
         help: "show the reader's threads as static notes (use --no-threads to leave them out)",
@@ -717,7 +710,6 @@ const SPECS: Record<
     },
     examples: [
       "thurview export --out review.html",
-      "thurview export <id> --format md --out feedback.md",
       "thurview export --review <id> --out docs/reviews/auth --no-threads",
     ],
   },
@@ -1351,7 +1343,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     out["help"] =
       review.binding.kind === "pr" && !bool(p, "open")
         ? [
-            `Run \`thurview publish-static ${short(review.id)} --to cloudflare\` to publish the sealed snapshot and Markdown export`,
+            `Run \`thurview publish-static ${short(review.id)} --to cloudflare\` to publish the sealed snapshot`,
             `Run \`thurview pr-review status --change ${review.binding.name}\` for the current forge head and findings`,
           ]
         : [
@@ -1446,40 +1438,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
   },
   async export(args) {
     const p = parseFlags("export", args, spec("export").flags, 1);
-    const format = str(p, "format");
-    if (format === "md") {
-      const review = await resolveReview(str(p, "review") ?? p.positional[0], { terminal: true });
-      let result;
-      try {
-        result = await exportMarkdown(
-          review,
-          str(p, "revision") === undefined ? undefined : Number(str(p, "revision")),
-        );
-      } catch (e) {
-        throw new AxiError((e as Error).message, "VALIDATION_ERROR", [
-          "Publish the document first, then run `thurview export --review <id> --format md`",
-        ]);
-      }
-      const output = str(p, "out");
-      if (output) await writeText(resolve(output), result.markdown);
-      return {
-        export: {
-          revision: result.revision,
-          threads: result.threads,
-          open: result.open,
-          ...(output ? { file: output } : {}),
-        },
-        ...(!output ? { markdown: result.markdown } : {}),
-        help: [
-          'Act on the unresolved checklist, then run `thurview threads reply <threadId> --review <id> --body "<answer>"`',
-          "Run `thurview threads list --review <id>` to look up thread ids",
-        ],
-      };
-    }
-    if (format !== "html")
-      throw new AxiError("export format must be md or html", "VALIDATION_ERROR", [
-        "Run `thurview export <id> --format md --out feedback.md`",
-      ]);
     const out = str(p, "out");
     if (!out)
       throw new AxiError("--out is required", "VALIDATION_ERROR", [
