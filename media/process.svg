@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 690" width="860" height="690" role="img" aria-labelledby="title desc">
   <title id="title">How a thurview review runs, step by step</title>
-  <desc id="desc">The agent pins the change to exact commits with thurview scaffold, writes the walkthrough with every claim anchored to a line range, and runs thurview publish, which checks every anchor and seals a revision. The reader then reads it in the browser: the walkthrough, the diff and the map. They ask questions, which the agent answers in the same thread, and they decide. Approving ends the review; closing it ends it without approval. Requesting changes goes back to the agent along one blue loop: it fixes, re-pins, rewrites and publishes again. A panel on the right shows the flow for an opened pull or merge request, with thurview-pr-review: check the publishing setup, review what moved since the last pass, seal the page, deploy a public snapshot, edit one summary on the forge that links it, and wait for a push. A new head goes round again; a merged, closed or stopped change request ends it. No local server runs in that flow. A token travels the path and dashes run along the loops; both stop when reduced motion is preferred.</desc>
+  <desc id="desc">The agent pins the change to exact commits with thurview scaffold, writes the walkthrough with every claim anchored to a line range, and runs thurview publish, which checks every anchor and seals a revision. The reader then reads it in the browser: the walkthrough, the diff and the map. They ask questions, which the agent answers in the same thread, and they decide. Approving ends the review; closing it ends it without approval. Requesting changes goes back to the agent along one blue loop: it fixes, re-pins, rewrites and publishes again. A panel on the right shows the flow for an opened pull or merge request, with thurview-pr-review: check the publishing setup, review the whole change and then what each push moved, seal the page, deploy a public snapshot, edit one summary on the forge that links it, and wait for a push. A new head goes round again; a merged, closed or stopped change request ends it. No local server runs in that flow. A token travels the path and dashes run along the loops; both stop when reduced motion is preferred.</desc>
 
   <style>
     .bg { fill: #ffffff; stroke: #d1d9e0; }
@@ -174,8 +174,8 @@
   <text class="name" x="562" y="207">Check the setup</text>
   <text class="cmd" x="562" y="222">publish-static --check</text>
   <rect class="card" x="548" y="238" width="252" height="40" rx="10"/>
-  <text class="name" x="562" y="255">Review what moved</text>
-  <text class="sub" x="562" y="270">since the last reviewed head</text>
+  <text class="name" x="562" y="255">Review the change</text>
+  <text class="sub" x="562" y="270">all of it, then what each push moved</text>
   <rect class="card" x="548" y="286" width="252" height="40" rx="10"/>
   <text class="name" x="562" y="303">Seal the page</text>
   <text class="cmd" x="562" y="318">publish --pass</text>

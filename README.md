@@ -46,7 +46,7 @@ checks the cloud setup, seals a pinned review, publishes a public HTML snapshot,
 and keeps one linked summary on the change request up to date on every push.
 It never starts a local server or waits for live page feedback.
 
-![How a review runs. The agent pins the change to exact commits, writes the walkthrough with every claim anchored to a line range, and publishes it, which checks every anchor and seals a revision. You read it in the browser, ask questions the agent answers in the same thread, and decide: approved or closed ends it, and requesting changes sends it back to the agent to fix, re-pin and publish again. For an opened PR or MR, thurview-pr-review checks the publishing setup, reviews what moved, seals the page, deploys a public snapshot, edits one linked summary and waits for the next push, until the change request is merged, closed or stopped.](./media/process.svg)
+![How a review runs. The agent pins the change to exact commits, writes the walkthrough with every claim anchored to a line range, and publishes it, which checks every anchor and seals a revision. You read it in the browser, ask questions the agent answers in the same thread, and decide: approved or closed ends it, and requesting changes sends it back to the agent to fix, re-pin and publish again. For an opened PR or MR, thurview-pr-review checks the publishing setup, reviews the whole change and then what each push moved, seals the page, deploys a public snapshot, edits one linked summary and waits for the next push, until the change request is merged, closed or stopped.](./media/process.svg)
 
 What the reader gets (the walkthrough, the diff, the map, threads, the
 decision, and the queue on the home page) is in [docs/READER.md](docs/READER.md).
