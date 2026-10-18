@@ -276,6 +276,8 @@ export interface OpenFinding {
 
 export interface SummaryUpdate {
   first: boolean;
+  /** The pass synced after the change request ended, at this head. */
+  ended?: { state: "merged" | "closed"; head: string };
   counts: { resolved: number; new: number; stillOpen: number };
   flagged?: string[];
   reviewedAt: string;
@@ -331,12 +333,33 @@ function headline(p: Pass, author: string, open: OpenFinding[]): string {
   return `Next: @${author} — **${score} · answer the risk before merge.**`;
 }
 
+/** A pass synced after the end: a next step for a follow-up, never a merge. */
+function afterline(p: Pass, author: string, open: OpenFinding[], state: string): string {
+  const blocking = open.filter((f) => f.severity === "blocking").length;
+  const lead = `Confidence ${p.confidence}/5 · reviewed after the ${state === "merged" ? "merge" : "close"}`;
+  if (blocking)
+    return `Next: @${author} — **${lead}; fix the ${blocking} blocking finding${blocking === 1 ? "" : "s"} in a follow-up.**`;
+  if (p.confidence === 5) return `Next: nothing — **${lead}; no blocking findings.**`;
+  return `Next: @${author} — **${lead}; take the findings and the risk to a follow-up.**`;
+}
+
+/** Which head the change request ended at, and that the pass gated nothing. */
+function afterNote(reviewed: string, ended: { state: string; head: string }): string {
+  const at = `${ended.state === "merged" ? "Merged" : "Closed"} at ${code(ended.head.slice(0, 7))} before this review`;
+  return ended.head.startsWith(reviewed) || reviewed.startsWith(ended.head)
+    ? `${at}, which reviewed that same head and gated nothing.`
+    : `${at}. It reviewed ${code(reviewed.slice(0, 7))}, not the ${ended.state} head, and gated nothing.`;
+}
+
 /** The line a stopped or finished review opens with instead of a next step. */
-export function statusLine(m: SummaryMarker): string | null {
+export function statusLine(m: SummaryMarker, endedAt = m.head): string | null {
   const at = m.head.slice(0, 7);
   if (m.state === "stopped")
     return `Review stopped at ${at}. Remove the \`thurview:stop\` label and run \`thurview pr-review start\` to resume.`;
-  if (m.state === "merged" || m.state === "closed") return `Review ended: ${m.state} at ${at}.`;
+  if (m.state === "merged" || m.state === "closed")
+    return endedAt === m.head
+      ? `Review ended: ${m.state} at ${at}.`
+      : `Review ended: ${m.state} at ${endedAt.slice(0, 7)}; last reviewed ${at}.`;
   return null;
 }
 
@@ -363,9 +386,14 @@ export function renderSummary(
       "VALIDATION_ERROR",
       ["Cut reason, architecture, risk, change and signoff; folded prose still counts"],
     );
+  const ended = update?.ended;
+  const opening = ended
+    ? afterline(p, author, open, ended.state)
+    : (statusLine(m) ?? headline(p, author, open));
   const parts = [
-    `${marker(SUMMARY_TAG, m)}\n${statusLine(m) ?? headline(p, author, open)}`,
+    `${marker(SUMMARY_TAG, m)}\n${opening}`,
     ...(p.reviewUrl ? [`[**Full review**](${p.reviewUrl})`] : []),
+    ...(ended ? [afterNote(m.head, ended)] : []),
     p.reason.trim(),
     `**Architecture:** ${p.architecture.trim()}`,
     table(open),

@@ -2320,10 +2320,15 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         ...(dry ? { body: r.body } : {}),
         help: dry
           ? ["Nothing was posted; re-run without --dry-run to post it"]
-          : [
-              `Run \`${again}\` to block until the next push, merge or stop`,
-              "Never approve, merge or push to the change request; the verdict is the summary",
-            ],
+          : ctx.cr.state !== "open"
+            ? [
+                `The change request is ${ctx.cr.state}: the summary says this review came after it and gated nothing, and its findings are listed there, not on the diff`,
+                "The follow loop ends here",
+              ]
+            : [
+                `Run \`${again}\` to block until the next push, merge or stop`,
+                "Never approve, merge or push to the change request; the verdict is the summary",
+              ],
       };
     }
 

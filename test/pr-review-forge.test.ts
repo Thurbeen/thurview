@@ -313,6 +313,74 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
     expect(JSON.parse(edit.body).body).toContain("Review ended: merged");
   });
 
+  it("edits the summary of a merged PR, saying the review came after the merge", async () => {
+    const ended = `<!-- thurview-pr-review {"head":"${OLD}","state":"merged","seen":"5"} -->\nReview ended: merged at cccc333. · **Confidence 4/5**\n\nrest`;
+    await fixtures([
+      { cli: "gh", match: ["issues/comments/9", "PATCH"], body: {} },
+      {
+        cli: "gh",
+        match: ["issues/7/comments", "--paginate"],
+        body: [[{ id: 9, user: { login: "bot" }, body: ended }]],
+      },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      {
+        cli: "gh",
+        match: ["repos/acme/web/pulls/7"],
+        body: PULL({ state: "closed", merged: true }),
+      },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const file = join(bin, "pass.json");
+    await writeFile(file, JSON.stringify({ ...PASS, confidence: 5, findings: [] }));
+    const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
+    expect(out["pass"].summary).toBe("edited");
+    const made = (await calls()).map((c) => c.args.join(" "));
+    expect(made.filter((a) => a.includes("--method POST"))).toEqual([]);
+    const body = JSON.parse(
+      (await calls()).find((c) => c.args.join(" ").includes("issues/comments/9 --method PATCH"))!
+        .body,
+    ).body as string;
+    expect(body).toContain(`"head":"${HEAD}","state":"merged"`);
+    expect(body.split("\n")[1]).toContain("reviewed after the merge");
+    expect(body).not.toContain("Next: merge");
+    expect(body).toContain("Merged at `aaaa111` before this review, which reviewed that same head");
+  });
+
+  it("posts the one summary on a PR merged before any pass, naming both heads", async () => {
+    await fixtures([
+      { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9, body: "", user: null } },
+      { cli: "gh", match: ["issues/7/comments", "--paginate", "--slurp"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      {
+        cli: "gh",
+        match: ["repos/acme/web/pulls/7"],
+        body: PULL({ state: "closed", merged: true }),
+      },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const file = join(bin, "pass.json");
+    await writeFile(file, JSON.stringify({ ...PASS, head: OLD }));
+    const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
+    expect(out["pass"].summary).toBe("created");
+    expect(out["pass"].head).toBe(OLD);
+    const logged = await calls();
+    // The finding's lines are the reviewed head's: it goes in the summary, not on the diff.
+    expect(logged.some((c) => c.args.join(" ").includes("pulls/7/comments"))).toBe(false);
+    expect(logged.some((c) => /pulls\/7\/(merge|reviews)/.test(c.args.join(" ")))).toBe(false);
+    const body = JSON.parse(
+      logged.find((c) => c.args.join(" ").includes("issues/7/comments --method"))!.body,
+    ).body as string;
+    expect(body).toContain(`"head":"${OLD}","state":"merged"`);
+    expect(body.split("\n")[1]).toBe(
+      "Next: @dev — **Confidence 2/5 · reviewed after the merge; fix the 1 blocking finding in a follow-up.**",
+    );
+    expect(body).toContain(
+      "Merged at `aaaa111` before this review. It reviewed `cccc333`, not the merged head, and gated nothing.",
+    );
+    expect(body).toContain("`src/upload.ts:42`");
+    expect(body).toContain("Reviewed `cccc333`");
+  });
+
   it("stops on the stop label", async () => {
     await fixtures([
       { cli: "gh", match: ["issues/comments/9", "PATCH"], body: {} },
@@ -455,6 +523,38 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
     const body = put.args.find((a) => a.startsWith("body="))!;
     expect(body).toContain('"state":"stopped"');
     expect(body).toContain('"seen":"12"');
+  });
+
+  it("edits its note on a merged MR, saying the review came after the merge", async () => {
+    await fixtures([
+      { cli: "glab", match: ["merge_requests/7/notes/9", "PUT"], body: {} },
+      {
+        cli: "glab",
+        match: ["merge_requests/7/notes?", "--paginate"],
+        body: ndjson({ id: 9, body: SUMMARY(OLD), author: { username: "bot" } }),
+      },
+      { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+      { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
+      { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+      {
+        cli: "glab",
+        match: ["projects/acme%2Fweb/merge_requests/7"],
+        body: { ...MR, state: "merged" },
+      },
+      { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+    ]);
+    const file = join(bin, "pass.json");
+    await writeFile(file, JSON.stringify({ ...PASS, confidence: 5, findings: [] }));
+    const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], gitlab);
+    expect(out["pass"].summary).toBe("edited");
+    const logged = await calls();
+    expect(logged.some((c) => c.args.includes("POST"))).toBe(false);
+    const body = logged
+      .find((c) => c.args.join(" ").includes("notes/9 --method PUT"))!
+      .args.find((a) => a.startsWith("body="))!;
+    expect(body).toContain(`"head":"${HEAD}","state":"merged"`);
+    expect(body).toContain("reviewed after the merge");
+    expect(body).not.toContain("Next: merge");
   });
 });
 

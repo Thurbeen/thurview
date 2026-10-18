@@ -59,8 +59,9 @@ Read the repository's rules, then user guidance in
 `$THURVIEW_HOME/THURVIEW.md` (default `~/.thurview/THURVIEW.md`) and
 repository guidance in its root `THURVIEW.md`; repository guidance wins
 on conflict. Check the
-change request's status first (step 1); a stopped, merged or closed review
-needs no publishing setup.
+change request's status first (step 1); a stopped review needs no
+publishing setup, and nor does a merged or closed one unless you are about to
+sync a pass you finished after it ended (step 5).
 
 ```sh
 thurview publish-static --check --to cloudflare
@@ -102,6 +103,11 @@ run `thurview update` and retry once. If it is still missing, stop and report
 that this command does not support finding assessments; do not sync through
 an older command that could ignore them. A stopped review stays stopped:
 do not sync it.
+
+A merged or closed change request is not one to start reviewing. But when it
+merged or closed **while your pass was in progress**, finish the pass and sync
+it once (step 5): readers then see what the review found instead of a summary
+naming an older head, or none at all.
 
 ## 2. Review only what moved
 
@@ -263,6 +269,14 @@ evidence for every own finding returned by `reassess`:
 
 - `head` is the commit you reviewed. `sync` refuses the pass when the change
   request moved on since: review what the new push added, then sync again.
+- On a merged or closed change request, `sync` accepts the head you reviewed
+  even when a later one merged, and touches only the one summary: no new
+  inline thread, no reply, no resolution. It opens with
+  `reviewed after the merge` (or `close`) and never `Next: merge`, says which
+  head merged, and, when that is not the head you reviewed, that the merged
+  head was not reviewed. New findings are listed in its table, unlinked. Name
+  the head you actually reviewed; never re-pin to the merged head to make the
+  two agree.
 - `architecture` is required on every pass: one line with this review's view
   on the design - why the change fits it, or the defect it introduces and its
   target. It reads right under `reason` in the summary, never folded, and the
@@ -339,6 +353,10 @@ It blocks until there is something to do and prints one `event`:
 | `push`                        | steps 0–5 again, with `since` as the old head |
 | `none`                        | wait on the forge again                       |
 | `merged`, `closed`, `stopped` | stop: the summary already says so             |
+
+A `merged` or `closed` that arrives while a pass is in progress still gets
+that pass: finish it, publish its page and sync it once, as step 5 says. Then
+stop.
 
 Read and address feedback on the forge; keep finding assessments and the
 summary current when a push arrives. Do not run a document wait or claim an

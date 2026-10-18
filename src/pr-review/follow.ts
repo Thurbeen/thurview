@@ -165,12 +165,12 @@ export async function sync(
   opts: { dryRun?: boolean } = {},
 ): Promise<SyncResult> {
   const { forge, repo, cr } = ctx;
-  if (cr.state !== "open")
-    throw new AxiError(`the change request is ${cr.state}`, "CONFLICT", [
-      "There is nothing left to review; the follow loop ends here",
-    ]);
   checkPass(pass);
-  if (!cr.head.startsWith(pass.head))
+  // A change request that ended before the pass synced gets the summary only,
+  // saying so: the pass gated nothing, and its lines may not be the head's.
+  const ended = cr.state === "open" ? null : { state: cr.state, head: cr.head };
+  const reviewed = cr.head.startsWith(pass.head) ? cr.head : pass.head;
+  if (!ended && !cr.head.startsWith(pass.head))
     throw new AxiError(
       `the pass reviewed ${pass.head.slice(0, 12)}, and the head is now ${cr.head.slice(0, 12)}`,
       "CONFLICT",
@@ -181,7 +181,7 @@ export async function sync(
     );
   const st = await readState(ctx);
   const status = st.summary?.marker.state;
-  if (st.stop || (status && status !== "active"))
+  if (st.stop || (status && status !== "active" && status !== ended?.state))
     throw new AxiError(
       `the review of this change request is stopped (${st.stop ?? `the summary says ${status}`})`,
       "CONFLICT",
@@ -256,12 +256,12 @@ export async function sync(
       ],
     );
   const marker: SummaryMarker = {
-    head: cr.head,
-    state: "active",
+    head: reviewed,
+    state: ended?.state ?? "active",
     seen: maxId(st.newest, st.summary?.marker.seen ?? "0"),
   };
   const tag = (id: string, status: string) =>
-    `<!-- thurview-assessment ${JSON.stringify({ id, head: cr.head, status })} -->`;
+    `<!-- thurview-assessment ${JSON.stringify({ id, head: reviewed, status })} -->`;
   const sinceLastReview = {
     resolved: st.findings.filter(
       (f) =>
@@ -282,13 +282,14 @@ export async function sync(
       .filter((f) => !f.open && decisions.get(f.id)?.status !== "fixed")
       .map((f) => f.id),
     reviewedAt: new Date().toISOString(),
+    ...(ended ? { ended } : {}),
   };
   const body = renderSummary(pass, marker, cr.author, open, update);
   const result: SyncResult = {
     summary: opts.dryRun ? "dry-run" : st.summary ? "edited" : "created",
-    head: cr.head,
-    posted: fresh.map(({ id, f }) => ({ id, at: `${f.path}:${f.line}` })),
-    resolved: fixed,
+    head: reviewed,
+    posted: ended ? [] : fresh.map(({ id, f }) => ({ id, at: `${f.path}:${f.line}` })),
+    resolved: ended ? [] : fixed,
     duplicates,
     open: open.length,
     blocking,
@@ -298,10 +299,15 @@ export async function sync(
   if (opts.dryRun) return result;
 
   const latest = await forge.get(repo, cr.number);
-  if (latest.head !== cr.head || latest.state !== "open")
+  if (latest.head !== cr.head || latest.state !== cr.state)
     throw new AxiError("the change request moved while reading findings", "CONFLICT", [
       "Fetch and review its new head, then create a fresh pass",
     ]);
+  if (ended) {
+    if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, body);
+    else await forge.postNote(repo, cr, body);
+    return result;
+  }
   for (const { id, f } of fresh) {
     const url = await forge.comment(repo, cr, {
       path: f.path,
@@ -343,7 +349,7 @@ async function mark(ctx: Ctx, st: ReviewState, state: ReviewStatus, opening?: st
     state,
     seen: maxId(st.newest, st.summary?.marker.seen ?? "0"),
   };
-  const line = opening ?? statusLine(m)!;
+  const line = opening ?? statusLine(m, ctx.cr.head)!;
   if (st.summary)
     await ctx.forge.editNote(
       ctx.repo,
