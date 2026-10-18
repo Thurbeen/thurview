@@ -106,9 +106,15 @@ class MemoryForge implements ReviewForge {
     if (resolve) t.resolved = true;
     return { replied: Boolean(body), resolved: resolve, notes: [] };
   }
+  /** Every head the change request has had, oldest first. */
+  history: string[] = [SHA(1)];
+  async heads(): Promise<string[]> {
+    return [...this.history].reverse();
+  }
   /** Someone pushed. */
   push(n: number) {
     this.cr.head = SHA(n);
+    this.history.push(SHA(n));
   }
   summaries(): Note[] {
     return this.notesList.filter((n) => n.body.startsWith("<!-- thurview-pr-review"));
@@ -461,6 +467,25 @@ describe("following the change request", () => {
     await stopReview(ctx(forge));
     forge.cr.state = "merged";
     await expect(pass(forge, {})).rejects.toThrow(/stopped/);
+  });
+
+  it("refuses a post-merge pass on a commit that was never its head", async () => {
+    const forge = new MemoryForge();
+    forge.push(2);
+    forge.cr.state = "merged";
+    await expect(pass(forge, { head: SHA(5) })).rejects.toThrow(
+      /555555555555, which was never a head of this change request/,
+    );
+    expect(forge.summaries()).toHaveLength(0);
+  });
+
+  it("names an earlier head in full when the pass gave it short", async () => {
+    const forge = new MemoryForge();
+    forge.push(2);
+    forge.cr.state = "merged";
+    const r = await pass(forge, { head: SHA(1).slice(0, 7) });
+    expect(r.head).toBe(SHA(1));
+    expect(forge.summaries()[0]!.body).toContain(`"head":"${SHA(1)}","state":"merged"`);
   });
 
   it("refuses a post-merge pass when the change request is reopened under it", async () => {

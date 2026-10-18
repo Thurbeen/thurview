@@ -270,7 +270,9 @@ evidence for every own finding returned by `reassess`:
 - `head` is the commit you reviewed. `sync` refuses the pass when the change
   request moved on since: review what the new push added, then sync again.
 - On a merged or closed change request, `sync` accepts the head you reviewed
-  even when a later one merged, and touches only the one summary: no new
+  even when a later one merged, as long as the change request had it as its
+  head - the forge's commits and force-pushes on GitHub, its versions on
+  GitLab - and refuses any other commit. It touches only the one summary: no new
   inline thread, no reply, no resolution. It opens with
   `reviewed after the merge` (or `close`) and never `Next: merge`, says which
   head merged, and, when that is not the head you reviewed, that the merged

@@ -32,7 +32,16 @@ import {
 /** The forge methods a follow loop uses, and no other. */
 export type ReviewForge = Pick<
   Forge,
-  "id" | "whoami" | "get" | "prior" | "reply" | "notes" | "postNote" | "editNote" | "comment"
+  | "id"
+  | "whoami"
+  | "get"
+  | "prior"
+  | "reply"
+  | "notes"
+  | "postNote"
+  | "editNote"
+  | "comment"
+  | "heads"
 >;
 
 export interface Ctx {
@@ -169,8 +178,20 @@ export async function sync(
   // A change request that ended before the pass synced gets the summary only,
   // saying so: the pass gated nothing, and its lines may not be the head's.
   const ended = cr.state === "open" ? null : { state: cr.state, head: cr.head };
-  const reviewed = cr.head.startsWith(pass.head) ? cr.head : pass.head;
-  if (!ended && !cr.head.startsWith(pass.head))
+  // After the end the pass may name an earlier head, but only one this change
+  // request had: the summary says that is what was reviewed.
+  const reviewed = cr.head.startsWith(pass.head)
+    ? cr.head
+    : ended && (await forge.heads(repo, cr)).find((sha) => sha.startsWith(pass.head));
+  if (ended && !reviewed)
+    throw new AxiError(
+      `the pass reviewed ${pass.head.slice(0, 12)}, which was never a head of this change request`,
+      "CONFLICT",
+      [
+        `Review a head it had - ${cr.head.slice(0, 12)} is the one that ${cr.state === "merged" ? "merged" : "closed"} - and sync with that head`,
+      ],
+    );
+  if (!reviewed)
     throw new AxiError(
       `the pass reviewed ${pass.head.slice(0, 12)}, and the head is now ${cr.head.slice(0, 12)}`,
       "CONFLICT",

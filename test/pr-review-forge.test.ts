@@ -145,6 +145,24 @@ const NO_THREADS = {
   data: { repository: { pullRequest: { reviews: { nodes: [] }, reviewThreads: { nodes: [] } } } },
 };
 
+/** The heads a PR had: its commits, and both sides of each force-push. */
+const HEADS = (commits: string[], pushes: [string, string][] = []) => ({
+  cli: "gh",
+  match: ["graphql", "HeadRefForcePushedEvent"],
+  body: {
+    data: {
+      repository: {
+        pullRequest: {
+          commits: { nodes: commits.map((oid) => ({ commit: { oid } })) },
+          timelineItems: {
+            nodes: pushes.map(([b, a]) => ({ beforeCommit: { oid: b }, afterCommit: { oid: a } })),
+          },
+        },
+      },
+    },
+  },
+});
+
 // Each test spawns the CLI through tsx, which takes seconds under load.
 describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
   it("posts each finding as its own review comment, then the one summary", async () => {
@@ -346,10 +364,30 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
     expect(body).toContain("Merged at `aaaa111` before this review, which reviewed that same head");
   });
 
+  it("refuses a post-merge pass on a commit that was never the PR's head", async () => {
+    await fixtures([
+      HEADS([HEAD], [[TIP, HEAD]]),
+      { cli: "gh", match: ["issues/7/comments", "--paginate", "--slurp"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      {
+        cli: "gh",
+        match: ["repos/acme/web/pulls/7"],
+        body: PULL({ state: "closed", merged: true }),
+      },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const file = join(bin, "pass.json");
+    await writeFile(file, JSON.stringify({ ...PASS, head: OLD }));
+    const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github, 1);
+    expect(JSON.stringify(out)).toContain("was never a head of this change request");
+    expect((await calls()).some((c) => c.args.includes("POST"))).toBe(false);
+  });
+
   it("posts the one summary on a PR merged before any pass, naming both heads", async () => {
     await fixtures([
       { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9, body: "", user: null } },
       { cli: "gh", match: ["issues/7/comments", "--paginate", "--slurp"], body: [[]] },
+      HEADS([HEAD], [[OLD, HEAD]]),
       { cli: "gh", match: ["graphql"], body: NO_THREADS },
       {
         cli: "gh",
@@ -523,6 +561,35 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
     const body = put.args.find((a) => a.startsWith("body="))!;
     expect(body).toContain('"state":"stopped"');
     expect(body).toContain('"seen":"12"');
+  });
+
+  it("names an earlier MR version's head as the one reviewed after the merge", async () => {
+    await fixtures([
+      { cli: "glab", match: ["merge_requests/7/notes", "POST"], body: { id: 3, body: "" } },
+      { cli: "glab", match: ["merge_requests/7/notes?", "--paginate"], body: "" },
+      {
+        cli: "glab",
+        match: ["merge_requests/7/versions?", "--paginate", "ndjson"],
+        body: ndjson({ head_commit_sha: HEAD }, { head_commit_sha: OLD }),
+      },
+      { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+      { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
+      { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+      {
+        cli: "glab",
+        match: ["projects/acme%2Fweb/merge_requests/7"],
+        body: { ...MR, state: "merged" },
+      },
+      { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+    ]);
+    const file = join(bin, "pass.json");
+    await writeFile(file, JSON.stringify({ ...PASS, head: OLD.slice(0, 10) }));
+    const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], gitlab);
+    expect(out["pass"].head).toBe(OLD);
+    const note = (await calls()).find((c) => c.args.join(" ").includes("notes --method POST"))!;
+    const body = note.args.find((a) => a.startsWith("body="))!;
+    expect(body).toContain(`"head":"${OLD}","state":"merged"`);
+    expect(body).toContain("It reviewed `cccc333`, not the merged head");
   });
 
   it("edits its note on a merged MR, saying the review came after the merge", async () => {

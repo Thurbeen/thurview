@@ -387,6 +387,20 @@ export class GitLabForge implements Forge {
    * is GitLab narrating. Every page, as newline-delimited JSON, so a stop
    * command posted after the hundredth note still counts.
    */
+  /** One version per push, each with the head it was pushed at. */
+  async heads(repo: RepoId, cr: ChangeRequest): Promise<string[]> {
+    const out = await run(
+      "glab",
+      this.api(
+        repo,
+        `projects/${this.project(repo)}/merge_requests/${cr.number}/versions?per_page=100`,
+        ["--paginate", "--output", "ndjson"],
+      ),
+    );
+    const versions = ndjson<{ head_commit_sha?: string }>(out).map((v) => v.head_commit_sha);
+    return [...new Set([cr.head, ...versions])].filter((sha): sha is string => Boolean(sha));
+  }
+
   async notes(repo: RepoId, cr: ChangeRequest): Promise<Note[]> {
     const out = await run(
       "glab",

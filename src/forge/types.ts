@@ -173,6 +173,11 @@ export interface Forge {
   notes(repo: RepoId, cr: ChangeRequest): Promise<Note[]>;
   postNote(repo: RepoId, cr: ChangeRequest, body: string): Promise<Note>;
   editNote(repo: RepoId, cr: ChangeRequest, id: string, body: string): Promise<void>;
+  /**
+   * Every commit this change request has had as its head, as far as the forge
+   * records it: what a review after the end may name as the one it reviewed.
+   */
+  heads(repo: RepoId, cr: ChangeRequest): Promise<string[]>;
   /** The new thread URL, when the forge returns one. */
   comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<string | void>;
 }
