@@ -5,6 +5,8 @@ Next: merge — **Confidence 5/5 · no blocking findings.**
 
 The upload checks pass.
 
+**Architecture:** Retry policy stays in upload(), the one module that sends.
+
 No open findings.
 
 First review: 0 new findings.

@@ -85,6 +85,14 @@ interfaces:
     capability: Validate a review without sealing a revision.
     anchor: dryRunFlag                    # must hold a line the diff moved
 
+architecture:                             # a review only; required once it anchors a claim
+  view: Retry policy now lives in RetryPolicy, the one place callers reach.
+  defects:                                # each one the change introduces or deepens
+    - cause: upload() special-cases a 4xx that sync() still retries.
+      target: One RetryPolicy the caller passes in.
+      step: Move both checks into it in this change.
+      anchor: retryGuard                  # a head anchor, with a peek
+
 security:                                 # a review only; omit until you have looked
   - boundary: The --shell flag reaches execFile's argv unquoted.
     anchor: spawn                         # a head anchor, with a peek
@@ -120,6 +128,32 @@ Every entry has `name`, `change`, `capability` and `anchor`:
 
 An entry written with `symbol:` named a row thurview used to derive. It derives
 none now, and `publish` refuses the key with how to write the entry instead.
+
+## architecture
+
+The view this review takes on the design, first in the scope because a design
+defect outlives every bug it causes. The lens - the patch test, the defects a
+diff shows and how to confirm each - is defined once, in
+[Architecture](architecture.md). Nothing here repeats it.
+
+**Every review has one.** A review may leave the key out only while it is the
+stub published before the walkthrough: the first anchored claim makes it a
+review, and `publish` then refuses it without a view. The panel shows "not
+assessed" on the stub and never after.
+
+- **`view`** is required: one or two sentences on what the change does to the
+  design. With no defect, it says why the change fits - "fits" with no reason
+  is the same silence as no answer.
+- **`defects`** lists each defect the change introduces or deepens. `cause` is
+  the design property that lets the bug be written, `target` the shape that
+  removes it, `step` the smallest move toward that shape and whether it belongs
+  in this change. `anchor` is a head anchor with a `peek`: the defect as the
+  change leaves it.
+
+`publish` refuses a defect with an unknown anchor, an anchor with no `peek` or
+a `graph: base` anchor, and one missing any of its four fields. Resolving a
+defect marks its anchor used. An explainer surfaces structure without grading
+it and a design proposes it, so `publish` refuses the key on either.
 
 ## security
 

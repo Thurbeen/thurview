@@ -135,8 +135,8 @@ export async function revisionData(
     // absent by being null, not by being missing, so fill it here rather than
     // teach every reader of the document two ways to be absent.
     document:
-      document && typeof document === "object" && !("security" in document)
-        ? { ...document, security: null }
+      document && typeof document === "object"
+        ? { security: null, architecture: null, ...document }
         : document,
     map,
     changes: changes ?? [],

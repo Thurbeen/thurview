@@ -34,6 +34,7 @@ trust the count.
 | importers of a module       | `git grep -n -E -e "['\"][./]*path/to/module(\.[a-z]+)?['\"]" <commit> --` |
 | tests that touch a file     | `git grep -l -E -e '\bexportedName\b' <commit> -- '*test*' '*spec*'`       |
 | tests that name a symbol    | `git grep -n -E -e '\bname\b' <commit> -- '*test*' '*spec*'`               |
+| the same special case       | `git grep -n -E -e "kind *=+ *['\"]value" <commit> --`                    |
 | the directories in a scope  | `git ls-tree -d -r --name-only <commit> -- <scope>`                        |
 | the files in a scope        | `git ls-tree -r --name-only <commit> -- <scope>`                           |
 

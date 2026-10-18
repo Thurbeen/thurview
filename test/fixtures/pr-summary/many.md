@@ -5,6 +5,8 @@ Next: @dev — **Confidence 2/5 · do not merge; fix the 4 blocking findings.**
 
 Four blocking bugs.
 
+**Architecture:** Retry policy stays in upload(), the one module that sends.
+
 | Finding at reviewed head | Thread |
 | --- | --- |
 | **Blocking · Bug:** Finding 2 uses a \| pipe. | [`src/upload.ts:3`](https://github.com/acme/web/pull/7#discussion_r101) |

@@ -1,6 +1,6 @@
 ---
 name: thurview-fix
-description: Review a change and fix what the review finds - bugs, regressions for callers, missing or broken tests, security issues - with a search of the callers and tests a diff does not show. Commits only the fixes that pass the repository's own tests and lint, and reports the rest. Use when the user asks to review and fix a branch, a commit range or a pull or merge request, to find and fix bugs in a change, or invokes /thurview-fix.
+description: Review a change and fix what the review finds - architecture defects first, then bugs, regressions for callers, missing or broken tests, security issues - with a search of the callers and tests a diff does not show. Commits only the fixes that pass the repository's own tests and lint, and reports the rest. Use when the user asks to review and fix a branch, a commit range or a pull or merge request, to find and fix bugs in a change, or invokes /thurview-fix.
 user-invocable: true
 argument-hint: "[<branch> | <base>..<head> | <PR or MR number or URL>] [--post]"
 ---
@@ -36,8 +36,10 @@ $ARGUMENTS
 - Never push, force-push or post unless this request asks for it. `--post`
   asks to post comments; pushing the fix commit needs its own ask.
 - Never rewrite the branch's history. Fixes are a new commit on top.
-- Never report style. A finding is a bug, a regression for a caller, a missing
-  or broken test, or a security issue.
+- Never report style. A finding is an architecture defect, a bug, a
+  regression for a caller, a missing or broken test, or a security issue.
+- Never commit a symptom patch: a special case at the failure site when the
+  cause is in the design. Report the design defect instead.
 
 ## 1. Scope
 
@@ -74,6 +76,12 @@ git grep -n -E -e '\bname\b' <head> -- '*test*' '*spec*'       # which tests nam
 
 What to look for:
 
+- **The architecture, first.** Read the `thurview` skill's Architecture
+  reference (`references/architecture.md` beside its `SKILL.md`) and run its
+  patch test on every fix the change makes: a special case at the failure
+  site, a rule written a second time, an import against the grain, an
+  interface bent to fit one caller. Run its searches at both pins: what the
+  change introduced or deepened is its finding.
 - **Callers the change left alone.** For every function, method, type or
   export whose signature or behaviour the diff changed, search its callers at
   head and drop the ones the diff itself touched. What is left is what the
@@ -95,7 +103,10 @@ Then read every call site the searches name.
 For each one, record:
 
 - `file:line` at `<head>`, now, before a fix moves lines
-- severity: `high` (wrong behaviour on a normal path, data loss, security),
+- kind: `architecture` (the design lets this class of bug happen, per the
+  reference), or the plain defect
+- severity: `high` (wrong behaviour on a normal path, data loss, security, or
+  a design defect the change introduces or deepens),
   `medium` (a likely bug, or a risky path no test reaches), `low` (real but
   narrow)
 - why, in one line
@@ -117,7 +128,16 @@ Find the repository's own test and lint commands - `CONTRIBUTING.md`,
 run them once before editing. What is already red at head is not yours: note
 it, and judge each fix by not making it worse.
 
-For each finding whose fix is local and whose right behaviour is unambiguous:
+Fix the cause, not the symptom. Before editing, run the patch test on the
+finding: when the bug exists because of a design property - two copies of a
+fact, a rule in the wrong module, a type that admits a bad state - the fix is
+the structural one (move the rule, derive from one source, narrow the type),
+not a conditional where the failure showed up. Make the structural fix when it
+stays inside this change's files and keeps every interface used outside the
+repository; otherwise leave it unfixed and report its cause, target and next
+step. A conditional is the fix only when the rule belongs at that spot.
+
+For each finding whose fix is in proportion and whose right behaviour is unambiguous:
 
 1. For a bug, first add or extend a test and run it: it must fail, for the
    reason the finding gives.
@@ -126,7 +146,8 @@ For each finding whose fix is local and whose right behaviour is unambiguous:
    files it created) and mark the finding unfixed, with the failure as why.
 
 Leave a finding unfixed when it needs a decision the code cannot make, changes
-an interface used outside this repository, or no test can show it.
+an interface used outside this repository, no test can show it, or the only
+fix within reach is a symptom patch.
 
 Once every kept fix passes together, commit them as one. Follow the
 repository's commit convention when it has one; otherwise:
@@ -138,7 +159,8 @@ git commit -m "fix: address review findings" -m "<one line per fix: file:line - 
 
 ## 5. Report
 
-One table - severity, `file:line`, the finding, its search evidence, and the
+Architecture findings first, each with its cause, target and next step. Then
+one table - severity, `file:line`, the finding, its search evidence, and the
 fix commit or why it is unfixed - then the tests and lint after the commit, and
 what the searches could not see. Do not push; offer to.
 

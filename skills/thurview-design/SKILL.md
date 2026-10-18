@@ -117,6 +117,12 @@ A search finds names, not meaning: open each hit before you count it, and put
 the search beside any claim that rests on it - a design has no Coverage tab to
 carry it, so `searches` in `data.yaml` is refused here.
 
+Hold each proposal to the `thurview` skill's
+[Architecture](../thurview/references/architecture.md) reference before you
+write it: it puts logic in the module that owns it, keeps dependencies running
+the way the system runs them, and removes the cause of the problem it answers
+rather than adding a special case where the problem shows.
+
 Read every range you intend to anchor from the pinned commit itself —
 `git show <commit>:<path>` — not from the working tree.
 

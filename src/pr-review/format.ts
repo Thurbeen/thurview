@@ -61,6 +61,11 @@ const PassSchema = z.object({
   head: z.string().min(7),
   confidence: z.number().int().min(1).max(5),
   reason: z.string().min(1),
+  /** The view this review takes on the design: every pass has one, defect or not. */
+  architecture: z
+    .string()
+    .trim()
+    .min(1, "is required: the view this review takes on the design, in one line"),
   risk: z.array(z.string().min(1)).min(1).max(5),
   change: z.string().min(1),
   reviewUrl: z.string().url().optional(),
@@ -100,6 +105,8 @@ export interface Verdict {
   head: string;
   confidence: number;
   reason: string;
+  /** absent only on a verdict sealed before every pass carried one */
+  architecture?: string;
   risk: string[];
   change: string;
   findings: {
@@ -121,6 +128,7 @@ export function verdictOf(p: Pass): Verdict {
     head: p.head,
     confidence: p.confidence,
     reason: p.reason,
+    architecture: p.architecture,
     risk: p.risk,
     change: p.change,
     findings: (p.findings ?? []).map(({ id: _id, body, ...f }) => ({ ...f, body: body ?? "" })),
@@ -147,6 +155,7 @@ export function parsePass(text: string, file: string): Pass {
       [
         `category is one of ${CATEGORY_IDS.join(", ")}; severity is one of ${SEVERITIES.join(", ")}`,
         "confidence is 1-5; risk holds 1 to 5 bullets",
+        "architecture is one line: whether the change fits the design, or the defect it introduces",
       ],
     );
   checkPass(parsed.data);
@@ -159,6 +168,7 @@ export function checkPass(p: Pass): void {
   // slip past the word budget; every one of these is one line by design.
   const oneLine: [string, string | undefined][] = [
     ["reason", p.reason],
+    ["architecture", p.architecture],
     ["change", p.change],
     ["signoff", p.signoff],
     ...p.risk.map((r, i): [string, string] => [`risk[${i}]`, r]),
@@ -166,8 +176,12 @@ export function checkPass(p: Pass): void {
   for (const [field, text] of oneLine)
     if (text && /[\r\n]/.test(text.trim()))
       throw new AxiError(`${field} is more than one line`, "VALIDATION_ERROR", [
-        "reason, each risk bullet, change and signoff are one line each",
+        "reason, architecture, each risk bullet, change and signoff are one line each",
       ]);
+  if (!p.architecture?.trim())
+    throw new AxiError("architecture is required", "VALIDATION_ERROR", [
+      "Every pass takes a view on the design: whether the change fits it, or the defect it introduces",
+    ]);
   for (const f of p.findings ?? []) {
     const at = `${f.path}:${f.line}`;
     if (f.title.includes("\n"))
@@ -340,17 +354,20 @@ export function renderSummary(
   update?: SummaryUpdate,
 ): string {
   // Count the inputs, not rendered lines: a pipe or HTML cannot hide prose from the budget.
-  const words = summaryWords([p.reason, p.change, ...p.risk, p.signoff ?? ""].join(" "));
+  const words = summaryWords(
+    [p.reason, p.architecture, p.change, ...p.risk, p.signoff ?? ""].join(" "),
+  );
   if (words > SUMMARY_WORDS)
     throw new AxiError(
       `the summary prose is ${words} words, over the ${SUMMARY_WORDS}-word budget`,
       "VALIDATION_ERROR",
-      ["Cut reason, risk, change and signoff; folded prose still counts"],
+      ["Cut reason, architecture, risk, change and signoff; folded prose still counts"],
     );
   const parts = [
     `${marker(SUMMARY_TAG, m)}\n${statusLine(m) ?? headline(p, author, open)}`,
     ...(p.reviewUrl ? [`[**Full review**](${p.reviewUrl})`] : []),
     p.reason.trim(),
+    `**Architecture:** ${p.architecture.trim()}`,
     table(open),
   ];
   if (update) {

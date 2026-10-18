@@ -5,6 +5,8 @@ Next: @dev — **Confidence 4/5 · look at the non-blocking findings before merg
 
 The blocking retry bug is fixed.
 
+**Architecture:** Retry policy stays in upload(), the one module that sends.
+
 | Finding at reviewed head | Thread |
 | --- | --- |
 | **Non-blocking · Reliability:** Timeouts lose the upload. | [`src/timeout.ts:8`](https://gitlab.example.com/acme/web/-/merge_requests/7#note_202) |

@@ -116,6 +116,14 @@ recipes in [Searching the code](../thurview/references/searching.md). The eviden
 a problem just as present at the base is not this change's finding, and a
 finding that rests on "no callers" says which search found none.
 
+Review the architecture first, per the `thurview` skill's
+[Architecture](../thurview/references/architecture.md) reference: run its patch
+test on every fix in the diff, and its searches at both pins. A special case
+patching a symptom, a rule in the wrong module or a dependency against the
+grain is an `architecture` finding, and it comes before any bug in the same
+code. When the author's fix is a symptom patch, do not suggest a better
+conditional: name the cause and the target shape.
+
 On **every push**, recheck every own finding in `reassess` against the full
 new head, even if its lines moved, someone replied, or the author resolved
 its thread. Read the code at that commit and run the relevant reproducer or
@@ -128,18 +136,22 @@ assessments; it does not judge arbitrary source code itself.
 ## 3. Findings
 
 One point per finding, on a line the diff touches - the forge refuses any
-other line. Prefer one real defect over many nits.
+other line. Prefer one real defect over many nits, and one design defect over
+the bugs it causes. An `architecture` finding's `title` is the cause and its
+`body` the target and the next step; it is `blocking` when the change
+introduces or deepens the defect.
 
-| Category          | Definition                                                                     |
-| ----------------- | ------------------------------------------------------------------------------ |
-| `bug`             | The code does the wrong thing for an input it accepts.                         |
-| `security`        | An attacker gains access, data or execution they should not have.              |
-| `performance`     | Time, memory or calls grow worse than the change needs.                        |
-| `reliability`     | A failure, retry, timeout or race is handled wrongly or not at all.            |
-| `compatibility`   | A public API, schema, config, flag or data format breaks its callers.          |
-| `maintainability` | The next change here is harder: duplication, dead code, a misleading name.     |
-| `tests`           | A behaviour the change adds or alters is not tested, or a test proves nothing. |
-| `docs`            | A comment, README or doc now says something the code does not do.              |
+| Category          | Definition                                                                                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `architecture`    | The design is wrong, not a line: a special case patching a symptom, logic in the wrong place, a dependency against the grain. |
+| `bug`             | The code does the wrong thing for an input it accepts.                                                                        |
+| `security`        | An attacker gains access, data or execution they should not have.                                                             |
+| `performance`     | Time, memory or calls grow worse than the change needs.                                                                       |
+| `reliability`     | A failure, retry, timeout or race is handled wrongly or not at all.                                                           |
+| `compatibility`   | A public API, schema, config, flag or data format breaks its callers.                                                         |
+| `maintainability` | The next change here is harder, locally: duplication, dead code, a misleading name.                                           |
+| `tests`           | A behaviour the change adds or alters is not tested, or a test proves nothing.                                                |
+| `docs`            | A comment, README or doc now says something the code does not do.                                                             |
 
 Severity is `blocking` (must be fixed before merge), `non-blocking` (worth
 fixing) or `nit` (taste, and the comment says `nit:`).
@@ -179,8 +191,8 @@ workflow: [Document authoring](../thurview/references/document-authoring.md),
 [Software map](../thurview/references/software-map.md) and
 [Searching the code](../thurview/references/searching.md).
 Write `review.md`, `data.yaml` and `map.yaml` in `review.dir`. Anchor claims at
-the pins, include the findings and tests actually checked, answer `security`
-and declare the interface changes. Add a map when it explains boundaries;
+the pins, include the findings and tests actually checked, state the
+`architecture` view, answer `security` and declare the interface changes. Add a map when it explains boundaries;
 otherwise leave `nodes: []` and say why.
 
 Then write `pass.json` for this head, in the shape step 5 shows, without
@@ -218,6 +230,7 @@ evidence for every own finding returned by `reassess`:
   "head": "<the full sha you reviewed>",
   "confidence": 2,
   "reason": "Safe once the retry loop stops on a 4xx.",
+  "architecture": "Fits the design: retry policy stays in upload(), the one module that sends.",
   "risk": ["Every upload goes through the changed retry path.", "No test covers a 4xx."],
   "change": "Retries a failed upload three times with exponential backoff.",
   "reviewUrl": "https://reviews.example.com/pr-7/",
@@ -250,7 +263,12 @@ evidence for every own finding returned by `reassess`:
 
 - `head` is the commit you reviewed. `sync` refuses the pass when the change
   request moved on since: review what the new push added, then sync again.
-- `reason`, `change`, `signoff` and each `risk` bullet are one line each;
+- `architecture` is required on every pass: one line with this review's view
+  on the design - why the change fits it, or the defect it introduces and its
+  target. It reads right under `reason` in the summary, never folded, and the
+  page shows it with the verdict. `sync` and `publish --pass` refuse a pass
+  without it.
+- `reason`, `architecture`, `change`, `signoff` and each `risk` bullet are one line each;
   `sync` refuses a line break in any of them. `reason` is one sentence;
   `risk` is one to five bullets naming what could break, the blast radius, and
   anything touching security, data, infra or a public API; `change` is two or
@@ -269,7 +287,7 @@ evidence for every own finding returned by `reassess`:
   are folded separately; the reviewed head and UTC sync timestamp stay small
   below them. The sign-off is last. Both forges use ordinary Markdown tables
   and HTML `details`/`summary`, with blank lines around their Markdown.
-- The 120-word budget applies to authored `reason`, `change`, all `risk`
+- The 120-word budget applies to authored `reason`, `architecture`, `change`, all `risk`
   bullets and `signoff` together, including folded text. Generated verdicts,
   finding rows, links, update counts, labels and head/time metadata are
   excluded. Finding titles/bodies still have their separate five-line limit.

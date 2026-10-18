@@ -47,8 +47,9 @@ locally.
   data, answered in advance, written as one HTML file that needs no server.
 - `src/ui/`: the browser app, vanilla TypeScript bundled by esbuild.
 - `skills/thurview/`: the agent skill for a review, and the references the
-  other skills draw on - the document, `data.yaml` and `map.yaml` shapes, the
-  search recipes, and the lifecycle.
+  other skills draw on - the architecture lens every review leads with, the
+  document, `data.yaml` and `map.yaml` shapes, the search recipes, and the
+  lifecycle.
 - `skills/thurview-explain/` and `skills/thurview-design/`: one skill per other
   document kind, each keeping a reference of its own only for what is its
   alone - `thurview-design/references/anchors-and-proposals.md` is the only

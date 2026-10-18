@@ -119,6 +119,7 @@ const base: Pass = {
   head: SHA(1),
   confidence: 4,
   reason: "Safe once the retry loop is bounded.",
+  architecture: "Retry policy stays in upload(), the one module that sends.",
   risk: ["The upload path retries on every error, including a 4xx."],
   change: "Retries a failed upload three times with backoff.",
   findings: [],
@@ -312,10 +313,35 @@ describe("inline findings", () => {
     expect(body.trimEnd().split("\n").at(-1)).toBe("— the agent");
   });
 
+  it("labels an architecture finding", async () => {
+    const forge = new MemoryForge();
+    await pass(forge, {
+      findings: [{ ...UNBOUNDED, severity: "non-blocking", category: "architecture" }],
+    });
+    expect(forge.threads[0]!.messages[0]!.body).toContain("**Architecture · non-blocking:**");
+  });
+
   it("prefixes a nit", async () => {
     const forge = new MemoryForge();
     await pass(forge, { findings: [{ ...UNBOUNDED, severity: "nit", category: "docs" }] });
     expect(forge.threads[0]!.messages[0]!.body).toContain("nit: **Docs:**");
+  });
+});
+
+describe("the view on the architecture", () => {
+  it("is part of every pass", () => {
+    const { architecture: _, ...without } = base;
+    expect(() => parsePass(JSON.stringify(without), "pass.json")).toThrow(/architecture/);
+    expect(() => parsePass(JSON.stringify({ ...base, architecture: " " }), "pass.json")).toThrow(
+      /architecture/,
+    );
+  });
+
+  it("reads right under the reason, never folded", () => {
+    const body = renderSummary(base, { head: SHA(1), state: "active", seen: "0" }, "dev", []);
+    expect(body).toContain(
+      "Safe once the retry loop is bounded.\n\n**Architecture:** Retry policy stays in upload(), the one module that sends.",
+    );
   });
 });
 
@@ -324,6 +350,7 @@ describe("the categories", () => {
     const text = JSON.stringify({ ...base, findings: [{ ...UNBOUNDED, category: "style" }] });
     expect(() => parsePass(text, "pass.json")).toThrow(/category/);
     expect(Object.keys(CATEGORIES)).toEqual([
+      "architecture",
       "bug",
       "security",
       "performance",
@@ -499,10 +526,13 @@ describe("what the review found against itself", () => {
     expect(forge.threads[0]!.messages).toHaveLength(replies);
   });
 
-  it.each(["reason", "change", "signoff"] as const)("refuses a newline in %s", async (field) => {
-    const forge = new MemoryForge();
-    await expect(pass(forge, { [field]: "x\n| " + "word ".repeat(300) })).rejects.toThrow(field);
-  });
+  it.each(["reason", "architecture", "change", "signoff"] as const)(
+    "refuses a newline in %s",
+    async (field) => {
+      const forge = new MemoryForge();
+      await expect(pass(forge, { [field]: "x\n| " + "word ".repeat(300) })).rejects.toThrow(field);
+    },
+  );
 
   it("refuses a newline in a risk bullet", async () => {
     const forge = new MemoryForge();

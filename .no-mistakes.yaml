@@ -49,7 +49,8 @@ document:
     the contracts: references/document-authoring.md the document rules,
     references/components.md every data.yaml shape and fenced component,
     references/lifecycle.md statuses, storage and threads,
-    references/software-map.md map.yaml.
+    references/software-map.md map.yaml,
+    references/architecture.md the architecture lens every review leads with.
     CONTRIBUTING.md owns the contribution process (commit conventions, the
     prek hooks, the no-mistakes gate, squash merge) and the configuration of
     external tooling such as .no-mistakes.yaml. A code change that adds or

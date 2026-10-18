@@ -156,7 +156,7 @@ describe.skipIf(!browserBin)("file explorer in the reader", { timeout: 30_000 },
     );
     await writeFile(
       join(review.dir, "data.yaml"),
-      "anchors:\n  main: { title: Main, peek: { file: src/kernel/host/main.ts, from: 1, to: 2 } }\n",
+      "architecture: { view: Fits. }\nanchors:\n  main: { title: Main, peek: { file: src/kernel/host/main.ts, from: 1, to: 2 } }\n",
     );
     await cli(["publish", "--review", review.uuid]);
     process.env["THURVIEW_HOME"] = home;

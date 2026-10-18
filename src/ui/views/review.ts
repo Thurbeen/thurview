@@ -3,7 +3,7 @@ import { state, threadsFor, navigate, kind, VIEWS, canWrite } from "../state.js"
 import { codeTable, openAnchorPeek } from "../code.js";
 import { commentPopover, threadPinRow } from "../threads.js";
 import { sequenceDiagram, callstackDiff, databaseLens, flowDiagram } from "../diagrams.js";
-import type { Block, CompiledSecurity } from "../../document/compile.js";
+import type { Block, CompiledArchitecture, CompiledSecurity } from "../../document/compile.js";
 import type { InterfaceDelta, InterfaceEntry } from "../../interfaces.js";
 import type { Coverage } from "../../coverage.js";
 import {
@@ -99,6 +99,7 @@ export function renderReview(root: HTMLElement): void {
   if (k === "review")
     scope.append(
       scopeColumns(verdict),
+      architecturePanel(doc.architecture),
       interfaceDelta(doc.interfaces),
       securityPanel(doc.security),
     );
@@ -252,6 +253,7 @@ function trackSection(scroller: HTMLElement, toc: HTMLElement, docEl: HTMLElemen
 const DELTA_BLOCK = "interface-delta";
 const COVERAGE_BLOCK = "coverage";
 const SECURITY_BLOCK = "security";
+const ARCHITECTURE_BLOCK = "architecture";
 const DELTA_SHOWN = 12;
 
 const CHANGE_CLASS: Record<InterfaceEntry["change"], string> = {
@@ -409,15 +411,22 @@ function coveragePanel(cov: Coverage | null): HTMLElement {
 }
 
 /**
- * Where the change lets input cross a trust boundary, under the interface delta
- * because it is the same kind of fact: what this change did to something the
- * reader cares about, in one sentence, before the prose. A review that crossed
- * none says so here, and one that has not looked says that instead - the panel
- * is never absent, so silence cannot pass for an answer.
+ * A dimension of the review the author answers in data.yaml - the architecture
+ * and the trust boundaries - stated above the prose in one sentence, with each
+ * entry opening its anchored code. The panel is never absent, so silence cannot
+ * pass for an answer: a review that has not looked says so here.
  */
-function securityPanel(sec: CompiledSecurity | null | undefined): HTMLElement {
-  const wrap = h("div", { class: "block ifd", "data-block": SECURITY_BLOCK });
-  const threads = threadsFor((t) => t.type === "document" && t.blockId === SECURITY_BLOCK);
+function dimensionPanel(p: {
+  blockId: string;
+  title: string;
+  badge: HTMLElement | null;
+  verdict: string;
+  /** the author's own words under the verdict, when the dimension carries them */
+  view?: string;
+  entries: { lines: string[]; anchor: string }[];
+}): HTMLElement {
+  const wrap = h("div", { class: "block ifd", "data-block": p.blockId });
+  const threads = threadsFor((t) => t.type === "document" && t.blockId === p.blockId);
   if (threads.length) wrap.classList.add("has-threads");
   const actions = h(
     "div",
@@ -426,10 +435,10 @@ function securityPanel(sec: CompiledSecurity | null | undefined): HTMLElement {
       "button",
       {
         class: threads.length ? "count" : "",
-        title: "Comment on the trust boundaries",
+        title: `Comment on the ${p.title.toLowerCase()}`,
         onclick: (e: MouseEvent) => {
           if (!canWrite()) return;
-          popover(commentPopover({ type: "document", blockId: SECURITY_BLOCK }), clickPoint(e));
+          popover(commentPopover({ type: "document", blockId: p.blockId }), clickPoint(e));
         },
       },
       threads.length ? String(threads.length) : "+",
@@ -437,33 +446,21 @@ function securityPanel(sec: CompiledSecurity | null | undefined): HTMLElement {
   );
   const body = h("div", { class: "ifd-body" });
   const toggle = toggleButton(true, (shown) => (body.hidden = !shown));
-  const badge = !sec
-    ? null
-    : sec.state === "none"
-      ? h("span", { class: "badge ok" }, "none")
-      : sec.state === "pending"
-        ? h("span", { class: "badge warn" }, "not assessed")
-        : h("span", { class: "badge warn" }, `${sec.crossings.length} crossed`);
   wrap.appendChild(
     h(
       "div",
       { class: "ifd-head" },
-      h("span", { class: "t" }, "Trust boundaries"),
-      badge,
+      h("span", { class: "t" }, p.title),
+      p.badge,
       h("span", { class: "spacer" }),
       toggle,
       actions,
     ),
   );
-  body.appendChild(
-    h(
-      "p",
-      { class: "ifd-verdict" },
-      sec ? sec.verdict : "Unavailable: this revision carries no security dimension.",
-    ),
-  );
-  for (const c of sec?.crossings ?? []) {
-    const anchor = state.data?.document?.anchors[c.anchor];
+  body.appendChild(h("p", { class: "ifd-verdict" }, p.verdict));
+  if (p.view) body.appendChild(h("p", { class: "ifd-cap" }, p.view));
+  for (const entry of p.entries) {
+    const anchor = state.data?.document?.anchors[entry.anchor];
     if (!anchor) continue;
     body.appendChild(
       asButton(
@@ -474,7 +471,11 @@ function securityPanel(sec: CompiledSecurity | null | undefined): HTMLElement {
             title: `Open ${anchor.title}`,
             onclick: () => openAnchorPeek(anchor),
           },
-          h("div", { class: "ifd-what" }, h("div", { class: "ifd-cap" }, c.boundary)),
+          h(
+            "div",
+            { class: "ifd-what" },
+            entry.lines.map((l) => h("div", { class: "ifd-cap" }, l)),
+          ),
           h(
             "span",
             { class: "ifd-where mono" },
@@ -488,6 +489,55 @@ function securityPanel(sec: CompiledSecurity | null | undefined): HTMLElement {
   if (threads.length)
     wrap.appendChild(h("div", { class: "thread-pins" }, threads.map(threadPinRow)));
   return wrap;
+}
+
+/**
+ * The view the review takes on the design, first in the scope because a defect
+ * there outlives every bug it causes. Each defect opens the code it names.
+ */
+function architecturePanel(arch: CompiledArchitecture | null | undefined): HTMLElement {
+  return dimensionPanel({
+    blockId: ARCHITECTURE_BLOCK,
+    title: "Architecture",
+    badge: !arch
+      ? null
+      : arch.state === "fits"
+        ? h("span", { class: "badge ok" }, "fits")
+        : arch.state === "pending"
+          ? h("span", { class: "badge warn" }, "not assessed")
+          : h(
+              "span",
+              { class: "badge del" },
+              `${arch.defects.length} defect${arch.defects.length === 1 ? "" : "s"}`,
+            ),
+    verdict: arch ? arch.verdict : "Unavailable: this revision carries no architecture dimension.",
+    ...(arch?.view ? { view: arch.view } : {}),
+    entries: (arch?.defects ?? []).map((d) => ({
+      lines: [d.cause, `Target: ${d.target}`, `Step: ${d.step}`],
+      anchor: d.anchor,
+    })),
+  });
+}
+
+/**
+ * Where the change lets input cross a trust boundary, under the interface delta
+ * because it is the same kind of fact: what this change did to something the
+ * reader cares about, in one sentence, before the prose.
+ */
+function securityPanel(sec: CompiledSecurity | null | undefined): HTMLElement {
+  return dimensionPanel({
+    blockId: SECURITY_BLOCK,
+    title: "Trust boundaries",
+    badge: !sec
+      ? null
+      : sec.state === "none"
+        ? h("span", { class: "badge ok" }, "none")
+        : sec.state === "pending"
+          ? h("span", { class: "badge warn" }, "not assessed")
+          : h("span", { class: "badge warn" }, `${sec.crossings.length} crossed`),
+    verdict: sec ? sec.verdict : "Unavailable: this revision carries no security dimension.",
+    entries: (sec?.crossings ?? []).map((c) => ({ lines: [c.boundary], anchor: c.anchor })),
+  });
 }
 
 function interfaceRow(e: InterfaceEntry): HTMLElement {
