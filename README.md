@@ -8,6 +8,11 @@ Every claim links to an exact file and line range at a pinned commit, and
 the agent answers in the same thread, and callers and tests the diff cannot
 show are found by `git grep` searches you can run again.
 
+Every review leads with the architecture: whether the change puts its logic
+where it belongs, and whether its fixes remove a cause or patch a symptom with
+another `if`. A design defect comes with its target shape and the next step
+toward it, ahead of the bugs it causes.
+
 [![CI](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml/badge.svg)](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/thurview)](https://www.npmjs.com/package/thurview)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

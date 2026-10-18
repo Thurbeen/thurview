@@ -36,10 +36,19 @@ Support could not tell whether a locked-out user had tried at all. The
 request was "log every attempt, not only successes".
 ```
 
-Then fewer than five further sections when practical. Pick those that fit:
+Then the architecture section, which every review has, and fewer than five
+further sections when practical.
+
+`## Architecture` is the verdict on the design, written per
+[Architecture](architecture.md): where the change puts its logic, what now
+depends on what, and whether its fixes remove causes or patch symptoms. Each
+defect gets its cause, its target shape and the next step, anchored. A change
+that fits the design gets one sentence saying so, and how you know. It comes
+first because it is the finding that outlives the change.
+
+Then pick those that fit:
 
 - requirements
-- design
 - lifecycle or data flow
 - state or storage
 - testing evidence

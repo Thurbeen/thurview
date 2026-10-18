@@ -116,6 +116,14 @@ recipes in [Searching the code](../thurview/references/searching.md). The eviden
 a problem just as present at the base is not this change's finding, and a
 finding that rests on "no callers" says which search found none.
 
+Review the architecture first, per the `thurview` skill's
+[Architecture](../thurview/references/architecture.md) reference: run its patch
+test on every fix in the diff, and its searches at both pins. A special case
+patching a symptom, a rule in the wrong module or a dependency against the
+grain is an `architecture` finding, and it comes before any bug in the same
+code. When the author's fix is a symptom patch, do not suggest a better
+conditional: name the cause and the target shape.
+
 On **every push**, recheck every own finding in `reassess` against the full
 new head, even if its lines moved, someone replied, or the author resolved
 its thread. Read the code at that commit and run the relevant reproducer or
@@ -128,18 +136,22 @@ assessments; it does not judge arbitrary source code itself.
 ## 3. Findings
 
 One point per finding, on a line the diff touches - the forge refuses any
-other line. Prefer one real defect over many nits.
+other line. Prefer one real defect over many nits, and one design defect over
+the bugs it causes. An `architecture` finding's `title` is the cause and its
+`body` the target and the next step; it is `blocking` when the change
+introduces or deepens the defect.
 
-| Category          | Definition                                                                     |
-| ----------------- | ------------------------------------------------------------------------------ |
-| `bug`             | The code does the wrong thing for an input it accepts.                         |
-| `security`        | An attacker gains access, data or execution they should not have.              |
-| `performance`     | Time, memory or calls grow worse than the change needs.                        |
-| `reliability`     | A failure, retry, timeout or race is handled wrongly or not at all.            |
-| `compatibility`   | A public API, schema, config, flag or data format breaks its callers.          |
-| `maintainability` | The next change here is harder: duplication, dead code, a misleading name.     |
-| `tests`           | A behaviour the change adds or alters is not tested, or a test proves nothing. |
-| `docs`            | A comment, README or doc now says something the code does not do.              |
+| Category          | Definition                                                                                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `architecture`    | The design is wrong, not a line: a special case patching a symptom, logic in the wrong place, a dependency against the grain. |
+| `bug`             | The code does the wrong thing for an input it accepts.                                                                        |
+| `security`        | An attacker gains access, data or execution they should not have.                                                             |
+| `performance`     | Time, memory or calls grow worse than the change needs.                                                                       |
+| `reliability`     | A failure, retry, timeout or race is handled wrongly or not at all.                                                           |
+| `compatibility`   | A public API, schema, config, flag or data format breaks its callers.                                                         |
+| `maintainability` | The next change here is harder, locally: duplication, dead code, a misleading name.                                           |
+| `tests`           | A behaviour the change adds or alters is not tested, or a test proves nothing.                                                |
+| `docs`            | A comment, README or doc now says something the code does not do.                                                             |
 
 Severity is `blocking` (must be fixed before merge), `non-blocking` (worth
 fixing) or `nit` (taste, and the comment says `nit:`).

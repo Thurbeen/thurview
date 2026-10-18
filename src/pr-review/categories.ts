@@ -6,8 +6,17 @@
  * count.
  */
 
-/** Every finding is exactly one of these. Order is the summary table's order. */
+/**
+ * Every finding is exactly one of these. Order is the summary table's order,
+ * and architecture leads it: a defect in the design outlives every bug it
+ * produces, and patching those one by one buries it.
+ */
 export const CATEGORIES = {
+  architecture: {
+    label: "Architecture",
+    definition:
+      "The design is wrong, not a line: a special case patching a symptom, logic in the wrong place, a dependency against the grain.",
+  },
   bug: { label: "Bug", definition: "The code does the wrong thing for an input it accepts." },
   security: {
     label: "Security",
@@ -27,7 +36,8 @@ export const CATEGORIES = {
   },
   maintainability: {
     label: "Maintainability",
-    definition: "The next change here is harder: duplication, dead code, a misleading name.",
+    definition:
+      "The next change here is harder, locally: duplication, dead code, a misleading name.",
   },
   tests: {
     label: "Tests",

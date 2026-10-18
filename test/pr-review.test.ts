@@ -312,6 +312,14 @@ describe("inline findings", () => {
     expect(body.trimEnd().split("\n").at(-1)).toBe("— the agent");
   });
 
+  it("labels an architecture finding", async () => {
+    const forge = new MemoryForge();
+    await pass(forge, {
+      findings: [{ ...UNBOUNDED, severity: "non-blocking", category: "architecture" }],
+    });
+    expect(forge.threads[0]!.messages[0]!.body).toContain("**Architecture · non-blocking:**");
+  });
+
   it("prefixes a nit", async () => {
     const forge = new MemoryForge();
     await pass(forge, { findings: [{ ...UNBOUNDED, severity: "nit", category: "docs" }] });
@@ -324,6 +332,7 @@ describe("the categories", () => {
     const text = JSON.stringify({ ...base, findings: [{ ...UNBOUNDED, category: "style" }] });
     expect(() => parsePass(text, "pass.json")).toThrow(/category/);
     expect(Object.keys(CATEGORIES)).toEqual([
+      "architecture",
       "bug",
       "security",
       "performance",

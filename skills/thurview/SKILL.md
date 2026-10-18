@@ -88,7 +88,8 @@ conflict.
 
 `thurview scaffold` lists the ones it found under `guidance`.
 
-Read [Document authoring](references/document-authoring.md) before you write.
+Read [Architecture](references/architecture.md) before you study the change:
+it is the review's first lens. Read [Document authoring](references/document-authoring.md) before you write.
 Read [Components](references/components.md) before you edit `data.yaml` or add
 a fenced component. Read [Lifecycle](references/lifecycle.md) for statuses,
 storage and thread rules. Read [Software map](references/software-map.md)
@@ -150,7 +151,16 @@ git grep -n -E -e '\bname *\(' <base> --       # who called it before: a removed
 git grep -n -E -e '\bname\b' <head> -- '*test*'      # what tests name it
 ```
 
-Start with the interfaces: what the change added to, changed in or removed
+Start with the architecture, per [Architecture](references/architecture.md):
+does the change put its logic where it belongs, and does each fix remove a
+cause or patch a symptom? Run the patch test on every fix the change makes. A
+special case added where a failure showed up, a rule written in a second
+place, a dependency running against the rest of the system - these outrank
+any bug in the same code, because fixing the design usually removes the bug
+and fixing the bug alone hides the design. The answer, defect or none, opens
+the document (step 5).
+
+Then the interfaces: what the change added to, changed in or removed
 from what other code, a user or another system reaches - an exported function,
 a CLI flag, an HTTP route, a config key, a file format. It is the reader's own
 first question, and the list you declare in `data.yaml` (step 5) is what the
@@ -224,7 +234,9 @@ leave `nodes: []` and say the map is not published.
 ### 5. Author the document
 
 Edit `review.md` and `data.yaml` in the review directory following
-[Document authoring](references/document-authoring.md). Keep it short.
+[Document authoring](references/document-authoring.md). Keep it short. The
+first section is the architecture verdict: what the change does to the
+design, and for each defect its cause, target and next step, anchored.
 Default to anchor links for evidence; use an inline peek only when the reader
 must see the code to follow the main claim.
 
@@ -279,6 +291,8 @@ Tell the user, in a few lines and nothing more:
 - the `url`
 - what the review covers, in one sentence, and where to start: the Review tab
   as a rule; the Files tab when the change is small and the diff is the story
+- the architecture verdict, in one clause: the defect and its target, or that
+  the change fits the design
 - the interface delta `verdict`, in its own words
 - the `security` verdict, in one clause: what the change crosses, or that it
   crosses nothing
@@ -389,6 +403,8 @@ Report completion only when all of these hold:
 - The reader has the URL of a published revision.
 - Every `error` diagnostic is resolved.
 - The map is published, or you said why it is not.
+- The document opens with the architecture verdict: a defect with its target,
+  or that the change fits the design.
 - `security` in `data.yaml` is answered: `none`, or the crossings. A review
   published as "not assessed" is not finished.
 - The review is waiting on the reader, accepted, closed, dismissed or deleted.
