@@ -35,6 +35,10 @@ columns empty.
   text. On a phone a finding opens in place and the sections sit in a strip at
   the top. An explainer opens on its summary and its coverage, a design on its
   summary and what it proposes.
+- **Architecture**: first in the scope, the view the review takes on the
+  design - whether the change fits it, or each defect it introduces with its
+  cause, the target shape and the next step, opening the code it names. Every
+  review past its first stub has one.
 - **Interface delta**: in the scope, what the change added to, changed
   in or removed from the surfaces other code can reach - exported functions
   and types, CLI flags, routes, config keys and formats. The agent declares

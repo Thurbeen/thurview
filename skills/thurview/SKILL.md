@@ -157,8 +157,8 @@ cause or patch a symptom? Run the patch test on every fix the change makes. A
 special case added where a failure showed up, a rule written in a second
 place, a dependency running against the rest of the system - these outrank
 any bug in the same code, because fixing the design usually removes the bug
-and fixing the bug alone hides the design. The answer, defect or none, opens
-the document (step 5).
+and fixing the bug alone hides the design. The answer, defect or none, goes in
+`data.yaml` under `architecture` (step 5), and every review has one.
 
 Then the interfaces: what the change added to, changed in or removed
 from what other code, a user or another system reaches - an exported function,
@@ -234,9 +234,13 @@ leave `nodes: []` and say the map is not published.
 ### 5. Author the document
 
 Edit `review.md` and `data.yaml` in the review directory following
-[Document authoring](references/document-authoring.md). Keep it short. The
-first section is the architecture verdict: what the change does to the
-design, and for each defect its cause, target and next step, anchored.
+[Document authoring](references/document-authoring.md). Keep it short.
+
+Write the architecture view from step 3 first, in `data.yaml` under
+`architecture`: a `view` on what the change does to the design, and a `defect`
+with its cause, target, next step and head anchor for each one the change
+introduces or deepens. It is required: `publish` refuses a review that anchors
+a claim without one. See [Components](references/components.md).
 Default to anchor links for evidence; use an inline peek only when the reader
 must see the code to follow the main claim.
 
@@ -403,8 +407,8 @@ Report completion only when all of these hold:
 - The reader has the URL of a published revision.
 - Every `error` diagnostic is resolved.
 - The map is published, or you said why it is not.
-- The document opens with the architecture verdict: a defect with its target,
-  or that the change fits the design.
+- `architecture` in `data.yaml` holds a view: the defects with their targets,
+  or why the change fits the design.
 - `security` in `data.yaml` is answered: `none`, or the crossings. A review
   published as "not assessed" is not finished.
 - The review is waiting on the reader, accepted, closed, dismissed or deleted.

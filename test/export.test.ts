@@ -76,6 +76,8 @@ anchors:
   login: { title: login(), peek: { file: src/auth.ts, from: 1, to: 4 } }
   audit: { title: audit(), peek: { file: src/audit.ts, from: 1, to: 3 } }
   check: { title: check(), peek: { file: src/auth.ts, from: 6, to: 8 } }
+architecture:
+  view: Auditing is one new module, called from login().
 `;
 
 const SECTIONS = ["Audit every login", "Data flow", "The audit call", "What stays the same"];
@@ -184,7 +186,7 @@ beforeAll(async () => {
   await writeFile(join(large.dir, "review.md"), "# Large review\n\n```peek\nlast\n```\n");
   await writeFile(
     join(large.dir, "data.yaml"),
-    "anchors:\n  last: { title: Last retained line, peek: { file: src/large-72.ts, from: 500, to: 500 } }\n",
+    "anchors:\n  last: { title: Last retained line, peek: { file: src/large-72.ts, from: 500, to: 500 } }\narchitecture: { view: Fits. }\n",
   );
   await cli(["publish", "--review", large.uuid]);
   await cli(["publish", "--review", large.uuid]);

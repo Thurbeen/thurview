@@ -72,6 +72,7 @@ const PASS = {
   head: HEAD,
   confidence: 2,
   reason: "One blocking bug.",
+  architecture: "Retry policy stays in upload(), the one module that sends.",
   risk: ["Uploads retry on a 4xx."],
   change: "Retries a failed upload.",
   signoff: "— the agent",
@@ -764,16 +765,18 @@ describe("compact summary golden Markdown", { timeout: 30_000 }, () => {
 
   it("counts 120 authored prose words even in folds, independently of generated rows", async () => {
     await setup("github");
-    // reason + risk + signoff consume ten words; the remaining 110 belong to change.
+    // reason + architecture + risk + signoff consume thirteen words; the
+    // remaining 107 belong to change.
     const prose = {
       reason: "One blocking bug.",
+      architecture: "Fits the design.",
       risk: ["Uploads retry on a 4xx."],
       signoff: "the agent",
-      change: "word ".repeat(110).trim(),
+      change: "word ".repeat(107).trim(),
     };
     await run("github", prose);
     await rm(log, { force: true });
-    const out = await run("github", { ...prose, change: "word ".repeat(111).trim() }, 2);
+    const out = await run("github", { ...prose, change: "word ".repeat(108).trim() }, 2);
     expect(out.error).toMatch(/121 words.*120-word/);
     expect((await calls()).some((c) => c.args.includes("POST") || c.args.includes("PATCH"))).toBe(
       false,

@@ -36,17 +36,7 @@ Support could not tell whether a locked-out user had tried at all. The
 request was "log every attempt, not only successes".
 ```
 
-Then the architecture section, which every review has, and fewer than five
-further sections when practical.
-
-`## Architecture` is the verdict on the design, written per
-[Architecture](architecture.md): where the change puts its logic, what now
-depends on what, and whether its fixes remove causes or patch symptoms. Each
-defect gets its cause, its target shape and the next step, anchored. A change
-that fits the design gets one sentence saying so, and how you know. It comes
-first because it is the finding that outlives the change.
-
-Then pick those that fit:
+Then fewer than five further sections when practical. Pick those that fit:
 
 - requirements
 - lifecycle or data flow
@@ -97,6 +87,22 @@ did not do. Let it shape the document:
 What earns an entry is a surface something outside the change reaches. A
 private helper is not one, however much it moved, and an interface the change
 did not deliver is never an entry.
+
+## Architecture
+
+Every review takes a view on the design, in `data.yaml` under `architecture`,
+written per [Architecture](architecture.md): where the change puts its logic,
+what now depends on what, and whether its fixes remove causes or patch
+symptoms. It is not a section you write: the browser shows it first in the
+scope, above the interface delta, with each defect's cause, target and next
+step opening its anchored code.
+
+It is not optional. Only the stub published before the walkthrough may leave
+it out; once the document anchors a claim, `publish` refuses it without a
+`view`. A change that fits the design says so in the view, and how you know.
+Prose may still argue a defect at length when the reader needs it, but the
+view and the defects are where the reader looks first. See
+[Components](components.md) for the shape.
 
 ## Trust boundaries
 

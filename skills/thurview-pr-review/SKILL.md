@@ -191,8 +191,8 @@ workflow: [Document authoring](../thurview/references/document-authoring.md),
 [Software map](../thurview/references/software-map.md) and
 [Searching the code](../thurview/references/searching.md).
 Write `review.md`, `data.yaml` and `map.yaml` in `review.dir`. Anchor claims at
-the pins, include the findings and tests actually checked, answer `security`
-and declare the interface changes. Add a map when it explains boundaries;
+the pins, include the findings and tests actually checked, state the
+`architecture` view, answer `security` and declare the interface changes. Add a map when it explains boundaries;
 otherwise leave `nodes: []` and say why.
 
 Then write `pass.json` for this head, in the shape step 5 shows, without
@@ -230,6 +230,7 @@ evidence for every own finding returned by `reassess`:
   "head": "<the full sha you reviewed>",
   "confidence": 2,
   "reason": "Safe once the retry loop stops on a 4xx.",
+  "architecture": "Fits the design: retry policy stays in upload(), the one module that sends.",
   "risk": ["Every upload goes through the changed retry path.", "No test covers a 4xx."],
   "change": "Retries a failed upload three times with exponential backoff.",
   "reviewUrl": "https://reviews.example.com/pr-7/",
@@ -262,7 +263,12 @@ evidence for every own finding returned by `reassess`:
 
 - `head` is the commit you reviewed. `sync` refuses the pass when the change
   request moved on since: review what the new push added, then sync again.
-- `reason`, `change`, `signoff` and each `risk` bullet are one line each;
+- `architecture` is required on every pass: one line with this review's view
+  on the design - why the change fits it, or the defect it introduces and its
+  target. It reads right under `reason` in the summary, never folded, and the
+  page shows it with the verdict. `sync` and `publish --pass` refuse a pass
+  without it.
+- `reason`, `architecture`, `change`, `signoff` and each `risk` bullet are one line each;
   `sync` refuses a line break in any of them. `reason` is one sentence;
   `risk` is one to five bullets naming what could break, the blast radius, and
   anything touching security, data, infra or a public API; `change` is two or
@@ -281,7 +287,7 @@ evidence for every own finding returned by `reassess`:
   are folded separately; the reviewed head and UTC sync timestamp stay small
   below them. The sign-off is last. Both forges use ordinary Markdown tables
   and HTML `details`/`summary`, with blank lines around their Markdown.
-- The 120-word budget applies to authored `reason`, `change`, all `risk`
+- The 120-word budget applies to authored `reason`, `architecture`, `change`, all `risk`
   bullets and `signoff` together, including folded text. Generated verdicts,
   finding rows, links, update counts, labels and head/time metadata are
   excluded. Finding titles/bodies still have their separate five-line limit.

@@ -205,7 +205,8 @@ describe("thurview end to end", () => {
     const dir = ev["review"].dir as string;
     await writeFile(
       join(dir, "data.yaml"),
-      `anchors:
+      `architecture: { view: The ip travels with the login it describes. }
+anchors:
   oldAudit: { title: audit() before, peek: { file: src/audit.ts, from: 1, to: 3, graph: base } }
   login: { title: login(), peek: { file: src/auth.ts, from: 3, to: 3 } }
   record: { title: record(), peek: { file: src/audit.ts, from: 5, to: 7 } }
@@ -392,7 +393,8 @@ steps:
     expect(reviewDir).toBeTruthy();
     await writeFile(
       join(reviewDir, "data.yaml"),
-      `actors:
+      `architecture: { view: Auditing stays behind audit(). }
+actors:
   caller: { label: Caller }
   auth: { label: Auth }
   log: { label: Audit log }
@@ -847,7 +849,7 @@ check
     it("surfaces each crossing anchored to the code, without a section in the prose", async () => {
       await writeFile(
         join(secDir, "data.yaml"),
-        `anchors:\n  logLine: { title: the audit log line, peek: { file: src/audit.ts, from: 2, to: 2 } }\nsecurity:\n  - boundary: audit() writes the user id into the process log.\n    anchor: logLine\n`,
+        `architecture: { view: Fits. }\nanchors:\n  logLine: { title: the audit log line, peek: { file: src/audit.ts, from: 2, to: 2 } }\nsecurity:\n  - boundary: audit() writes the user id into the process log.\n    anchor: logLine\n`,
       );
       const out = await cli(["publish", "--review", secId]);
       expect(String(out["published"]["security"])).toBe("1 trust boundary crossed.");
@@ -968,6 +970,112 @@ check
         expect(out["code"]).toBe("PUBLISH_FAILED");
         expect(
           out["diagnostics"].some((d: Out) => String(d["message"]).includes(message)),
+          `${data} should be refused with ${message}`,
+        ).toBe(true);
+      }
+    }, 60_000);
+  });
+
+  // ---- the architecture dimension ----
+  // Every review takes a view on the design, and only the stub published before
+  // the walkthrough is written may go without one.
+
+  describe("the view a review takes on the architecture", () => {
+    let archId = "";
+    let archDir = "";
+    const head = (o: Out) => String(o["published"]["architecture"]);
+    const messages = (o: Out) => o["diagnostics"].map((d: Out) => String(d["message"]));
+    const guard = `anchors:\n  guard: { title: the new guard, peek: { file: src/audit.ts, from: 2, to: 2 } }\n`;
+
+    beforeAll(async () => {
+      const ev = await cli(["scaffold", "--new"]);
+      archId = ev["review"].uuid as string;
+      archDir = ev["review"].dir as string;
+    }, 20_000);
+
+    afterAll(async () => {
+      if (archId) await cli(["delete", "--review", archId]);
+    });
+
+    it("lets only the stub go without one", async () => {
+      await writeFile(join(archDir, "review.md"), `# Audit every login\n\nOn its way.\n`);
+      await writeFile(join(archDir, "data.yaml"), `anchors: {}\n`);
+      const stub = await cli(["publish", "--review", archId]);
+      expect(head(stub)).toContain("Not assessed");
+
+      // the first anchored claim makes it a review, and a review has a view
+      await writeFile(
+        join(archDir, "review.md"),
+        `# Audit every login\n\nThe [guard](anchor:guard) logs.\n`,
+      );
+      await writeFile(join(archDir, "data.yaml"), guard);
+      const out = await cli(["publish", "--review", archId], { expectCode: 1 });
+      expect(out["code"]).toBe("PUBLISH_FAILED");
+      expect(messages(out).some((m: string) => m.includes("view on the architecture"))).toBe(true);
+    }, 30_000);
+
+    it("states that the change fits the design, in the author's words", async () => {
+      await writeFile(
+        join(archDir, "data.yaml"),
+        `${guard}architecture:\n  view: Logging stays in audit(), the module that owns it.\n`,
+      );
+      const out = await cli(["publish", "--review", archId]);
+      expect(head(out)).toBe("Fits the design.");
+      const d = await api<Out>(`/api/reviews/${archId}`);
+      expect(d["document"]["architecture"]).toEqual({
+        state: "fits",
+        view: "Logging stays in audit(), the module that owns it.",
+        defects: [],
+        verdict: "Fits the design.",
+      });
+    }, 30_000);
+
+    it("anchors each defect with its cause, target and next step", async () => {
+      await writeFile(join(archDir, "review.md"), `# Audit every login\n\nThe change logs.\n`);
+      await writeFile(
+        join(archDir, "data.yaml"),
+        `${guard}architecture:\n  view: The fix patches one caller.\n  defects:\n    - cause: A special case for one caller.\n      target: Retry policy owned by RetryPolicy.\n      step: Move both checks into it here.\n      anchor: guard\n`,
+      );
+      const out = await cli(["publish", "--review", archId]);
+      expect(head(out)).toBe("1 design defect.");
+      // the defect marks its anchor used, so it needs no prose link
+      expect(out["diagnostics"]).toBeUndefined();
+      const d = await api<Out>(`/api/reviews/${archId}`);
+      expect(d["document"]["architecture"]["defects"]).toEqual([
+        {
+          cause: "A special case for one caller.",
+          target: "Retry policy owned by RetryPolicy.",
+          step: "Move both checks into it here.",
+          anchor: "guard",
+        },
+      ]);
+    }, 30_000);
+
+    it("refuses a view that says nothing or a defect that proves nothing", async () => {
+      const defect = (rest: string) =>
+        `architecture:\n  view: v\n  defects:\n    - { cause: c, target: t, step: s${rest} }\n`;
+      const cases: [string, string][] = [
+        [`${guard}architecture: fine\n`, "write a view"],
+        [`${guard}architecture: { view: "" }\n`, "architecture view"],
+        [
+          `${guard}architecture:\n  view: v\n  defects:\n    - { cause: c, anchor: guard }\n`,
+          "architecture defect 1: target",
+        ],
+        [`anchors: {}\n${defect(", anchor: nope")}`, 'unknown anchor "nope"'],
+        [
+          `anchors:\n  bare: { title: bare }\n${defect(", anchor: bare")}`,
+          'anchor "bare" has no peek',
+        ],
+        [
+          `anchors:\n  old: { title: old, peek: { file: src/auth.ts, from: 1, to: 2, graph: base } }\n${defect(", anchor: old")}`,
+          "takes a head anchor",
+        ],
+      ];
+      for (const [data, message] of cases) {
+        await writeFile(join(archDir, "data.yaml"), data);
+        const out = await cli(["publish", "--review", archId], { expectCode: 1 });
+        expect(
+          messages(out).some((m: string) => m.includes(message)),
           `${data} should be refused with ${message}`,
         ).toBe(true);
       }
@@ -1710,7 +1818,7 @@ describe("static snapshots", () => {
     );
     await writeFile(
       join(dir, "data.yaml"),
-      "anchors:\n  login: { title: Login, peek: { file: src/auth.ts, from: 3, to: 5 } }\n",
+      "architecture: { view: Fits. }\nanchors:\n  login: { title: Login, peek: { file: src/auth.ts, from: 3, to: 5 } }\n",
     );
     await writeFile(
       join(dir, "map.yaml"),

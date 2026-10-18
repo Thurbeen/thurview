@@ -23,7 +23,10 @@ import {
   PeekBlockSchema,
   MapSchema,
   CrossingListSchema,
+  ArchitectureSchema,
   type Data,
+  type Architecture,
+  type Defect,
   type Security,
   type Crossing,
   type Peek,
@@ -129,6 +132,20 @@ export interface CompiledSecurity {
   verdict: string;
 }
 
+/**
+ * The architecture dimension: the view a review takes on the design, and each
+ * defect anchored with its cause, target and next step. `pending` is only
+ * publishable on the stub; every review that anchors a claim takes a view.
+ */
+export interface CompiledArchitecture {
+  state: "pending" | "fits" | "defects";
+  /** the author's view, in their words; empty while pending */
+  view: string;
+  defects: Defect[];
+  /** the whole answer in one sentence, for the agent and the reader alike */
+  verdict: string;
+}
+
 export interface CompiledDocument {
   title: string;
   blocks: Block[];
@@ -136,6 +153,8 @@ export interface CompiledDocument {
   interfaces: InterfaceDelta | null;
   /** review only: an explainer and a design have no change to cross a boundary */
   security: CompiledSecurity | null;
+  /** review only: an explainer surfaces structure and a design proposes it */
+  architecture: CompiledArchitecture | null;
   anchors: Record<string, CompiledAnchor>;
   actors: Data["actors"];
   stores: Data["stores"];
@@ -216,6 +235,11 @@ export async function compileDocument(input: CompileInput): Promise<{
     err(
       "data.yaml",
       `security is what a change crosses: ${kindWord(kind)} is pinned to one commit and has no diff, so it has none of its own to state`,
+    );
+  if (kind !== "review" && isRecord(dataRaw) && "architecture" in dataRaw)
+    err(
+      "data.yaml",
+      `architecture is a review's view on a change: ${kindWord(kind)} has no change to judge, so it has none of its own to state`,
     );
   // Nothing derives a row for the agent to annotate any more: every entry names
   // its own interface, and an old `symbol:` entry is told how to say it now.
@@ -356,6 +380,26 @@ export async function compileDocument(input: CompileInput): Promise<{
           err,
         })
       : null;
+  const declaredArchitecture =
+    kind === "review" ? parseArchitecture(dataRaw, used, err) : "pending";
+  const architecture =
+    kind === "review"
+      ? compileArchitecture({
+          declared: dataParsed.ok ? declaredArchitecture : "pending",
+          anchors,
+          declaredAnchors: data.anchors,
+          used,
+          err,
+        })
+      : null;
+  // The stub published before the walkthrough anchors nothing, and it may go
+  // without a view. The first anchored claim makes it a review, and a review
+  // that judges the lines but not the design has done the cheap half.
+  if (architecture?.state === "pending" && used.size)
+    err(
+      "data.yaml",
+      "every review takes a view on the architecture: add `architecture: { view: ... }`, with `defects` for each one the change introduces or deepens",
+    );
 
   for (const id of Object.keys(anchors))
     if (!used.has(id)) warn("data.yaml", `anchor "${id}" is defined but never used`);
@@ -386,6 +430,7 @@ export async function compileDocument(input: CompileInput): Promise<{
       blocks,
       interfaces,
       security,
+      architecture,
       anchors,
       actors: data.actors,
       stores: data.stores,
@@ -460,23 +505,115 @@ function parseSecurity(
   return "pending";
 }
 
-/**
- * Resolve the security dimension against the anchors the document already has.
- *
- * A crossing is a claim about the change as it stands at head, so it takes a
- * head anchor with a peek and nothing else will do: an anchor that opens
- * nothing is how a reader stops trusting the ones that open something, and the
- * rest of the document lives under the same rule. Resolving one also marks the
- * anchor used, so the dimension needs no prose link to earn its anchor.
- */
-function compileSecurity(ctx: {
-  declared: Security;
+interface DimensionContext {
   anchors: Record<string, CompiledAnchor>;
   /** what data.yaml asked for, to tell a peek that is missing from one that failed */
   declaredAnchors: Data["anchors"];
   used: Set<string>;
   err: (file: string, message: string) => void;
-}): CompiledSecurity {
+}
+
+/**
+ * Resolve an anchor a dimension entry names. An entry is a claim about the
+ * change as it stands at head, so it takes a head anchor with a peek and nothing
+ * else will do: an anchor that opens nothing is how a reader stops trusting the
+ * ones that open something. Resolving one also marks the anchor used, so the
+ * dimension needs no prose link to earn its anchor.
+ */
+function resolveHeadAnchor(ctx: DimensionContext, where: string, id: string, why: string): boolean {
+  ctx.used.add(id);
+  const anchor = ctx.anchors[id];
+  if (!anchor) {
+    ctx.err("data.yaml", `${where}: unknown anchor "${id}"`);
+    return false;
+  }
+  if (!anchor.peek) {
+    // A peek that was written but could not be resolved already has its own
+    // error, and the actionable one is that one. Saying "no peek" over it
+    // sends the author to add what is in front of them.
+    if (!ctx.declaredAnchors[id]?.peek)
+      ctx.err(
+        "data.yaml",
+        `${where}: anchor "${id}" has no peek, so the reader cannot open the code it names`,
+      );
+    return false;
+  }
+  if (anchor.peek.graph !== "head") {
+    ctx.err(
+      "data.yaml",
+      `${where}: anchor "${id}" reads the base commit; ${why}, so it takes a head anchor`,
+    );
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Read `architecture` out of the raw YAML, for the reason `parseSecurity`
+ * gives: a defect missing its anchor reports itself, not the whole file.
+ */
+function parseArchitecture(
+  raw: unknown,
+  used: Set<string>,
+  err: (file: string, message: string) => void,
+): Architecture | "pending" {
+  const v = isRecord(raw) ? raw["architecture"] : undefined;
+  if (v === undefined) return "pending";
+  if (!isRecord(v)) {
+    err(
+      "data.yaml",
+      "architecture: write a view on the architecture, as `architecture: { view: ... }`, with `defects` when there are any",
+    );
+    return "pending";
+  }
+  const defects = v["defects"];
+  if (Array.isArray(defects))
+    for (const e of defects)
+      if (isRecord(e) && typeof e["anchor"] === "string") used.add(e["anchor"]);
+  const r = parseWith(ArchitectureSchema, v);
+  if (r.ok) return r.value;
+  for (const m of r.errors) {
+    const at = /^defects\.(\d+)(?:\.|: )/.exec(m);
+    err(
+      "data.yaml",
+      at
+        ? `architecture defect ${Number(at[1]) + 1}: ${m.slice(at[0].length)}`
+        : `architecture ${m}`,
+    );
+  }
+  return "pending";
+}
+
+/** Resolve the architecture dimension, each defect on a head anchor like a crossing. */
+function compileArchitecture(
+  ctx: DimensionContext & { declared: Architecture | "pending" },
+): CompiledArchitecture {
+  if (ctx.declared === "pending")
+    return {
+      state: "pending",
+      view: "",
+      defects: [],
+      verdict: "Not assessed: this revision gives no view on the architecture.",
+    };
+  const defects = ctx.declared.defects.filter((d, i) =>
+    resolveHeadAnchor(
+      ctx,
+      `architecture defect ${i + 1}`,
+      d.anchor,
+      "a defect is the design as the change leaves it",
+    ),
+  );
+  const n = ctx.declared.defects.length;
+  return {
+    state: n ? "defects" : "fits",
+    view: ctx.declared.view.trim(),
+    defects,
+    verdict: n ? `${n} design defect${n === 1 ? "" : "s"}.` : "Fits the design.",
+  };
+}
+
+/** Resolve the security dimension against the anchors the document already has. */
+function compileSecurity(ctx: DimensionContext & { declared: Security }): CompiledSecurity {
   if (ctx.declared === "pending" || ctx.declared === "none")
     return {
       state: ctx.declared,
@@ -488,27 +625,13 @@ function compileSecurity(ctx: {
     };
   const crossings: CompiledSecurity["crossings"] = [];
   ctx.declared.forEach((c: Crossing, i: number) => {
-    const where = `security crossing ${i + 1}`;
-    ctx.used.add(c.anchor);
-    const anchor = ctx.anchors[c.anchor];
-    if (!anchor) return ctx.err("data.yaml", `${where}: unknown anchor "${c.anchor}"`);
-    if (!anchor.peek) {
-      // A peek that was written but could not be resolved already has its own
-      // error, and the actionable one is that one. Saying "no peek" over it
-      // sends the author to add what is in front of them.
-      if (!ctx.declaredAnchors[c.anchor]?.peek)
-        ctx.err(
-          "data.yaml",
-          `${where}: anchor "${c.anchor}" has no peek, so the reader cannot open the code it names`,
-        );
-      return;
-    }
-    if (anchor.peek.graph !== "head")
-      return ctx.err(
-        "data.yaml",
-        `${where}: anchor "${c.anchor}" reads the base commit; a crossing is the boundary as the change leaves it, so it takes a head anchor`,
-      );
-    crossings.push({ boundary: c.boundary, anchor: c.anchor });
+    const ok = resolveHeadAnchor(
+      ctx,
+      `security crossing ${i + 1}`,
+      c.anchor,
+      "a crossing is the boundary as the change leaves it",
+    );
+    if (ok) crossings.push({ boundary: c.boundary, anchor: c.anchor });
   });
   const n = crossings.length;
   return {

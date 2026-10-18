@@ -335,6 +335,21 @@ const TEMPLATE_DATA = `# Typed inputs for review.md: actors, anchors and stores.
 #
 # What counts as a trust boundary is defined once, in the thurview-fix skill's
 # SKILL.md under "Findings". Read it there rather than deciding again.
+#
+# architecture is the view this review takes on the design: whether the change
+# puts its logic where it belongs, and whether its fixes remove a cause or patch
+# a symptom. Every review that anchors a claim needs one. List each defect the
+# change introduces or deepens, anchored at head:
+#
+# architecture:
+#   view: The fix special-cases one caller instead of owning retry policy.
+#   defects:
+#     - cause: upload() and sync() each decide retry policy.
+#       target: One RetryPolicy the caller passes in.
+#       step: Move both checks into it in this change.
+#       anchor: spawn
+#
+# The lens is in the thurview skill's references/architecture.md.
 actors: {}
 anchors: {}
 stores: {}
@@ -1360,6 +1375,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           : kind === "design"
             ? { proposes: doc.document.interfaces?.verdict ?? "(unavailable)" }
             : {
+                architecture: doc.document.architecture?.verdict ?? "(unavailable)",
                 interfaces: doc.document.interfaces?.verdict ?? "(unavailable)",
                 security: doc.document.security?.verdict ?? "(unavailable)",
               }),

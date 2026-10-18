@@ -110,6 +110,9 @@ export function verdictBlock(v: Verdict): HTMLElement {
     ),
     h("div", { class: "meaning" }, CONFIDENCE[c]),
     h("div", { class: "reason" }, v.reason),
+    v.architecture
+      ? h("div", { class: "reason" }, h("strong", null, "Architecture: "), v.architecture)
+      : null,
     h(
       "div",
       { class: "counts" },
@@ -412,6 +415,7 @@ export function scopeColumns(v: Verdict | null): HTMLElement {
     );
   for (const r of v?.ran ?? [])
     reviewed.push(h("span", null, `${r.what}: `, h("span", { class: "muted" }, r.result)));
+  if (doc?.architecture?.state === "pending") gaps.push("Architecture: not assessed.");
   if (doc?.security?.state === "pending") gaps.push("Trust boundaries: not assessed.");
   if (v && !v.ran.some((r) => r.kind === "test")) gaps.push("No test run was recorded.");
   const unexp = h("li", { hidden: true });

@@ -5,6 +5,8 @@ Next: @dev — **Confidence 2/5 · do not merge; fix the 1 blocking finding.**
 
 One blocking bug.
 
+**Architecture:** Retry policy stays in upload(), the one module that sends.
+
 | Finding at reviewed head | Thread |
 | --- | --- |
 | **Blocking · Bug:** The retry loop never stops on a 4xx. | [`src/upload.ts:42`](https://github.com/acme/web/pull/7#discussion_r101) |

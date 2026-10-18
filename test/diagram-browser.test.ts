@@ -49,7 +49,8 @@ messages:
 \`\`\`
 `;
 
-const DATA = `actors:
+const DATA = `architecture: { view: Fits. }
+actors:
   operator: { label: Operator on the jump host }
   legacyRepo: { label: legacy infrastructure repository }
   legacyState: { label: legacy infrastructure state }
@@ -580,6 +581,21 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
       expect(before).toEqual({ focused: true, expanded: "true", collapsed: false });
       await p.press("Enter");
       expect(await focus()).toEqual({ focused: true, expanded: "false", collapsed: true });
+    } finally {
+      await p.close();
+    }
+  }, 30_000);
+
+  it("opens the review's scope on its view of the architecture", async () => {
+    const p = await page(1440, 900);
+    try {
+      const panels = await p.evaluate<{ title: string; text: string }[]>(`[
+        ...document.querySelectorAll(".ifd"),
+      ].map((e) => ({ title: e.querySelector(".ifd-head .t")?.textContent ?? "", text: e.textContent }))`);
+      // first, ahead of the interfaces and the trust boundaries
+      expect(panels[0]?.title).toBe("Architecture");
+      expect(panels[0]?.text).toContain("Fits the design.");
+      expect(panels.map((x) => x.title)).toContain("Trust boundaries");
     } finally {
       await p.close();
     }

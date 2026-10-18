@@ -148,7 +148,7 @@ require('node:module').syncBuiltinESMExports();
     );
     await writeFile(
       join(review.dir, "data.yaml"),
-      "anchors:\n  value: { title: value, peek: { file: code.ts, from: 1, to: 1 } }\n",
+      "anchors:\n  value: { title: value, peek: { file: code.ts, from: 1, to: 1 } }\narchitecture: { view: A constant changes where it is defined. }\n",
     );
     // The pass is written before the page is sealed, so the page carries its verdict.
     const pass = join(repo, "pass.json");
@@ -156,6 +156,7 @@ require('node:module').syncBuiltinESMExports();
       head,
       confidence: 5,
       reason: "Checked.",
+      architecture: "Fits the design: one constant changes where it is defined.",
       risk: ["Only the constant changes."],
       change: "Changes value to two.",
       findings: [],

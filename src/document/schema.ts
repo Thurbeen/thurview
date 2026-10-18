@@ -117,6 +117,38 @@ export const CrossingListSchema = z
  */
 export type Security = "pending" | "none" | Crossing[];
 
+/**
+ * One design defect: the property of the design that lets a class of bug be
+ * written, the shape that removes it, and the smallest step toward that shape.
+ * What counts as one is defined once, in the thurview skill's
+ * references/architecture.md.
+ */
+export const DefectSchema = z
+  .object({
+    cause: z.string().min(1),
+    target: z.string().min(1),
+    step: z.string().min(1),
+    anchor: id,
+  })
+  .strict();
+
+export type Defect = z.infer<typeof DefectSchema>;
+
+/**
+ * The view a review takes on the architecture. `view` is required: a review
+ * that found no defect still says why the change fits, because "fits" with no
+ * reason is the same silence as no answer. Read by hand, like `security`, so a
+ * defect missing its anchor does not discard the rest of data.yaml.
+ */
+export const ArchitectureSchema = z
+  .object({
+    view: z.string().trim().min(1, "write a view on the architecture in one or two sentences"),
+    defects: z.array(DefectSchema).default([]),
+  })
+  .strict();
+
+export type Architecture = z.infer<typeof ArchitectureSchema>;
+
 export const DataSchema = z
   .object({
     actors: z.record(id, ActorSchema).default({}),
@@ -126,6 +158,8 @@ export const DataSchema = z
     searches: z.record(id, SearchSchema).default({}),
     /** read by hand, not here: see Security above for why a union cannot sit on this object */
     security: z.unknown().optional(),
+    /** read by hand too: see Architecture above */
+    architecture: z.unknown().optional(),
   })
   .strict();
 

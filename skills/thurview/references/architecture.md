@@ -6,7 +6,8 @@ caller, forever, and each of those fixes is a small `if` that makes the next
 one harder to see. A review that catches the bug and misses the design has
 done the cheap half of the job.
 
-So every review answers two questions before it hunts for bugs:
+So every review takes a view on the architecture, and answers two questions
+before it hunts for bugs:
 
 1. **Does the change put its logic in the right place?** The module that owns
    the data or the rule, behind the seam meant for it, with dependencies
@@ -95,6 +96,16 @@ two existing checks into it here; the other callers can follow._
   have split this differently" is not a defect. A defect has a cost you can
   show: a second place that must change in step, a caller that will hit the
   same bug, a dependency the rest of the system does not take.
-- **None is an answer.** When the change puts its logic where it belongs and
-  fixes causes, say so in one line. That line is what makes the finding worth
-  reading on the review where it is not none.
+- **No defect is an answer; no view is not.** When the change puts its logic
+  where it belongs and fixes causes, say so, and how you know. That line is
+  what makes the view worth reading on the review where there is a defect.
+
+## Where the view goes
+
+Every review states it, and the tools refuse one that does not:
+
+- a review document: `architecture` in `data.yaml`, a `view` and one entry
+  per defect - see [Components](components.md#architecture)
+- a change request's summary: `architecture` in `pass.json`, one line, read
+  right under the reason
+- a fix pass: architecture findings first in the report
