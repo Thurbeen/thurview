@@ -14,6 +14,30 @@ import type {
   SubmitResult,
 } from "./types.js";
 
+const HEADS_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      commits(last: 250) { nodes { commit { oid } } }
+      timelineItems(itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT], last: 100) {
+        nodes { ... on HeadRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } } }
+      }
+    }
+  }
+}`;
+
+interface HeadsPayload {
+  data?: {
+    repository?: {
+      pullRequest?: {
+        commits: { nodes: { commit: { oid: string } }[] };
+        timelineItems: {
+          nodes: { beforeCommit?: { oid: string } | null; afterCommit?: { oid: string } | null }[];
+        };
+      } | null;
+    } | null;
+  };
+}
+
 /**
  * GitHub, through `gh`. Everything goes through `gh api` rather than the
  * porcelain: `gh pr view` answers a different question per version, and the
@@ -207,6 +231,38 @@ export class GitHubForge implements Forge {
         ...(s.target_url ? { url: s.target_url } : {}),
       });
     return checks;
+  }
+
+  /**
+   * The PR's commits, each of which was its head once it was pushed, and both
+   * sides of every force-push, which is what keeps a head a rebase dropped.
+   */
+  async heads(repo: RepoId, cr: ChangeRequest): Promise<string[]> {
+    const [owner, name] = repo.path.split("/");
+    const payload = await runJson<HeadsPayload>(
+      "gh",
+      this.api(repo, [
+        "graphql",
+        "-f",
+        `query=${HEADS_QUERY}`,
+        "-f",
+        `owner=${owner}`,
+        "-f",
+        `name=${name}`,
+        "-F",
+        `number=${cr.number}`,
+      ]),
+    );
+    const pr = payload.data?.repository?.pullRequest;
+    if (!pr)
+      throw new AxiError(`pull request ${cr.number} not found on ${repo.path}`, "NOT_FOUND", [
+        "Check the number and that the account can read the repository",
+      ]);
+    const pushed = pr.timelineItems.nodes.flatMap((e) => [e.beforeCommit?.oid, e.afterCommit?.oid]);
+    const commits = pr.commits.nodes.map((n) => n.commit.oid);
+    return [...new Set([cr.head, ...commits.reverse(), ...pushed])].filter((sha): sha is string =>
+      Boolean(sha),
+    );
   }
 
   async prior(

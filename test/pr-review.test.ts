@@ -106,9 +106,15 @@ class MemoryForge implements ReviewForge {
     if (resolve) t.resolved = true;
     return { replied: Boolean(body), resolved: resolve, notes: [] };
   }
+  /** Every head the change request has had, oldest first. */
+  history: string[] = [SHA(1)];
+  async heads(): Promise<string[]> {
+    return [...this.history].reverse();
+  }
   /** Someone pushed. */
   push(n: number) {
     this.cr.head = SHA(n);
+    this.history.push(SHA(n));
   }
   summaries(): Note[] {
     return this.notesList.filter((n) => n.body.startsWith("<!-- thurview-pr-review"));
@@ -411,6 +417,86 @@ describe("following the change request", () => {
       `Review ended: ${state} at ${SHA(1).slice(0, 7)}. · **Confidence 4/5**`,
     );
     expect(forge.summaries()).toHaveLength(1);
+  });
+
+  it("names the merged head when it is not the one last reviewed", async () => {
+    const forge = new MemoryForge();
+    await pass(forge, {});
+    forge.push(2);
+    forge.cr.state = "merged";
+    await waitForEvent(forge, REPO, "7", fast);
+    expect(forge.summaries()[0]!.body.split("\n")[1]).toBe(
+      `Review ended: merged at ${SHA(2).slice(0, 7)}; last reviewed ${SHA(1).slice(0, 7)}. · **Confidence 4/5**`,
+    );
+  });
+
+  it.each(["merged", "closed"] as const)(
+    "syncs a pass made after it was %s, and the summary says so",
+    async (state) => {
+      const forge = new MemoryForge();
+      await pass(forge, { findings: [UNBOUNDED], confidence: 2 });
+      forge.push(2);
+      forge.cr.state = state;
+      await waitForEvent(forge, REPO, "7", fast);
+      const r = await pass(forge, { head: SHA(1), confidence: 2 });
+      expect(r.summary).toBe("edited");
+      expect(r.head).toBe(SHA(1));
+      expect(forge.summaries()).toHaveLength(1);
+      const body = forge.summaries()[0]!.body;
+      expect(body).toContain(`"head":"${SHA(1)}","state":"${state}"`);
+      expect(body.split("\n")[1]).toContain(
+        `reviewed after the ${state === "merged" ? "merge" : "close"}`,
+      );
+      const Ended = state === "merged" ? "Merged" : "Closed";
+      expect(body).toContain(
+        `${Ended} at \`${SHA(2).slice(0, 7)}\` before this review. It reviewed \`${SHA(1).slice(0, 7)}\`, not the ${state} head, and gated nothing.`,
+      );
+      // Nothing is posted or replied on the diff once the change request ended.
+      expect(forge.threads).toHaveLength(1);
+      expect(forge.threads[0]!.messages).toHaveLength(1);
+      // The follow loop does not rewrite it afterwards.
+      const again = await waitForEvent(forge, REPO, "7", fast);
+      expect(again.event).toBe(state);
+      expect(forge.summaries()[0]!.body).toBe(body);
+    },
+  );
+
+  it("keeps a stopped review stopped after the merge", async () => {
+    const forge = new MemoryForge();
+    await pass(forge, {});
+    await stopReview(ctx(forge));
+    forge.cr.state = "merged";
+    await expect(pass(forge, {})).rejects.toThrow(/stopped/);
+  });
+
+  it("refuses a post-merge pass on a commit that was never its head", async () => {
+    const forge = new MemoryForge();
+    forge.push(2);
+    forge.cr.state = "merged";
+    await expect(pass(forge, { head: SHA(5) })).rejects.toThrow(
+      /555555555555, which was never a head of this change request/,
+    );
+    expect(forge.summaries()).toHaveLength(0);
+  });
+
+  it("names an earlier head in full when the pass gave it short", async () => {
+    const forge = new MemoryForge();
+    forge.push(2);
+    forge.cr.state = "merged";
+    const r = await pass(forge, { head: SHA(1).slice(0, 7) });
+    expect(r.head).toBe(SHA(1));
+    expect(forge.summaries()[0]!.body).toContain(`"head":"${SHA(1)}","state":"merged"`);
+  });
+
+  it("refuses a post-merge pass when the change request is reopened under it", async () => {
+    const forge = new MemoryForge();
+    forge.cr.state = "merged";
+    const cr = await forge.get();
+    forge.cr.state = "open";
+    await expect(sync({ forge, repo: REPO, cr }, { ...base, head: SHA(1) })).rejects.toThrow(
+      /moved/,
+    );
+    expect(forge.summaries()).toHaveLength(0);
   });
 
   it("stops on the stop label", async () => {
