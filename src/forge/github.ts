@@ -98,7 +98,7 @@ interface ThreadsPayload {
         reviews: {
           nodes: {
             id: string;
-            author: { login: string } | null;
+            author: Author | null;
             state: string;
             body: string;
             submittedAt: string;
@@ -115,7 +115,7 @@ interface ThreadsPayload {
             diffSide: string | null;
             comments: {
               nodes: {
-                author: { login: string } | null;
+                author: Author | null;
                 body: string;
                 url: string;
                 originalCommit: { oid: string } | null;
@@ -128,13 +128,25 @@ interface ThreadsPayload {
   };
 }
 
+/** A GraphQL actor. A bot's login there drops the `[bot]` its REST login carries. */
+type Author = { __typename?: string; login: string };
+
+/**
+ * The REST login, which is what every other call compares against. Only a
+ * Bot-typed actor gets `[bot]` back: a user may register the bare name.
+ */
+function loginOf(a: Author | null | undefined): string {
+  if (!a) return "unknown";
+  return a.__typename === "Bot" ? `${a.login}[bot]` : a.login;
+}
+
 const THREADS_QUERY = `query($owner:String!,$name:String!,$number:Int!){
   repository(owner:$owner,name:$name){
     pullRequest(number:$number){
-      reviews(last:50){nodes{id author{login} state body submittedAt commit{oid}}}
+      reviews(last:50){nodes{id author{__typename login} state body submittedAt commit{oid}}}
       reviewThreads(last:100){nodes{
         id isResolved isOutdated path line diffSide
-        comments(first:50){nodes{author{login} body url originalCommit{oid}}}
+        comments(first:50){nodes{author{__typename login} body url originalCommit{oid}}}
       }}
     }
   }
@@ -165,6 +177,18 @@ export class GitHubForge implements Forge {
   async whoami(repo: RepoId): Promise<string> {
     const me = await runJson<{ login: string }>("gh", this.api(repo, ["user"]));
     return me.login;
+  }
+
+  async canWrite(repo: RepoId, user: string): Promise<boolean> {
+    try {
+      const p = await runJson<{ permission?: string }>(
+        "gh",
+        this.api(repo, [`repos/${repo.path}/collaborators/${encodeURIComponent(user)}/permission`]),
+      );
+      return p.permission === "admin" || p.permission === "write";
+    } catch {
+      return false;
+    }
   }
 
   repoFromRemote(url: string): RepoId | null {
@@ -296,7 +320,7 @@ export class GitHubForge implements Forge {
       .filter((r) => r.state !== "PENDING")
       .map((r) => ({
         id: r.id,
-        author: r.author?.login ?? "unknown",
+        author: loginOf(r.author),
         verdict: verdictWord(r.state),
         at: r.submittedAt,
         ...(r.commit?.oid ? { commit: r.commit.oid } : {}),
@@ -306,7 +330,8 @@ export class GitHubForge implements Forge {
       const first = t.comments.nodes[0];
       return {
         id: t.id,
-        author: first?.author?.login ?? "unknown",
+        author: loginOf(first?.author),
+        bot: first?.author?.__typename === "Bot",
         ...(t.path ? { path: t.path } : {}),
         ...(t.line ? { line: t.line } : {}),
         side: t.diffSide === "LEFT" ? ("base" as const) : ("head" as const),
@@ -315,7 +340,7 @@ export class GitHubForge implements Forge {
         ...(first?.originalCommit?.oid ? { commit: first.originalCommit.oid } : {}),
         ...(first?.url ? { url: first.url } : {}),
         messages: t.comments.nodes.map((c) => ({
-          author: c.author?.login ?? "unknown",
+          author: loginOf(c.author),
           body: c.body,
         })),
       };

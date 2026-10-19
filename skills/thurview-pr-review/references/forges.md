@@ -32,7 +32,9 @@ The summary carries
 `<!-- thurview-pr-review {"head":"<sha>","state":"active","seen":"<note id>"} -->`
 and each finding's first comment
 `<!-- thurview-finding {"id":"<id>","category":"bug","severity":"blocking"} -->`.
-`state` is `active`, `stopped`, `merged` or `closed`. `seen` is the newest
+`state` is `active`, `stopped`, `merged` or `closed`. `agreed`, when there,
+lists the other reviewers' threads the last pass agreed with, so they stay
+listed after a resolve until a pass says `fixed`. `seen` is the newest
 note already read, so a `/thurview stop` posted before a `start` stops nothing.
 Only a summary posted by the account the CLI is logged in as counts, so a
 pasted marker changes nothing. A finding's id is the `id` given in the pass, or a hash of its category, path
@@ -47,8 +49,9 @@ and title, which is how the same finding found on the next push is recognised.
 - Every call asks the forge who it is (`gh api user`, `glab api user`) to
   tell its own markers from pasted ones, so it needs a token that can read its
   own user; a GitHub App installation token cannot.
-- A finding must sit on a line the diff touches. A finding on an untouched
-  caller goes in a risk bullet.
+- A finding must sit on a line the diff touches. A defect confirmed in an
+  untouched caller is anchored on the changed line that reaches it; it is
+  still a finding, never only a risk bullet.
 - GitLab reports no per-thread staleness, and its adapter is driven by stub
   tests but has not been run against a live instance.
 - The CLI sync accepts `reviewUrl` without publishing it.

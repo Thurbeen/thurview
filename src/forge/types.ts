@@ -105,6 +105,8 @@ export interface PriorThread {
   /** The id `reply` takes. Opaque, and forge-specific by design. */
   id: string;
   author: string;
+  /** The forge says the author is a bot account, not a user who chose a bot-like name. */
+  bot?: boolean;
   path?: string;
   line?: number;
   side?: "head" | "base";
@@ -153,6 +155,8 @@ export interface Forge {
   owns(host: string): Promise<boolean>;
   /** The account the change request would be posted as. */
   whoami(repo: RepoId): Promise<string>;
+  /** Whether `user` can push to the repository. Any doubt, an error included, is `false`. */
+  canWrite(repo: RepoId, user: string): Promise<boolean>;
   repoFromRemote(url: string): RepoId | null;
   /** A change request number or URL, resolved against `repo`. */
   get(repo: RepoId, ref: string): Promise<ChangeRequest>;
