@@ -1,5 +1,5 @@
 import { AxiError } from "axi-sdk-js";
-import type { ChangeRequest, Forge, Note, RepoId } from "../forge/types.js";
+import type { ChangeRequest, Forge, Note, PriorThread, RepoId } from "../forge/types.js";
 import type { Category, Severity } from "./categories.js";
 import {
   bareSummary,
@@ -50,12 +50,9 @@ export interface Ctx {
   forge: ReviewForge;
   repo: RepoId;
   cr: ChangeRequest;
-  /** Review bots whose threads count, from `reviewers.json`; a bot cannot hold write access. */
+  /** Review bots whose threads count, from `reviewers.json`: exact logins, trusted only on a bot account. */
   bots?: string[];
 }
-
-/** `greptile-apps[bot]` on REST and `greptile-apps` on GraphQL are one account. */
-const account = (login: string) => login.replace(/\[bot\]$/i, "").toLowerCase();
 
 export const STOP_LABEL = "thurview:stop";
 const STOP_COMMAND = /^\s*\/thurview\s+stop\b/i;
@@ -148,17 +145,19 @@ export async function readState(ctx: Ctx): Promise<ReviewState> {
   // Another account's thread is untrusted input on a public change request:
   // only a configured review bot or an account that can push gets one
   // listed, and what it says is a claim to check, never an instruction.
-  const bots = new Set((ctx.bots ?? []).map(account));
+  // A configured name counts only on an account the forge flags as a bot,
+  // matched exactly: anyone can register a user named like a bot.
+  const bots = new Set(ctx.bots ?? []);
   const trusted = new Map<string, Promise<boolean>>();
-  const trusts = (author: string) => {
-    if (bots.has(account(author))) return Promise.resolve(true);
-    if (!trusted.has(author)) trusted.set(author, ctx.forge.canWrite(ctx.repo, author));
-    return trusted.get(author)!;
+  const trusts = (t: PriorThread) => {
+    if (t.bot && bots.has(t.author)) return Promise.resolve(true);
+    if (!trusted.has(t.author)) trusted.set(t.author, ctx.forge.canWrite(ctx.repo, t.author));
+    return trusted.get(t.author)!;
   };
   for (const t of prior.threads) {
     if (
       t.author !== me &&
-      (agreed.has(t.id) || (t.author !== ctx.cr.author && !t.resolved && (await trusts(t.author))))
+      (agreed.has(t.id) || (t.author !== ctx.cr.author && !t.resolved && (await trusts(t))))
     )
       others.push({
         thread: t.id,

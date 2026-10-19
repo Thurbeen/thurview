@@ -90,7 +90,7 @@ interface Discussion {
     system: boolean;
     resolvable: boolean;
     resolved?: boolean;
-    author: { username: string } | null;
+    author: { id?: number; username: string } | null;
     position?: {
       new_path?: string;
       old_path?: string;
@@ -151,6 +151,24 @@ export class GitLabForge implements Forge {
   async whoami(repo: RepoId): Promise<string> {
     const me = await runJson<{ username: string }>("glab", this.api(repo, "user"));
     return me.username;
+  }
+
+  private bots = new Map<number, Promise<boolean>>();
+
+  /**
+   * A note's author carries no bot flag; the user record does. Read once per
+   * account, and any doubt is `false`: a name alone never makes a bot.
+   */
+  private isBot(repo: RepoId, id: number): Promise<boolean> {
+    if (!this.bots.has(id))
+      this.bots.set(
+        id,
+        runJson<{ bot?: boolean }>("glab", this.api(repo, `users/${id}`)).then(
+          (u) => u.bot === true,
+          () => false,
+        ),
+      );
+    return this.bots.get(id)!;
   }
 
   async canWrite(repo: RepoId, user: string): Promise<boolean> {
@@ -270,6 +288,7 @@ export class GitLabForge implements Forge {
       threads.push({
         id: d.id,
         author: first.author?.username ?? "unknown",
+        bot: first.author?.id ? await this.isBot(repo, first.author.id) : false,
         ...(first.position?.new_path ? { path: first.position.new_path } : {}),
         ...(first.position?.new_line ? { line: first.position.new_line } : {}),
         side: first.position?.new_line ? ("head" as const) : ("base" as const),

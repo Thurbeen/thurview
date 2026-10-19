@@ -105,6 +105,8 @@ export interface PriorThread {
   /** The id `reply` takes. Opaque, and forge-specific by design. */
   id: string;
   author: string;
+  /** The forge says the author is a bot account, not a user who chose a bot-like name. */
+  bot?: boolean;
   path?: string;
   line?: number;
   side?: "head" | "base";
