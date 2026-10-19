@@ -341,10 +341,12 @@ describe("another reviewer's threads", () => {
     await pass(forge, { confidence: 4, others: [agree] });
     const body = forge.summaries()[0]!.body;
     expect(body).toContain(
-      "| **Non-blocking · Bug:** Reproduced: a 404 retries three times. (raised by @greptile-apps[bot]) | [`src/upload.ts:42`](https://github.com/acme/web/pull/7#discussion_r9) |",
+      "| **Non-blocking · Bug:** Reproduced: a 404 retries three times. (raised by greptile-apps[bot]) | [`src/upload.ts:42`](https://github.com/acme/web/pull/7#discussion_r9) |",
     );
     expect(body.split("\n")[1]).toContain("look at the non-blocking findings");
     expect(forge.threads).toHaveLength(1);
+    // Named, never mentioned: a mention would ping them, and could set a bot replying.
+    expect(body).not.toContain("@greptile");
   });
 
   it("an agreed blocking thread caps confidence at 2", async () => {
@@ -379,10 +381,10 @@ describe("another reviewer's threads", () => {
     expect(body).toContain("No open findings.");
     expect(body).toContain("| Other reviewers' thread | Disposition |");
     expect(body).toContain(
-      "| [@greptile-apps[bot] `src/upload.ts:42`](https://github.com/acme/web/pull/7#discussion_r9) | **Disagree:** main already returns on a 4xx. |",
+      "| [greptile-apps[bot] `src/upload.ts:42`](https://github.com/acme/web/pull/7#discussion_r9) | **Disagree:** main already returns on a 4xx. |",
     );
     expect(body).toContain(
-      "| @greptile-apps[bot] `src/upload.ts:50` | **Duplicate:** Same as the thread above. |",
+      "| greptile-apps[bot] `src/upload.ts:50` | **Duplicate:** Same as the thread above. |",
     );
   });
 

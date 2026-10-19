@@ -370,7 +370,7 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
     await writeFile(file, JSON.stringify({ ...PASS, confidence: 4, findings: [], others }));
     await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
     const posted = (await calls()).find((c) => c.args.join(" ").includes("POST"))!;
-    expect(posted.body).toContain("(raised by @greptile-apps)");
+    expect(posted.body).toContain("(raised by greptile-apps)");
     expect((await calls()).some((c) => c.args.join(" ").includes("pulls/7/comments"))).toBe(false);
   });
 

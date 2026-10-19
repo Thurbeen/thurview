@@ -355,7 +355,8 @@ function table(open: OpenFinding[]): string {
             ? "Blocking"
             : "Nit";
       const thread = linked(f.path ? location(f.path, f.line) : "Location unavailable", f.url);
-      const by = f.by ? ` (raised by @${tableText(f.by)})` : "";
+      // Named, never @-mentioned: a mention pings them, and can set a bot replying.
+      const by = f.by ? ` (raised by ${tableText(f.by)})` : "";
       return `| **${severity} · ${CATEGORIES[f.category].label}:** ${tableText(f.title ?? "Finding")}${by} | ${thread} |`;
     });
   return ["| Finding at reviewed head | Thread |", "| --- | --- |", ...rows].join("\n");
@@ -366,7 +367,7 @@ function othersTable(rows: OtherThreadRow[]): string {
   const lines = rows.map((o) => {
     const where = o.path ? ` ${location(o.path, o.line)}` : "";
     const label = { disagree: "Disagree", duplicate: "Duplicate", fixed: "Fixed" }[o.disposition];
-    return `| ${linked(`@${tableText(o.author)}${where}`, o.url)} | **${label}:** ${tableText(o.note)} |`;
+    return `| ${linked(`${tableText(o.author)}${where}`, o.url)} | **${label}:** ${tableText(o.note)} |`;
   });
   return ["| Other reviewers' thread | Disposition |", "| --- | --- |", ...lines].join("\n");
 }
