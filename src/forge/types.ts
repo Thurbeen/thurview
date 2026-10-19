@@ -27,6 +27,8 @@
  *             summary a follow loop keeps and the stop command a reader posts
  *   postNote  post one top-level comment; editNote rewrites one in place
  *   comment   one inline comment, which opens one resolvable thread
+ *   setStatus the review's verdict as a commit status on one sha, which a
+ *             branch rule can require: it reports, and merges nothing
  *
  * WHAT IS NOT HERE, deliberately: merge, close, push. A review comments; the
  * maintainer merges. A seam with no merge method cannot be talked into one.
@@ -80,6 +82,15 @@ export interface ChangeRequest {
   draft: boolean;
   body: string;
   labels: string[];
+}
+
+/** One commit status: `context` names it, as a branch rule requires it. */
+export interface ReviewStatusCheck {
+  context: string;
+  state: "success" | "failure";
+  /** One short line; GitHub cuts a status description at 140 characters. */
+  description: string;
+  url?: string;
 }
 
 /** A top-level comment on a change request, outside any review thread. */
@@ -184,4 +195,5 @@ export interface Forge {
   heads(repo: RepoId, cr: ChangeRequest): Promise<string[]>;
   /** The new thread URL, when the forge returns one. */
   comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<string | void>;
+  setStatus(repo: RepoId, cr: ChangeRequest, sha: string, s: ReviewStatusCheck): Promise<void>;
 }

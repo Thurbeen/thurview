@@ -8,6 +8,7 @@ import type {
   Forge,
   InlineComment,
   Note,
+  ReviewStatusCheck,
   PriorPass,
   PriorThread,
   RepoId,
@@ -468,6 +469,23 @@ export class GitLabForge implements Forge {
       ]),
     );
     return noteOf(n);
+  }
+
+  async setStatus(repo: RepoId, _cr: ChangeRequest, sha: string, s: ReviewStatusCheck) {
+    await runJson<unknown>(
+      "glab",
+      this.api(repo, `projects/${this.project(repo)}/statuses/${sha}`, [
+        "--method",
+        "POST",
+        "--raw-field",
+        `state=${s.state === "success" ? "success" : "failed"}`,
+        "--raw-field",
+        `name=${s.context}`,
+        "--raw-field",
+        `description=${s.description}`,
+        ...(s.url ? ["--raw-field", `target_url=${s.url}`] : []),
+      ]),
+    );
   }
 
   async editNote(repo: RepoId, cr: ChangeRequest, id: string, body: string): Promise<void> {
