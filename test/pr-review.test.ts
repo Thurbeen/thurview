@@ -273,6 +273,153 @@ describe("the summary", () => {
     expect(forge.notesList).toHaveLength(0);
     expect(forge.threads).toHaveLength(0);
   });
+
+  it("refuses 5 beside an open non-blocking finding: a confirmed defect is never safe to merge", async () => {
+    const forge = new MemoryForge();
+    const minor = { ...UNBOUNDED, severity: "non-blocking" as const };
+    await expect(pass(forge, { confidence: 5, findings: [minor] })).rejects.toThrow(
+      /confidence 5 beside 1 open non-blocking finding/,
+    );
+    expect(forge.notesList).toHaveLength(0);
+    await pass(forge, {
+      confidence: 5,
+      findings: [{ ...UNBOUNDED, severity: "nit", category: "docs" }],
+    });
+    expect(forge.summaries()[0]!.body).toContain("Confidence 5/5");
+  });
+});
+
+describe("another reviewer's threads", () => {
+  /** A thread another reviewer opened on the change request, as a bot does. */
+  function other(forge: MemoryForge, over: Partial<PriorThread> = {}): PriorThread {
+    const t: PriorThread = {
+      id: `G${forge.threads.length}`,
+      author: "greptile-apps[bot]",
+      path: "src/upload.ts",
+      line: 42,
+      side: "head",
+      resolved: false,
+      outdated: false,
+      commit: forge.cr.head,
+      url: "https://github.com/acme/web/pull/7#discussion_r9",
+      messages: [{ author: "greptile-apps[bot]", body: "**P1** The retry never stops on a 4xx." }],
+      ...over,
+    };
+    forge.threads.push(t);
+    return t;
+  }
+
+  it("each needs a disposition before the summary is posted", async () => {
+    const forge = new MemoryForge();
+    other(forge);
+    await expect(pass(forge, {})).rejects.toThrow(/greptile-apps\[bot\].*G0.*disposition/);
+    expect(forge.notesList).toHaveLength(0);
+  });
+
+  it("skips resolved threads and the author's own", async () => {
+    const forge = new MemoryForge();
+    other(forge, { resolved: true });
+    other(forge, { author: "dev", messages: [{ author: "dev", body: "Why 3 retries?" }] });
+    await pass(forge, {});
+    expect(forge.summaries()).toHaveLength(1);
+  });
+
+  it("an agreed thread counts like a finding, links their thread, and opens none of ours", async () => {
+    const forge = new MemoryForge();
+    const t = other(forge);
+    const agree = {
+      thread: t.id,
+      disposition: "agree" as const,
+      category: "bug" as const,
+      severity: "non-blocking" as const,
+      note: "Reproduced: a 404 retries three times.",
+    };
+    await expect(pass(forge, { confidence: 5, others: [agree] })).rejects.toThrow(/non-blocking/);
+    await expect(
+      pass(forge, { confidence: 4, others: [agree], findings: [UNBOUNDED] }),
+    ).rejects.toThrow(/G0 already raises src\/upload.ts:42/);
+    await pass(forge, { confidence: 4, others: [agree] });
+    const body = forge.summaries()[0]!.body;
+    expect(body).toContain(
+      "| **Non-blocking · Bug:** Reproduced: a 404 retries three times. (raised by @greptile-apps[bot]) | [`src/upload.ts:42`](https://github.com/acme/web/pull/7#discussion_r9) |",
+    );
+    expect(body.split("\n")[1]).toContain("look at the non-blocking findings");
+    expect(forge.threads).toHaveLength(1);
+  });
+
+  it("an agreed blocking thread caps confidence at 2", async () => {
+    const forge = new MemoryForge();
+    const t = other(forge);
+    const others = [
+      {
+        thread: t.id,
+        disposition: "agree" as const,
+        category: "security" as const,
+        severity: "blocking" as const,
+        note: "A pane can paste into the agent.",
+      },
+    ];
+    await expect(pass(forge, { confidence: 4, others })).rejects.toThrow(/blocking/);
+    await pass(forge, { confidence: 2, others });
+    expect(forge.summaries()[0]!.body.split("\n")[1]).toContain("fix the 1 blocking finding");
+  });
+
+  it("a disputed or duplicate thread is listed with its reason and counts nothing", async () => {
+    const forge = new MemoryForge();
+    const a = other(forge);
+    const b = other(forge, { line: 50, url: undefined });
+    await pass(forge, {
+      confidence: 5,
+      others: [
+        { thread: a.id, disposition: "disagree", note: "main already returns on a 4xx." },
+        { thread: b.id, disposition: "duplicate", note: "Same as the thread above." },
+      ],
+    });
+    const body = forge.summaries()[0]!.body;
+    expect(body).toContain("No open findings.");
+    expect(body).toContain("| Other reviewers' thread | Disposition |");
+    expect(body).toContain(
+      "| [@greptile-apps[bot] `src/upload.ts:42`](https://github.com/acme/web/pull/7#discussion_r9) | **Disagree:** main already returns on a 4xx. |",
+    );
+    expect(body).toContain(
+      "| @greptile-apps[bot] `src/upload.ts:50` | **Duplicate:** Same as the thread above. |",
+    );
+  });
+
+  it("a thread whose defect this head fixed is listed as fixed and counts nothing", async () => {
+    const forge = new MemoryForge();
+    const t = other(forge);
+    await pass(forge, {
+      confidence: 5,
+      others: [{ thread: t.id, disposition: "fixed", note: "upload() returns on a 4xx now." }],
+    });
+    expect(forge.summaries()[0]!.body).toContain("**Fixed:** upload() returns on a 4xx now. |");
+  });
+
+  it("refuses a disposition for a thread that is not another reviewer's open one", async () => {
+    const forge = new MemoryForge();
+    await expect(
+      pass(forge, { others: [{ thread: "nope", disposition: "disagree", note: "x" }] }),
+    ).rejects.toThrow(/no open thread nope/);
+  });
+
+  it("an agreement names its category and severity", () => {
+    const text = JSON.stringify({
+      ...base,
+      others: [{ thread: "G0", disposition: "agree", note: "Real." }],
+    });
+    expect(() => parsePass(text, "pass.json")).toThrow(/category and severity/);
+  });
+});
+
+describe("what the review ran", () => {
+  it("records a mutation as its own kind", () => {
+    const text = JSON.stringify({
+      ...base,
+      ran: [{ kind: "mutation", what: "Dropped the 4xx return", result: "retry test fails" }],
+    });
+    expect(parsePass(text, "pass.json").ran?.[0]?.kind).toBe("mutation");
+  });
 });
 
 describe("inline findings", () => {

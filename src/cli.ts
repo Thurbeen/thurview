@@ -2273,6 +2273,16 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
               title: f.title,
             }))
           : "0 (no open finding)",
+        ...(st.others.length
+          ? {
+              others: st.others.map((t) => ({
+                thread: t.thread,
+                author: t.author,
+                at: t.path ? `${t.path}:${t.line ?? ""}` : "",
+                says: t.says,
+              })),
+            }
+          : {}),
         reassess: st.findings.map((f) => ({
           id: f.id,
           open: f.open,
@@ -2288,6 +2298,11 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           st.summary && st.summary.marker.head !== ctx.cr.head
             ? `Review only \`git diff ${st.summary.marker.head.slice(0, 12)} ${ctx.cr.head.slice(0, 12)}\`, then recheck every own finding, including resolved threads: fixed, still-present or partial with evidence`
             : `Review \`git diff ${ctx.cr.base.slice(0, 12)} ${ctx.cr.head.slice(0, 12)}\``,
+          ...(st.others.length
+            ? [
+                "Check each of `others` at the head and give it one disposition in pass.others: agree, disagree, duplicate or fixed",
+              ]
+            : []),
           `Write the pass file and run \`thurview pr-review sync --change ${ctx.cr.number} --file <pass.json> --dry-run\``,
         ],
       };

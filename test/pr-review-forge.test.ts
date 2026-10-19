@@ -309,6 +309,71 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
     );
   });
 
+  it("lists another reviewer's open thread, and syncs only once it has a disposition", async () => {
+    const greptile = {
+      id: "PRRT_9",
+      isResolved: false,
+      isOutdated: false,
+      path: "src/upload.ts",
+      line: 42,
+      diffSide: "RIGHT",
+      comments: {
+        nodes: [
+          {
+            author: { login: "greptile-apps" },
+            body: "**P1** The retry never stops on a 4xx.\nMore detail.",
+            url: "https://github.com/acme/web/pull/7#discussion_r9",
+            originalCommit: { oid: HEAD },
+          },
+        ],
+      },
+    };
+    await fixtures([
+      { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9 } },
+      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+      {
+        cli: "gh",
+        match: ["graphql"],
+        body: {
+          data: {
+            repository: {
+              pullRequest: { reviews: { nodes: [] }, reviewThreads: { nodes: [greptile] } },
+            },
+          },
+        },
+      },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const status = await cli(["pr-review", "status", "--change", "7"], github);
+    expect(status["others"]).toEqual([
+      {
+        thread: "PRRT_9",
+        author: "greptile-apps",
+        at: "src/upload.ts:42",
+        says: "**P1** The retry never stops on a 4xx.",
+      },
+    ]);
+    const file = join(bin, "pass.json");
+    await writeFile(file, JSON.stringify({ ...PASS, confidence: 5, findings: [] }));
+    const refused = await cli(["pr-review", "sync", "--change", "7", "--file", file], github, 2);
+    expect(JSON.stringify(refused)).toMatch(/PRRT_9.*needs a disposition/);
+    const others = [
+      {
+        thread: "PRRT_9",
+        disposition: "agree",
+        category: "bug",
+        severity: "non-blocking",
+        note: "Reproduced: a 404 retries.",
+      },
+    ];
+    await writeFile(file, JSON.stringify({ ...PASS, confidence: 4, findings: [], others }));
+    await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
+    const posted = (await calls()).find((c) => c.args.join(" ").includes("POST"))!;
+    expect(posted.body).toContain("(raised by @greptile-apps)");
+    expect((await calls()).some((c) => c.args.join(" ").includes("pulls/7/comments"))).toBe(false);
+  });
+
   it("ends on a merge, and says so in the summary", async () => {
     await fixtures([
       { cli: "gh", match: ["issues/comments/9", "PATCH"], body: {} },
@@ -1023,7 +1088,10 @@ describe("compact summary lifecycle", { timeout: 30_000 }, () => {
 
 for (const provider of ["github", "gitlab"] as const) {
   describe(`finding reassessment on ${provider}`, { timeout: 30_000 }, () => {
+    /** Another account's open thread, which every pass must give a disposition. */
+    let foreign: string | null = null;
     async function setup(resolved = false, moved = false, previousReply?: string) {
+      foreign = resolved ? null : provider === "github" ? "PRRT_2" : "d2";
       const body =
         '<!-- thurview-finding {"id":"loop","category":"bug","severity":"blocking"} -->\n**Bug · blocking:** Loops.';
       const other = body.replace('"loop"', '"other"');
@@ -1129,6 +1197,9 @@ for (const provider of ["github", "gitlab"] as const) {
               evidence: "src/upload.ts:62 returns on 4xx; checked the retry test at this head.",
             },
           ],
+          others: foreign
+            ? [{ thread: foreign, disposition: "disagree", note: "A pasted marker, no claim." }]
+            : [],
           ...extra,
         }),
       );

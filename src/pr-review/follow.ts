@@ -13,6 +13,7 @@ import {
   statusLine,
   type Finding,
   type OpenFinding,
+  type OtherThreadRow,
   type Pass,
   type ReviewStatus,
   type SummaryMarker,
@@ -67,9 +68,22 @@ export interface FindingState {
   commit?: string;
 }
 
+/** An open thread another reviewer started: a bot such as Greptile, or a person. */
+export interface OtherThread {
+  thread: string;
+  author: string;
+  path?: string;
+  line?: number;
+  url?: string;
+  /** The first line of its first message that is not a hidden marker. */
+  says: string;
+}
+
 export interface ReviewState {
   summary: { note: Note; marker: SummaryMarker } | null;
   findings: FindingState[];
+  /** Every open thread neither this account nor the author started; each needs a disposition. */
+  others: OtherThread[];
   /** Why the reader asked to stop, when they did and the summary does not say so yet. */
   stop: string | null;
   /** The newest note id on the change request. */
@@ -121,7 +135,21 @@ export async function readState(ctx: Ctx): Promise<ReviewState> {
     }
   }
   const findings: FindingState[] = [];
+  const others: OtherThread[] = [];
   for (const t of prior.threads) {
+    if (t.author !== me && t.author !== ctx.cr.author && !t.resolved)
+      others.push({
+        thread: t.id,
+        author: t.author,
+        ...(t.path ? { path: t.path } : {}),
+        ...(t.line ? { line: t.line } : {}),
+        ...(t.url ? { url: t.url } : {}),
+        says:
+          (t.messages[0]?.body ?? "")
+            .split("\n")
+            .map((l) => l.trim())
+            .find((l) => l && !l.startsWith("<!--")) ?? "",
+      });
     const m = t.author === me ? readFindingMarker(t.messages[0]?.body ?? "") : null;
     if (!m) continue;
     findings.push({
@@ -147,7 +175,7 @@ export async function readState(ctx: Ctx): Promise<ReviewState> {
     : command
       ? `a /thurview stop comment by @${command.author}`
       : null;
-  return { summary, findings, stop, newest: maxId(...notes.map((n) => n.id)) };
+  return { summary, findings, others, stop, newest: maxId(...notes.map((n) => n.id)) };
 }
 
 export interface SyncResult {
@@ -252,6 +280,28 @@ export async function sync(
         ],
       );
   }
+  const dispositions = new Map<string, NonNullable<Pass["others"]>[number]>();
+  for (const o of pass.others ?? []) {
+    if (!st.others.some((t) => t.thread === o.thread))
+      throw new AxiError(`no open thread ${o.thread} by another reviewer`, "NOT_FOUND", [
+        "Run `thurview pr-review status` for the other reviewers' open threads",
+      ]);
+    if (dispositions.has(o.thread))
+      throw new AxiError(`thread ${o.thread} has two dispositions`, "VALIDATION_ERROR", [
+        "Give each other reviewer's thread one: agree, disagree, duplicate or fixed",
+      ]);
+    dispositions.set(o.thread, o);
+  }
+  for (const t of st.others)
+    if (!dispositions.has(t.thread))
+      throw new AxiError(
+        `@${t.author}'s thread ${t.thread}${t.path ? ` at ${t.path}:${t.line ?? ""}` : ""} needs a disposition`,
+        "VALIDATION_ERROR",
+        [
+          "Check its claim at pass.head, then add it to others: agree (with category and severity), disagree, duplicate or fixed, with a note",
+          "Never open a thread of your own on the same defect",
+        ],
+      );
   const fixed = st.findings
     .filter((f) => decisions.get(f.id)?.status === "fixed" && (f.open || !hasFixedAssessment(f)))
     .map((f) => f.id);
@@ -259,12 +309,39 @@ export async function sync(
   const duplicates: string[] = [];
   for (const f of pass.findings ?? []) {
     const id = findingId(f);
+    const raised = st.others.find(
+      (t) =>
+        ["agree", "duplicate"].includes(dispositions.get(t.thread)?.disposition ?? "") &&
+        t.path === f.path &&
+        t.line === f.line,
+    );
+    if (raised)
+      throw new AxiError(
+        `${raised.thread} already raises ${f.path}:${f.line}: @${raised.author} said "${raised.says}"`,
+        "VALIDATION_ERROR",
+        ["Agree with their thread in others instead of opening a duplicate of it"],
+      );
     if (st.findings.some((x) => x.id === id) || fresh.some((x) => x.id === id)) duplicates.push(id);
     else fresh.push({ id, f });
   }
   const open: OpenFinding[] = [
     ...st.findings.filter((x) => decisions.get(x.id)?.status !== "fixed"),
     ...fresh.map(({ id, f }) => ({ ...f, id })),
+    ...st.others.flatMap((t): OpenFinding[] => {
+      const o = dispositions.get(t.thread)!;
+      if (o.disposition !== "agree") return [];
+      return [
+        {
+          category: o.category!,
+          severity: o.severity!,
+          title: o.note,
+          ...(t.path ? { path: t.path } : {}),
+          ...(t.line ? { line: t.line } : {}),
+          ...(t.url ? { url: t.url } : {}),
+          by: t.author,
+        },
+      ];
+    }),
   ];
   const blocking = open.filter((x) => x.severity === "blocking").length;
   if (blocking && pass.confidence >= 3)
@@ -274,6 +351,16 @@ export async function sync(
       [
         "A blocking finding means the change is not safe to merge: confidence is 1 or 2",
         "Or the finding is not blocking: say so with its severity",
+      ],
+    );
+  const minor = open.filter((x) => x.severity === "non-blocking").length;
+  if (minor && pass.confidence === 5)
+    throw new AxiError(
+      `confidence 5 beside ${minor} open non-blocking finding${minor === 1 ? "" : "s"}`,
+      "VALIDATION_ERROR",
+      [
+        "5 means nothing open beyond nits: a confirmed defect is at most 4 until it is fixed",
+        "Or it is taste, not a defect: make it a nit",
       ],
     );
   const marker: SummaryMarker = {
@@ -302,6 +389,20 @@ export async function sync(
     flagged: st.findings
       .filter((f) => !f.open && decisions.get(f.id)?.status !== "fixed")
       .map((f) => f.id),
+    others: st.others.flatMap((t): OtherThreadRow[] => {
+      const o = dispositions.get(t.thread)!;
+      if (o.disposition === "agree") return [];
+      return [
+        {
+          author: t.author,
+          ...(t.path ? { path: t.path } : {}),
+          ...(t.line ? { line: t.line } : {}),
+          ...(t.url ? { url: t.url } : {}),
+          disposition: o.disposition,
+          note: o.note,
+        },
+      ];
+    }),
     reviewedAt: new Date().toISOString(),
     ...(ended ? { ended } : {}),
   };

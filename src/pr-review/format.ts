@@ -56,6 +56,26 @@ const Finding = z.object({
   suggestion: z.string().optional(),
 });
 
+/**
+ * What this review makes of a thread another reviewer opened: `agree` takes
+ * it as a finding of this review, counted and listed but answered in their
+ * thread; `disagree` says why not; `duplicate` names what it repeats; `fixed`
+ * says what at this head removed it.
+ */
+const Other = z
+  .object({
+    thread: z.string().min(1),
+    disposition: z.enum(["agree", "disagree", "duplicate", "fixed"]),
+    category: z.enum(CATEGORY_IDS).optional(),
+    severity: z.enum(SEVERITIES).optional(),
+    note: z.string().trim().min(1),
+  })
+  .refine((o) => o.disposition !== "agree" || (o.category && o.severity), {
+    message: "an agreement names the category and severity this review gives it",
+  });
+
+const RAN_KINDS = ["search", "test", "mutation", "command", "read"] as const;
+
 const PassSchema = z.object({
   /** The head this pass reviewed; `sync` refuses it once the change request moved on. */
   head: z.string().min(7),
@@ -72,6 +92,8 @@ const PassSchema = z.object({
   signoff: z.string().optional(),
   findings: z.array(Finding).default([]),
   fixed: z.array(z.string()).default([]),
+  /** A disposition for every other reviewer's open thread. */
+  others: z.array(Other).default([]),
   assessments: z
     .array(
       z.object({
@@ -85,7 +107,7 @@ const PassSchema = z.object({
   ran: z
     .array(
       z.object({
-        kind: z.enum(["search", "test", "command", "read"]),
+        kind: z.enum(RAN_KINDS),
         what: z.string().trim().min(1),
         result: z.string().trim().min(1),
       }),
@@ -94,6 +116,7 @@ const PassSchema = z.object({
 });
 
 export type Finding = z.input<typeof Finding>;
+export type Other = z.input<typeof Other>;
 export type Pass = z.input<typeof PassSchema>;
 
 /**
@@ -120,7 +143,7 @@ export interface Verdict {
     body: string;
     suggestion?: string;
   }[];
-  ran: { kind: "search" | "test" | "command" | "read"; what: string; result: string }[];
+  ran: { kind: (typeof RAN_KINDS)[number]; what: string; result: string }[];
 }
 
 export function verdictOf(p: Pass): Verdict {
@@ -172,11 +195,12 @@ export function checkPass(p: Pass): void {
     ["change", p.change],
     ["signoff", p.signoff],
     ...p.risk.map((r, i): [string, string] => [`risk[${i}]`, r]),
+    ...(p.others ?? []).map((o, i): [string, string] => [`others[${i}].note`, o.note]),
   ];
   for (const [field, text] of oneLine)
     if (text && /[\r\n]/.test(text.trim()))
       throw new AxiError(`${field} is more than one line`, "VALIDATION_ERROR", [
-        "reason, architecture, each risk bullet, change and signoff are one line each",
+        "reason, architecture, each risk bullet, change, signoff and each note are one line each",
       ]);
   if (!p.architecture?.trim())
     throw new AxiError("architecture is required", "VALIDATION_ERROR", [
@@ -272,6 +296,18 @@ export interface OpenFinding {
   path?: string;
   line?: number;
   url?: string;
+  /** Another reviewer raised it first; this review agreed and counts it. */
+  by?: string;
+}
+
+/** Another reviewer's thread this review disputed or found a duplicate, with why. */
+export interface OtherThreadRow {
+  author: string;
+  path?: string;
+  line?: number;
+  url?: string;
+  disposition: "disagree" | "duplicate" | "fixed";
+  note: string;
 }
 
 export interface SummaryUpdate {
@@ -280,6 +316,7 @@ export interface SummaryUpdate {
   ended?: { state: "merged" | "closed"; head: string };
   counts: { resolved: number; new: number; stillOpen: number };
   flagged?: string[];
+  others?: OtherThreadRow[];
   reviewedAt: string;
 }
 
@@ -298,6 +335,14 @@ function code(text: string): string {
   return `${fence}${text}${fence}`;
 }
 
+function linked(text: string, url?: string): string {
+  return url ? `[${text}](${url.replace(/\(/g, "%28").replace(/\)/g, "%29")})` : text;
+}
+
+function location(path?: string, line?: number): string {
+  return code(`${path}${line ? `:${line}` : ""}`.replace(/\|/g, "\\|").replace(/[\r\n]/g, " "));
+}
+
 function table(open: OpenFinding[]): string {
   if (!open.length) return "No open findings.";
   const rows = [...open]
@@ -309,17 +354,21 @@ function table(open: OpenFinding[]): string {
           : f.severity === "blocking"
             ? "Blocking"
             : "Nit";
-      const location = f.path
-        ? code(
-            `${f.path}${f.line ? `:${f.line}` : ""}`.replace(/\|/g, "\\|").replace(/[\r\n]/g, " "),
-          )
-        : "Location unavailable";
-      const thread = f.url
-        ? `[${location}](${f.url.replace(/\(/g, "%28").replace(/\)/g, "%29")})`
-        : location;
-      return `| **${severity} · ${CATEGORIES[f.category].label}:** ${tableText(f.title ?? "Finding")} | ${thread} |`;
+      const thread = linked(f.path ? location(f.path, f.line) : "Location unavailable", f.url);
+      const by = f.by ? ` (raised by @${tableText(f.by)})` : "";
+      return `| **${severity} · ${CATEGORIES[f.category].label}:** ${tableText(f.title ?? "Finding")}${by} | ${thread} |`;
     });
   return ["| Finding at reviewed head | Thread |", "| --- | --- |", ...rows].join("\n");
+}
+
+/** Other reviewers' threads this review does not count, each with the reason. */
+function othersTable(rows: OtherThreadRow[]): string {
+  const lines = rows.map((o) => {
+    const where = o.path ? ` ${location(o.path, o.line)}` : "";
+    const label = { disagree: "Disagree", duplicate: "Duplicate", fixed: "Fixed" }[o.disposition];
+    return `| ${linked(`@${tableText(o.author)}${where}`, o.url)} | **${label}:** ${tableText(o.note)} |`;
+  });
+  return ["| Other reviewers' thread | Disposition |", "| --- | --- |", ...lines].join("\n");
 }
 
 function headline(p: Pass, author: string, open: OpenFinding[]): string {
@@ -398,6 +447,7 @@ export function renderSummary(
     `**Architecture:** ${p.architecture.trim()}`,
     table(open),
   ];
+  if (update?.others?.length) parts.push(othersTable(update.others));
   if (update) {
     const c = update.counts;
     parts.push(
