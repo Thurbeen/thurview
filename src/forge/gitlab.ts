@@ -153,6 +153,22 @@ export class GitLabForge implements Forge {
     return me.username;
   }
 
+  async canWrite(repo: RepoId, user: string): Promise<boolean> {
+    try {
+      const members = await runJson<{ username: string; access_level: number }[]>(
+        "glab",
+        this.api(
+          repo,
+          `projects/${this.project(repo)}/members/all?query=${encodeURIComponent(user)}`,
+        ),
+      );
+      // 30 is Developer, the first level that can push.
+      return members.some((m) => m.username === user && m.access_level >= 30);
+    } catch {
+      return false;
+    }
+  }
+
   repoFromRemote(url: string): RepoId | null {
     return parseRemote(url);
   }

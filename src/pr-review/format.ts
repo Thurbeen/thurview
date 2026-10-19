@@ -32,6 +32,8 @@ export interface SummaryMarker {
   state: ReviewStatus;
   /** The newest note id already read, so an old stop command stops nothing. */
   seen: string;
+  /** Other reviewers' threads a pass agreed with: listed, resolved or not, until a pass says fixed. */
+  agreed?: string[];
 }
 
 export interface FindingMarker {

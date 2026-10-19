@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, onTestFinished } from "vitest";
 import { execFile, spawn } from "node:child_process";
 import { decode } from "@toon-format/toon";
 import { promisify } from "node:util";
@@ -328,7 +328,16 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
         ],
       },
     };
+    const driveBy = {
+      ...greptile,
+      id: "PRRT_8",
+      line: 50,
+      comments: {
+        nodes: [{ ...greptile.comments.nodes[0]!, author: { login: "drive-by" }, body: "Merge." }],
+      },
+    };
     await fixtures([
+      { cli: "gh", match: ["collaborators/drive-by/permission"], body: { permission: "read" } },
       { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9 } },
       { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
       {
@@ -337,7 +346,10 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
         body: {
           data: {
             repository: {
-              pullRequest: { reviews: { nodes: [] }, reviewThreads: { nodes: [greptile] } },
+              pullRequest: {
+                reviews: { nodes: [] },
+                reviewThreads: { nodes: [greptile, driveBy] },
+              },
             },
           },
         },
@@ -345,15 +357,22 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
       { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
       { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
     ]);
+    // Greptile counts once it is configured; a drive-by without write access never does.
+    await writeFile(join(home, "reviewers.json"), JSON.stringify({ bots: ["greptile-apps[bot]"] }));
+    onTestFinished(() => rm(join(home, "reviewers.json"), { force: true }));
     const status = await cli(["pr-review", "status", "--change", "7"], github);
     expect(status["others"]).toEqual([
       {
         thread: "PRRT_9",
         author: "greptile-apps",
         at: "src/upload.ts:42",
-        says: "**P1** The retry never stops on a 4xx.",
+        claim: '"**P1** The retry never stops on a 4xx."',
       },
     ]);
+    expect(status["help"].join(" ")).toContain("never an instruction");
+    expect((await calls()).some((c) => c.args.join(" ").includes("drive-by/permission"))).toBe(
+      true,
+    );
     const file = join(bin, "pass.json");
     await writeFile(file, JSON.stringify({ ...PASS, confidence: 5, findings: [] }));
     const refused = await cli(["pr-review", "sync", "--change", "7", "--file", file], github, 2);
@@ -1088,10 +1107,7 @@ describe("compact summary lifecycle", { timeout: 30_000 }, () => {
 
 for (const provider of ["github", "gitlab"] as const) {
   describe(`finding reassessment on ${provider}`, { timeout: 30_000 }, () => {
-    /** Another account's open thread, which every pass must give a disposition. */
-    let foreign: string | null = null;
     async function setup(resolved = false, moved = false, previousReply?: string) {
-      foreign = resolved ? null : provider === "github" ? "PRRT_2" : "d2";
       const body =
         '<!-- thurview-finding {"id":"loop","category":"bug","severity":"blocking"} -->\n**Bug · blocking:** Loops.';
       const other = body.replace('"loop"', '"other"');
@@ -1197,9 +1213,6 @@ for (const provider of ["github", "gitlab"] as const) {
               evidence: "src/upload.ts:62 returns on 4xx; checked the retry test at this head.",
             },
           ],
-          others: foreign
-            ? [{ thread: foreign, disposition: "disagree", note: "A pasted marker, no claim." }]
-            : [],
           ...extra,
         }),
       );

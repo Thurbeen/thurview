@@ -32,7 +32,9 @@ The summary carries
 `<!-- thurview-pr-review {"head":"<sha>","state":"active","seen":"<note id>"} -->`
 and each finding's first comment
 `<!-- thurview-finding {"id":"<id>","category":"bug","severity":"blocking"} -->`.
-`state` is `active`, `stopped`, `merged` or `closed`. `seen` is the newest
+`state` is `active`, `stopped`, `merged` or `closed`. `agreed`, when there,
+lists the other reviewers' threads the last pass agreed with, so they stay
+listed after a resolve until a pass says `fixed`. `seen` is the newest
 note already read, so a `/thurview stop` posted before a `start` stops nothing.
 Only a summary posted by the account the CLI is logged in as counts, so a
 pasted marker changes nothing. A finding's id is the `id` given in the pass, or a hash of its category, path

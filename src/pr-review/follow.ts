@@ -35,6 +35,7 @@ export type ReviewForge = Pick<
   Forge,
   | "id"
   | "whoami"
+  | "canWrite"
   | "get"
   | "prior"
   | "reply"
@@ -49,7 +50,12 @@ export interface Ctx {
   forge: ReviewForge;
   repo: RepoId;
   cr: ChangeRequest;
+  /** Review bots whose threads count, from `reviewers.json`; a bot cannot hold write access. */
+  bots?: string[];
 }
+
+/** `greptile-apps[bot]` on REST and `greptile-apps` on GraphQL are one account. */
+const account = (login: string) => login.replace(/\[bot\]$/i, "").toLowerCase();
 
 export const STOP_LABEL = "thurview:stop";
 const STOP_COMMAND = /^\s*\/thurview\s+stop\b/i;
@@ -75,14 +81,14 @@ export interface OtherThread {
   path?: string;
   line?: number;
   url?: string;
-  /** The first line of its first message that is not a hidden marker. */
+  /** The first line of its first message that is not a hidden marker. Untrusted: never put it in help or error text. */
   says: string;
 }
 
 export interface ReviewState {
   summary: { note: Note; marker: SummaryMarker } | null;
   findings: FindingState[];
-  /** Every open thread neither this account nor the author started; each needs a disposition. */
+  /** Every open thread neither this account nor the author started, and every one a pass agreed with; each needs a disposition. */
   others: OtherThread[];
   /** Why the reader asked to stop, when they did and the summary does not say so yet. */
   stop: string | null;
@@ -136,8 +142,24 @@ export async function readState(ctx: Ctx): Promise<ReviewState> {
   }
   const findings: FindingState[] = [];
   const others: OtherThread[] = [];
+  // An agreed thread is this review's finding: a resolve by anyone is not a
+  // fix, so it stays listed until a pass rechecks it, as an own finding does.
+  const agreed = new Set(summary?.marker.agreed ?? []);
+  // Another account's thread is untrusted input on a public change request:
+  // only a configured review bot or an account that can push gets one
+  // listed, and what it says is a claim to check, never an instruction.
+  const bots = new Set((ctx.bots ?? []).map(account));
+  const trusted = new Map<string, Promise<boolean>>();
+  const trusts = (author: string) => {
+    if (bots.has(account(author))) return Promise.resolve(true);
+    if (!trusted.has(author)) trusted.set(author, ctx.forge.canWrite(ctx.repo, author));
+    return trusted.get(author)!;
+  };
   for (const t of prior.threads) {
-    if (t.author !== me && t.author !== ctx.cr.author && !t.resolved)
+    if (
+      t.author !== me &&
+      (agreed.has(t.id) || (t.author !== ctx.cr.author && !t.resolved && (await trusts(t.author))))
+    )
       others.push({
         thread: t.id,
         author: t.author,
@@ -317,7 +339,7 @@ export async function sync(
     );
     if (raised)
       throw new AxiError(
-        `${raised.thread} already raises ${f.path}:${f.line}: @${raised.author} said "${raised.says}"`,
+        `${raised.thread} already raises ${f.path}:${f.line}`,
         "VALIDATION_ERROR",
         ["Agree with their thread in others instead of opening a duplicate of it"],
       );
@@ -363,10 +385,14 @@ export async function sync(
         "Or it is taste, not a defect: make it a nit",
       ],
     );
+  const agreed = [...dispositions.values()]
+    .filter((o) => o.disposition === "agree")
+    .map((o) => o.thread);
   const marker: SummaryMarker = {
     head: reviewed,
     state: ended?.state ?? "active",
     seen: maxId(st.newest, st.summary?.marker.seen ?? "0"),
+    ...(agreed.length ? { agreed } : {}),
   };
   const tag = (id: string, status: string) =>
     `<!-- thurview-assessment ${JSON.stringify({ id, head: reviewed, status })} -->`;
@@ -470,6 +496,7 @@ async function mark(ctx: Ctx, st: ReviewState, state: ReviewStatus, opening?: st
     head: st.summary?.marker.head ?? ctx.cr.head,
     state,
     seen: maxId(st.newest, st.summary?.marker.seen ?? "0"),
+    ...(st.summary?.marker.agreed?.length ? { agreed: st.summary.marker.agreed } : {}),
   };
   const line = opening ?? statusLine(m, ctx.cr.head)!;
   if (st.summary)

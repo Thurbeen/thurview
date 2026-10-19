@@ -167,6 +167,18 @@ export class GitHubForge implements Forge {
     return me.login;
   }
 
+  async canWrite(repo: RepoId, user: string): Promise<boolean> {
+    try {
+      const p = await runJson<{ permission?: string }>(
+        "gh",
+        this.api(repo, [`repos/${repo.path}/collaborators/${encodeURIComponent(user)}/permission`]),
+      );
+      return p.permission === "admin" || p.permission === "write";
+    } catch {
+      return false;
+    }
+  }
+
   repoFromRemote(url: string): RepoId | null {
     const m = parseRemote(url);
     return m && m.path.split("/").length === 2 ? m : null;
