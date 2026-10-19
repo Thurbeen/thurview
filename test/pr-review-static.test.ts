@@ -107,6 +107,7 @@ require('node:module').syncBuiltinESMExports();
     await writeFile(
       env.FORGE_RESPONSES,
       JSON.stringify([
+        { cli: "gh", match: ["/statuses/", "POST"], body: {} },
         { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9, body: "", user: null } },
         { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
         {

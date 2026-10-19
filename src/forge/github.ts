@@ -7,6 +7,7 @@ import type {
   Forge,
   InlineComment,
   Note,
+  ReviewStatusCheck,
   PriorPass,
   PriorThread,
   RepoId,
@@ -452,6 +453,23 @@ export class GitHubForge implements Forge {
         "-",
       ]),
       { input: JSON.stringify({ body }) },
+    );
+  }
+
+  async setStatus(repo: RepoId, _cr: ChangeRequest, sha: string, s: ReviewStatusCheck) {
+    // A commit status, not a check run: GitHub lets only an App create check
+    // runs, and `gh` is logged in as a user. A ruleset requires either alike.
+    await run(
+      "gh",
+      this.api(repo, [`repos/${repo.path}/statuses/${sha}`, "--method", "POST", "--input", "-"]),
+      {
+        input: JSON.stringify({
+          state: s.state,
+          context: s.context,
+          description: s.description.slice(0, 140),
+          ...(s.url ? { target_url: s.url } : {}),
+        }),
+      },
     );
   }
 

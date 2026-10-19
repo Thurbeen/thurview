@@ -369,6 +369,10 @@ evidence for every own finding returned by `reassess`:
 
 - `head` is the commit you reviewed. `sync` refuses the pass when the change
   request moved on since: review what the new push added, then sync again.
+- After the summary, `sync` sets the `thurview/review` commit status on that
+  head: success only at confidence 5 with no open finding, failure otherwise.
+  A repository can require it before merge (see "Requiring the review" in [Forges](references/forges.md)).
+  Never set or change that setting yourself.
 - On a merged or closed change request, `sync` accepts the head you reviewed
   even when a later one merged, as long as the change request had it as its
   head - the forge's commits and force-pushes on GitHub, its versions on

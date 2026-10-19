@@ -17,6 +17,7 @@ this command.
 | The stop label    | `thurview:stop` among the pull's labels    | `thurview:stop` among the merge request's labels    |
 | The stop command  | an issue comment starting `/thurview stop` | a top-level note starting `/thurview stop`          |
 | Merged or closed  | `merged`, or `state: closed`               | `state: merged` or `closed`                         |
+| The review status | commit status `thurview/review`, `POST`ed  | commit status `thurview/review`, `failed` below 5   |
 
 ## Where the state lives
 
@@ -40,7 +41,32 @@ Only a summary posted by the account the CLI is logged in as counts, so a
 pasted marker changes nothing. A finding's id is the `id` given in the pass, or a hash of its category, path
 and title, which is how the same finding found on the next push is recognised.
 
+## Requiring the review
+
+Every `sync` sets a commit status named `thurview/review` on the head it
+reviewed. It is `success` only at confidence 5 with no open finding, nits and
+agreed threads of other reviewers included, and `failure` otherwise. Its
+description is the score and the open count, and it links the public review page. A
+push leaves the new head with no status until a pass reviews it. The status
+reports a verdict; it approves and merges nothing.
+
+To make a merge wait for it, the repository's owner changes one setting. The
+command never does:
+
+- **GitHub:** Settings → Rules → Rulesets → the ruleset on the default branch →
+  **Require status checks to pass** → add `thurview/review`. Classic branch
+  protection takes it the same way. A head with no status yet waits, so a
+  push cannot merge before a pass reviews it.
+- **GitLab:** Settings → Merge requests → **Pipelines must succeed**. The status
+  joins the head's pipeline, so a `failed` review blocks the merge. This is
+  weaker than on GitHub: a head with no status yet is not held back by it.
+
 ## Gaps
+
+- The status is a commit status, not a check run: GitHub lets only an App
+  create check runs, and `gh` is logged in as a user. A ruleset requires
+  either the same way. Its description holds the score line, not the whole
+  summary, and it links the review page.
 
 - No forge approve. A forge approve can arm an auto-merge, and the verdict
   lives in the summary; `thurview forge submit` is the command for one.

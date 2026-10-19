@@ -56,16 +56,33 @@ async function cli(args: string[], cwd: string, expectCode = 0): Promise<Out> {
   });
 }
 
+/** Every pass sets the thurview/review status; each test asserts it only when it cares. */
+const STATUSES = [
+  { cli: "gh", match: ["/statuses/", "POST"], body: {} },
+  { cli: "glab", match: ["/statuses/", "POST"], body: {} },
+];
+
 async function fixtures(table: unknown[]): Promise<void> {
-  await writeFile(responses, JSON.stringify(table));
+  await writeFile(responses, JSON.stringify([...STATUSES, ...table]));
 }
 
-async function calls(): Promise<{ cli: string; args: string[]; body: string }[]> {
+async function logged(): Promise<{ cli: string; args: string[]; body: string }[]> {
   const text = await readFile(log, "utf8").catch(() => "");
   return text
     .split("\n")
     .filter(Boolean)
     .map((l) => JSON.parse(l));
+}
+
+const isStatus = (c: { args: string[] }) => c.args.some((a) => a.includes("/statuses/"));
+
+/** Every call but the status, which the tests below assert on their own. */
+async function calls(): Promise<{ cli: string; args: string[]; body: string }[]> {
+  return (await logged()).filter((c) => !isStatus(c));
+}
+
+async function statusCalls(): Promise<{ cli: string; args: string[]; body: string }[]> {
+  return (await logged()).filter(isStatus);
 }
 
 const PASS = {
@@ -201,6 +218,15 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
     expect(JSON.parse(summary.body).body).not.toMatch(/Markdown export|feedback\.md/);
     // A pass never touches the change request's own state.
     expect(logged.some((c) => /pulls\/7\/(merge|reviews)/.test(c.args.join(" ")))).toBe(false);
+    // Its verdict lands as the thurview/review status on the head it reviewed.
+    const [status] = await statusCalls();
+    expect(status!.args.join(" ")).toContain(`repos/acme/web/statuses/${HEAD} --method POST`);
+    expect(JSON.parse(status!.body)).toEqual({
+      state: "failure",
+      context: "thurview/review",
+      description: "Confidence 2/5 · 1 open finding, 1 blocking",
+      target_url: "https://reviews.example.com/r/7/",
+    });
   });
 
   it("edits the summary it finds instead of posting a second", async () => {
@@ -650,6 +676,16 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
     const note = logged.find((c) => c.args.join(" ").includes("notes --method POST"))!;
     expect(note.args.find((a) => a.startsWith("body="))).toMatch(/^body=<!-- thurview-pr-review /);
     expect(note.args.find((a) => a.startsWith("body="))).not.toContain("Markdown export");
+    const [status] = await statusCalls();
+    expect(status!.args).toEqual(
+      expect.arrayContaining([
+        `projects/acme%2Fweb/statuses/${HEAD}`,
+        "state=failed",
+        "name=thurview/review",
+        "description=Confidence 2/5 · 1 open finding, 1 blocking",
+        "target_url=https://reviews.example.com/r/7/",
+      ]),
+    );
   });
 
   it("updates the public link on the same note for the next head", async () => {

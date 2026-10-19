@@ -44,6 +44,7 @@ export type ReviewForge = Pick<
   | "editNote"
   | "comment"
   | "heads"
+  | "setStatus"
 >;
 
 export interface Ctx {
@@ -55,6 +56,8 @@ export interface Ctx {
 }
 
 export const STOP_LABEL = "thurview:stop";
+/** The commit status each pass sets on the head it reviewed; a branch rule can require it. */
+export const REVIEW_STATUS = "thurview/review";
 const STOP_COMMAND = /^\s*\/thurview\s+stop\b/i;
 
 export interface FindingState {
@@ -453,6 +456,7 @@ export async function sync(
   if (ended) {
     if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, body);
     else await forge.postNote(repo, cr, body);
+    await setReviewStatus(ctx, reviewed, pass, open);
     return result;
   }
   for (const { id, f } of fresh) {
@@ -486,7 +490,27 @@ export async function sync(
   result.body = renderSummary(pass, marker, cr.author, open, update);
   if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, result.body);
   else await forge.postNote(repo, cr, result.body);
+  await setReviewStatus(ctx, reviewed, pass, open);
   return result;
+}
+
+/**
+ * The verdict as a status on the head it judged, after the summary it repeats:
+ * success only at 5 with nothing open. A push leaves the new head without one
+ * until a pass reviews it, so a branch rule requiring it holds every head.
+ */
+async function setReviewStatus(ctx: Ctx, sha: string, pass: Pass, open: OpenFinding[]) {
+  const blocking = open.filter((f) => f.severity === "blocking").length;
+  const clean = pass.confidence === 5 && !open.length;
+  const counts = open.length
+    ? `${open.length} open finding${open.length === 1 ? "" : "s"}${blocking ? `, ${blocking} blocking` : ""}`
+    : "no open findings";
+  await ctx.forge.setStatus(ctx.repo, ctx.cr, sha, {
+    context: REVIEW_STATUS,
+    state: clean ? "success" : "failure",
+    description: `Confidence ${pass.confidence}/5 · ${counts}`,
+    url: pass.reviewUrl ?? ctx.cr.url,
+  });
 }
 
 /** Rewrite the summary's state and opening line, or post a bare one when there is none. */

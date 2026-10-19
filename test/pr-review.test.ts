@@ -7,6 +7,7 @@ import type {
   Note,
   PriorThread,
   RepoId,
+  ReviewStatusCheck,
 } from "../src/forge/types.js";
 import { CATEGORIES, SEVERITIES, CONFIDENCE } from "../src/pr-review/categories.js";
 import {
@@ -110,6 +111,11 @@ class MemoryForge implements ReviewForge {
   writers = new Set(["dev", "maintainer"]);
   async canWrite(_r: RepoId, user: string): Promise<boolean> {
     return this.writers.has(user);
+  }
+  /** The thurview/review status each commit carries. */
+  statuses = new Map<string, ReviewStatusCheck>();
+  async setStatus(_r: RepoId, _c: ChangeRequest, sha: string, s: ReviewStatusCheck) {
+    this.statuses.set(sha, s);
   }
   /** Every head the change request has had, oldest first. */
   history: string[] = [SHA(1)];
@@ -514,6 +520,51 @@ describe("what the review ran", () => {
       ran: [{ kind: "mutation", what: "Dropped the 4xx return", result: "retry test fails" }],
     });
     expect(parsePass(text, "pass.json").ran?.[0]?.kind).toBe("mutation");
+  });
+});
+
+describe("the thurview/review status", () => {
+  it("passes the reviewed head only at 5 with nothing open", async () => {
+    const forge = new MemoryForge();
+    await pass(forge, { confidence: 5, reviewUrl: "https://reviews.example.com/7/" });
+    expect(forge.statuses.get(SHA(1))).toEqual({
+      context: "thurview/review",
+      state: "success",
+      description: "Confidence 5/5 · no open findings",
+      url: "https://reviews.example.com/7/",
+    });
+  });
+
+  it("fails it below 5, and with a nit still open", async () => {
+    const forge = new MemoryForge();
+    await pass(forge, { confidence: 2, findings: [UNBOUNDED] });
+    expect(forge.statuses.get(SHA(1))).toMatchObject({
+      state: "failure",
+      description: "Confidence 2/5 · 1 open finding, 1 blocking",
+      url: "https://github.com/acme/web/pull/7",
+    });
+    forge.push(2);
+    const nit = { ...UNBOUNDED, line: 3, severity: "nit" as const, category: "docs" as const };
+    const id = (await readState(ctx(forge))).findings[0]!.id;
+    await pass(forge, { confidence: 5, fixed: [id], findings: [nit] });
+    expect(forge.statuses.get(SHA(2))).toMatchObject({
+      state: "failure",
+      description: "Confidence 5/5 · 1 open finding",
+    });
+  });
+
+  it("leaves a new head without one until a pass reviews it", async () => {
+    const forge = new MemoryForge();
+    await pass(forge, { confidence: 5 });
+    forge.push(2);
+    expect(forge.statuses.has(SHA(2))).toBe(false);
+    expect(forge.statuses.get(SHA(1))?.state).toBe("success");
+  });
+
+  it("is not set by a dry run", async () => {
+    const forge = new MemoryForge();
+    await sync(ctx(forge), { ...base, confidence: 5 }, { dryRun: true });
+    expect(forge.statuses.size).toBe(0);
   });
 });
 
