@@ -84,7 +84,6 @@ export interface ChangeRequest {
   labels: string[];
 }
 
-/** A top-level comment on a change request, outside any review thread. */
 /** One commit status: `context` names it, as a branch rule requires it. */
 export interface ReviewStatusCheck {
   context: string;
@@ -94,6 +93,7 @@ export interface ReviewStatusCheck {
   url?: string;
 }
 
+/** A top-level comment on a change request, outside any review thread. */
 export interface Note {
   /** Numeric on both forges, and increasing, so a later note has a larger id. */
   id: string;

@@ -557,12 +557,13 @@ describe("the thurview/review status", () => {
     const forge = new MemoryForge();
     const thread: PriorThread = {
       id: "G0",
-      author: "greptile-apps",
+      author: "greptile-apps[bot]",
+      bot: true,
       path: "src/upload.ts",
       line: 42,
       resolved: false,
       outdated: false,
-      messages: [{ author: "greptile-apps", body: "The retry never stops on a 4xx." }],
+      messages: [{ author: "greptile-apps[bot]", body: "The retry never stops on a 4xx." }],
     };
     forge.threads.push(thread);
     const agree = {
@@ -589,6 +590,23 @@ describe("the thurview/review status", () => {
     });
     expect(forge.statuses.get(SHA(3))?.state).toBe("success");
   });
+
+  it.each(["merged", "closed"] as const)(
+    "sets it on the reviewed head of a pass synced after the change request was %s",
+    async (state) => {
+      const forge = new MemoryForge();
+      await pass(forge, { confidence: 2, findings: [UNBOUNDED] });
+      forge.statuses.clear();
+      forge.push(2);
+      forge.cr.state = state;
+      await pass(forge, { head: SHA(1), confidence: 2 });
+      expect(forge.statuses.get(SHA(1))).toMatchObject({
+        context: "thurview/review",
+        state: "failure",
+      });
+      expect(forge.statuses.has(SHA(2))).toBe(false);
+    },
+  );
 
   it("leaves a new head without one until a pass reviews it", async () => {
     const forge = new MemoryForge();

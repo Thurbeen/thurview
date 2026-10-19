@@ -50,16 +50,29 @@ description is the score and the open count, and it links the public review page
 push leaves the new head with no status until a pass reviews it. The status
 reports a verdict; it approves and merges nothing.
 
+**It records the verdict; it is not an access control.** `thurview` sets the
+status with the reviewer's own login, a user, and any account that can push
+to the repository can set a status named `thurview/review` too, `success`
+included. Requiring it stops a merge nobody reviewed by mistake: a hand merge
+on a head no pass saw, or before the pass finished. It does not stop someone
+with push access who means to get around it.
+
 To make a merge wait for it, the repository's owner changes one setting. The
 command never does:
 
 - **GitHub:** Settings → Rules → Rulesets → the ruleset on the default branch →
   **Require status checks to pass** → add `thurview/review`. Classic branch
   protection takes it the same way. A head with no status yet waits, so a
-  push cannot merge before a pass reviews it.
+  push cannot merge before a pass reviews it. A ruleset can pin a required
+  check to the GitHub App expected to set it, and then refuses the same name
+  from anyone else. A status set with a user's token cannot be pinned that
+  way, and `thurview` needs a user's token (see Gaps), so leave the source as
+  any.
 - **GitLab:** Settings → Merge requests → **Pipelines must succeed**. The status
   joins the head's pipeline, so a `failed` review blocks the merge. This is
   weaker than on GitHub: a head with no status yet is not held back by it.
+  GitLab does not pin a commit status to its author either, and any
+  Developer can set one.
 
 ## Gaps
 
