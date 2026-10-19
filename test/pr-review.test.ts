@@ -553,6 +553,43 @@ describe("the thurview/review status", () => {
     });
   });
 
+  it("fails it while another reviewer's agreed thread is open, resolved or not", async () => {
+    const forge = new MemoryForge();
+    const thread: PriorThread = {
+      id: "G0",
+      author: "greptile-apps",
+      path: "src/upload.ts",
+      line: 42,
+      resolved: false,
+      outdated: false,
+      messages: [{ author: "greptile-apps", body: "The retry never stops on a 4xx." }],
+    };
+    forge.threads.push(thread);
+    const agree = {
+      thread: "G0",
+      disposition: "agree" as const,
+      category: "bug" as const,
+      severity: "non-blocking" as const,
+      note: "Reproduced: a 404 retries.",
+    };
+    await pass(forge, { confidence: 4, others: [agree] });
+    expect(forge.statuses.get(SHA(1))).toMatchObject({
+      state: "failure",
+      description: "Confidence 4/5 · 1 open finding",
+    });
+    // Resolved on the forge, still present at the head: still a failure.
+    thread.resolved = true;
+    forge.push(2);
+    await pass(forge, { confidence: 4, others: [agree] });
+    expect(forge.statuses.get(SHA(2))?.state).toBe("failure");
+    forge.push(3);
+    await pass(forge, {
+      confidence: 5,
+      others: [{ thread: "G0", disposition: "fixed", note: "Returns on a 4xx now." }],
+    });
+    expect(forge.statuses.get(SHA(3))?.state).toBe("success");
+  });
+
   it("leaves a new head without one until a pass reviews it", async () => {
     const forge = new MemoryForge();
     await pass(forge, { confidence: 5 });
