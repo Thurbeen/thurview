@@ -349,6 +349,28 @@ describe("another reviewer's threads", () => {
     expect(body).not.toContain("@greptile");
   });
 
+  it("an agreed thread is an open finding of this review until their thread is resolved", async () => {
+    const forge = new MemoryForge();
+    const t = other(forge);
+    const agree = {
+      thread: t.id,
+      disposition: "agree" as const,
+      category: "bug" as const,
+      severity: "non-blocking" as const,
+      note: "Reproduced: a 404 retries three times.",
+    };
+    const first = await pass(forge, { confidence: 4, others: [agree] });
+    expect(first).toMatchObject({ open: 1, blocking: 0 });
+    expect(forge.summaries()[0]!.body).not.toContain("No open findings.");
+    // Their thread resolved: it is no longer listed, needs no disposition and counts nothing.
+    t.resolved = true;
+    forge.push(2);
+    const next = await pass(forge, { confidence: 5 });
+    expect(next).toMatchObject({ open: 0, blocking: 0 });
+    expect(forge.summaries()[0]!.body).toContain("No open findings.");
+    expect((await readState(ctx(forge))).others).toEqual([]);
+  });
+
   it("an agreed blocking thread caps confidence at 2", async () => {
     const forge = new MemoryForge();
     const t = other(forge);
