@@ -308,6 +308,24 @@ describe.skipIf(!browserBin)("the exported report in a browser", { timeout: 60_0
     }
   }, 60_000);
 
+  it("moves the focus to the part the outline jumps to, so the keyboard carries on from there", async () => {
+    const p = await open(1440);
+    try {
+      await p.evaluate(
+        `[...document.querySelectorAll(".toc a.l2")].find(a => a.textContent.startsWith("Findings")).click()`,
+      );
+      await p.until(`document.activeElement?.id === "report-findings"`);
+      // the next Tab lands inside that part, on its first finding
+      expect(
+        await p.evaluate<boolean>(
+          `document.activeElement.querySelector("button.finding-row") !== null`,
+        ),
+      ).toBe(true);
+    } finally {
+      p.close();
+    }
+  }, 60_000);
+
   it("says plainly when there is nothing to fix", async () => {
     const p = await open(1440, zero);
     try {
