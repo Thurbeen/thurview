@@ -593,6 +593,109 @@ describe("thurview scaffold --pr, through the forge seam", () => {
     // gh is never asked whether it owns the host: --forge named the adapter outright.
     expect((await calls()).every((c) => c.cli === "glab")).toBe(true);
   });
+
+  /** A repository with one commit past main, its origin on `remote`; returns both pins. */
+  async function branchRepo(remote: string): Promise<{ dir: string; base: string; head: string }> {
+    const dir = await mkdtemp(join(tmpdir(), "thurview-forge-repo-"));
+    const gitEnv = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    };
+    const git = (...a: string[]) => execFileP("git", a, { cwd: dir, env: gitEnv });
+    await git("init", "-q", "-b", "main");
+    await git("remote", "add", "origin", remote);
+    await writeFile(join(dir, "f.txt"), "base\n");
+    await git("add", ".");
+    await git("commit", "-q", "-m", "base");
+    const base = (await git("rev-parse", "HEAD")).stdout.trim();
+    await git("checkout", "-q", "-b", "topic");
+    await writeFile(join(dir, "f.txt"), "head\n");
+    await git("commit", "-q", "-am", "change");
+    const head = (await git("rev-parse", "HEAD")).stdout.trim();
+    await git("checkout", "-q", "main");
+    return { dir, base, head };
+  }
+
+  const facts = async (uuid: string) =>
+    JSON.parse(await readFile(join(home, "forge", `${uuid}.json`), "utf8")).provenance;
+
+  it("records the GitLab author's access and an unsigned head, as the forge reports them", async () => {
+    const { dir, base, head } = await branchRepo("https://gitlab.example.com/acme/web.git");
+    await fixtures([
+      {
+        cli: "glab",
+        match: [`repository/commits/${head}/signature`],
+        fail: true,
+        stderr: "glab: 404 Not Found",
+      },
+      {
+        cli: "glab",
+        match: ["projects/acme%2Fweb/members/all"],
+        body: [{ username: "outsider", access_level: 30 }],
+      },
+      {
+        cli: "glab",
+        match: ["projects/acme%2Fweb/merge_requests/7"],
+        body: { ...MR, sha: head, diff_refs: { base_sha: base, head_sha: head, start_sha: base } },
+      },
+    ]);
+    const out = await cli(["scaffold", "--pr", "7", "--forge", "gitlab"], { cwd: dir });
+    expect(await facts(out["review"].uuid)).toEqual({
+      head,
+      author: "outsider",
+      access: "write",
+      // the fixture's merge request comes from another project
+      fork: true,
+      signature: "unsigned",
+      forge: "gitlab",
+    });
+  });
+
+  it("says unknown, never a guess, when GitHub does not answer, and unverified for a bad signature", async () => {
+    const { dir, base, head } = await branchRepo("git@github.com:acme/web.git");
+    await fixtures([
+      {
+        cli: "gh",
+        match: ["collaborators/dev/permission"],
+        fail: true,
+        stderr: "gh: HTTP 403",
+      },
+      {
+        cli: "gh",
+        match: [`repos/acme/web/commits/${head}`],
+        body: { commit: { verification: { verified: false, reason: "unknown_key" } } },
+      },
+      {
+        cli: "gh",
+        match: ["repos/acme/web/pulls/7"],
+        body: {
+          number: 7,
+          title: "Topic",
+          html_url: "https://github.com/acme/web/pull/7",
+          body: "",
+          draft: false,
+          state: "open",
+          merged: false,
+          user: { login: "dev" },
+          labels: [],
+          head: { sha: head, ref: "topic", repo: { full_name: "fork/web" } },
+          base: { sha: base, ref: "main", repo: { full_name: "acme/web" } },
+        },
+      },
+    ]);
+    const out = await cli(["scaffold", "--pr", "7"], { cwd: dir });
+    expect(await facts(out["review"].uuid)).toEqual({
+      head,
+      author: "dev",
+      access: "unknown",
+      fork: true,
+      signature: "unverified",
+      forge: "github",
+    });
+  });
 });
 
 /**

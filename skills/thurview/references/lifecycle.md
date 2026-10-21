@@ -142,7 +142,10 @@ ${THURVIEW_HOME:-~/.thurview}/
     ├── review.json          binding, pins, status, presented revision
     ├── threads.json         threads and decisions (use the CLI)
     └── revisions/<n>/       sealed copies plus compiled document.json, map.json,
-                             and verdict.json when published with `--pass`
+                             verdict.json when published with `--pass`, and
+                             provenance.json: the change request's author,
+                             access, fork and head signature, when `scaffold
+                             --pr` read them for the pinned head
 ```
 
 A failed publish leaves the last sealed revision in place. The reader can

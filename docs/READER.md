@@ -23,7 +23,10 @@ columns empty.
 ## The tabs
 
 - **Review**: the document as a report, split into parts that each answer one
-  question a reader brings to a change, in the order they ask them:
+  question a reader brings to a change, in the order they ask them. The
+  outline beside the page names the same parts; on a phone a finding opens in
+  place and the parts sit in a strip at the top. An explainer opens on its
+  summary and its coverage, a design on its summary and what it proposes.
   - **Summary** - what changed, and can it merge? The title, what the change
     does, its size, and when the review was published with its pass
     (`thurview publish --pass`) the verdict: the confidence from 1 to 5 and
@@ -51,12 +54,6 @@ columns empty.
     demand, how many added lines the document discusses per file.
   - **Walkthrough** - the document the agent wrote, with anchor links that
     open the exact code beside the text.
-
-  The outline beside the page names the same parts; on a phone a finding
-  opens in place and the parts sit in a strip at the top. An explainer opens
-  on its summary and its coverage, a design on its summary and what it
-  proposes.
-
 - **Files**: split or unified diff of every changed file at the pinned
   commits, with expandable context. Click a line number to comment on it.
   Click an identifier to see where it is defined at that commit; Ctrl-click

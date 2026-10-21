@@ -47,7 +47,8 @@ document:
     document to a cloud, its signed links and the per-provider permissions;
     and the thurview references own
     the contracts: references/document-authoring.md the document rules,
-    references/components.md every data.yaml shape and fenced component,
+    references/components.md every data.yaml shape and the two ways prose
+    opens code, references/diagrams.md every fenced diagram,
     references/lifecycle.md statuses, storage and threads,
     references/software-map.md map.yaml,
     references/architecture.md the architecture lens every review leads with.
