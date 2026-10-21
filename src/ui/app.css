@@ -1882,6 +1882,75 @@ kbd {
   font-weight: 400;
   color: var(--muted);
 }
+/* A part is a place the outline jumps to; the focus it takes is not a control's. */
+.report-section:focus {
+  outline: none;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* The review's own view of the part, in one line, before the evidence behind it. */
+.part-lead {
+  font-size: 16px;
+  color: var(--fg);
+  margin: 0 0 14px;
+}
+.lands-in {
+  font-size: 14.5px;
+  color: var(--fg2);
+  margin: 0 0 14px;
+}
+.provenance {
+  margin: 0 0 14px;
+  font-size: 14.5px;
+}
+.provenance ul.facts {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 6px;
+}
+.provenance ul.facts li {
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--ok);
+  margin-bottom: 4px;
+}
+.provenance ul.facts li.warn {
+  border-left-color: var(--warn);
+}
+.provenance p {
+  margin: 0;
+}
+.provenance .small {
+  font-size: 13px;
+}
+.risk-block h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.empty-part {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--ok);
+  border-radius: 8px;
+  color: var(--fg2);
+}
+details.cov > summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--fg2);
+}
 .part-summary .kicker {
   font-size: 12px;
   font-weight: 600;
@@ -1907,6 +1976,7 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 18px;
+  margin-bottom: 8px;
   font-size: 13px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;

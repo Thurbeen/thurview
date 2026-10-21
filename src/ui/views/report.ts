@@ -31,19 +31,134 @@ const keyOf = (f: Finding) => `${f.path}:${f.line}:${f.title}`;
 const where = (f: Finding) =>
   `${f.path}:${f.startLine && f.startLine < f.line ? `${f.startLine}-` : ""}${f.line}`;
 
-/** A section of the report: its id is what the outline and the jump bar link to. */
+/**
+ * A part of the report: its id is what the outline and the jump bar link to,
+ * and its title names it to a screen reader as much as to the eye. The
+ * summary's title is for the screen reader alone: the page's own title is
+ * what the eye reads there.
+ */
 export function reportSection(
   id: string,
   title: string | null,
   note: string | null,
   ...body: (HTMLElement | null)[]
 ): HTMLElement {
+  const label = `report-${id}-title`;
   return h(
     "section",
-    { id: `report-${id}`, class: `report-section part-${id}`, "data-block": `report-${id}` },
-    title ? h("h2", null, title, note ? h("span", { class: "n" }, note) : null) : null,
+    {
+      id: `report-${id}`,
+      class: `report-section part-${id}`,
+      "data-block": `report-${id}`,
+      tabindex: "-1",
+      ...(title ? { "aria-labelledby": label } : {}),
+    },
+    title
+      ? h(
+          "h2",
+          { class: id === "summary" ? "visually-hidden" : null },
+          h("span", { id: label }, title),
+          note ? h("span", { class: "n" }, note) : null,
+        )
+      : null,
     ...body,
   );
+}
+
+/** The parts of the system the change adds to or changes, as the map names them. */
+function partsMoved(): { label: string; added: boolean }[] {
+  const d = state.data!;
+  return (d.map?.head.nodes ?? [])
+    .filter((n) => d.map?.diff.added.includes(n.id) || d.map?.diff.changed.includes(n.id))
+    .map((n) => ({ label: n.label, added: !!d.map?.diff.added.includes(n.id) }));
+}
+
+/** Where the change lands, in the map's words, one step from the map itself. */
+export function landsIn(): HTMLElement | null {
+  const parts = partsMoved();
+  if (!parts.length) return null;
+  return h(
+    "p",
+    { class: "lands-in" },
+    h("strong", null, "Lands in: "),
+    parts.map((p, i) => [i ? ", " : "", p.added ? `${p.label} (new)` : p.label]).flat(),
+    VIEWS[kind()].includes("map") && state.data?.map
+      ? [
+          " ",
+          h(
+            "button",
+            { type: "button", class: "linklike", onclick: () => navigate("map") },
+            "Open the map",
+          ),
+        ]
+      : null,
+  );
+}
+
+const FORGE_NAME: Record<string, string> = { github: "GitHub", gitlab: "GitLab" };
+
+/**
+ * Who wrote a change request and what its forge verified of the head, as
+ * sealed with the revision. These are facts about provenance, so the block
+ * says so: an author who can write and a verified signature say who, not
+ * whether the change is safe. What was not read is said, never left blank.
+ */
+export function provenanceFacts(): HTMLElement {
+  const d = state.data!;
+  const p = d.provenance ?? null;
+  const box = h("div", { class: "provenance" });
+  if (!p) {
+    box.append(
+      h(
+        "p",
+        { class: "muted" },
+        d.review.binding.kind === "pr"
+          ? "Author and head signature were not read for this revision: it was published before thurview recorded them, or the forge did not answer."
+          : "Author and head signature not checked: this review is not bound to a pull or merge request.",
+      ),
+    );
+    return box;
+  }
+  const forge = FORGE_NAME[p.forge] ?? p.forge;
+  const access = {
+    write: "can write to the repository",
+    read: "cannot write to the repository",
+    unknown: "write access could not be read",
+  }[p.access];
+  const signature = {
+    verified: `signature verified by ${forge}`,
+    unverified: `signed, but ${forge} did not verify the signature`,
+    unsigned: "not signed",
+    unknown: "signature not checked",
+  }[p.signature];
+  box.append(
+    h(
+      "ul",
+      { class: "facts" },
+      h(
+        "li",
+        null,
+        h("strong", null, "Author: "),
+        h("code", null, p.author),
+        ` ${access}`,
+        p.fork ? "; the change comes from a fork" : "",
+        ".",
+      ),
+      h(
+        "li",
+        { class: p.signature === "verified" ? null : "warn" },
+        h("strong", null, "Head: "),
+        h("code", null, p.head.slice(0, 7)),
+        ` ${signature}.`,
+      ),
+    ),
+    h(
+      "p",
+      { class: "muted small" },
+      `Read from ${forge} when the review was pinned. They say who wrote the change and from where, not whether the change is safe.`,
+    ),
+  );
+  return box;
 }
 
 /** What the change is about and how big it is, read before the verdict. */
@@ -110,9 +225,6 @@ export function verdictBlock(v: Verdict): HTMLElement {
     ),
     h("div", { class: "meaning" }, CONFIDENCE[c]),
     h("div", { class: "reason" }, v.reason),
-    v.architecture
-      ? h("div", { class: "reason" }, h("strong", null, "Architecture: "), v.architecture)
-      : null,
     h(
       "div",
       { class: "counts" },
@@ -296,7 +408,12 @@ export function renderFindingSide(container: HTMLElement): void {
 
 export function findingsList(v: Verdict): HTMLElement {
   const list = findings(v);
-  if (!list.length) return h("p", { class: "muted" }, "No open findings.");
+  if (!list.length)
+    return h(
+      "p",
+      { class: "empty-part" },
+      "No open findings: the review confirmed no defect to fix at this head.",
+    );
   const wrap = h("div", { class: "findings" });
   const select = (i: number, el: HTMLElement, row: HTMLElement) => {
     const open = el.classList.contains("sel");
@@ -398,9 +515,6 @@ export function scopeColumns(v: Verdict | null): HTMLElement {
   const doc = d.document;
   const reviewed: (string | HTMLElement)[] = [];
   const gaps: (string | HTMLElement)[] = [];
-  const parts = (d.map?.head.nodes ?? []).filter(
-    (n) => d.map?.diff.added.includes(n.id) || d.map?.diff.changed.includes(n.id),
-  );
   reviewed.push(
     h(
       "span",
@@ -409,17 +523,18 @@ export function scopeColumns(v: Verdict | null): HTMLElement {
       h("code", null, d.review.pins.head.slice(0, 7)),
     ),
   );
-  if (parts.length)
-    reviewed.push(
-      `Where it lands: ${parts.map((n) => (d.map?.diff.added.includes(n.id) ? `${n.label} (new)` : n.label)).join(", ")}`,
-    );
   for (const r of v?.ran ?? [])
     reviewed.push(h("span", null, `${r.what}: `, h("span", { class: "muted" }, r.result)));
   if (doc?.architecture?.state === "pending") gaps.push("Architecture: not assessed.");
   if (doc?.security?.state === "pending") gaps.push("Trust boundaries: not assessed.");
   if (v && !v.ran.some((r) => r.kind === "test")) gaps.push("No test run was recorded.");
   const unexp = h("li", { hidden: true });
-  const table = h("div", { class: "cov", hidden: true });
+  // per file, on demand: the columns above already say what was not covered
+  const table = h(
+    "details",
+    { class: "cov", hidden: true },
+    h("summary", null, "Added lines discussed, per file"),
+  );
   unexplained().then((files) => {
     const n = files.reduce((a, f) => a + f.lines.length, 0);
     if (n) {

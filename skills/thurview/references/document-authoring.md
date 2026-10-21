@@ -153,7 +153,7 @@ A claim you cannot anchor is a question, not a fact. Write it as one.
 ## Diagrams
 
 Use a fenced component for behaviour that prose explains badly, and pick it by
-the question the reader is asking: [Choosing a shape](components.md#choosing-a-shape)
+the question the reader is asking: [Choosing a shape](diagrams.md#choosing-a-shape)
 holds one row per question, including the ones whose answer is no diagram at
 all. Frames, steps and operations carry an anchor, and a message carries an
 anchor or the code it stands for, so the reader can open what is behind the

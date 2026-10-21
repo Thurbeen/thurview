@@ -4,6 +4,7 @@ import {
   qualified,
   type ChangeRequest,
   type CiSummary,
+  type Provenance,
   type RepoId,
 } from "./forge/index.js";
 import {
@@ -38,6 +39,8 @@ export interface ForgeFacts {
   ci?: { trustworthy: boolean; verdict: string };
   /** The last pass posted from this document, so the queue knows a decision reached the forge. */
   posted?: { at: string; verdict: string; head: string };
+  /** Who wrote the change and what the forge verified of `head`; dropped with a new head like `ci`. */
+  provenance?: Provenance;
 }
 
 /**
@@ -49,7 +52,7 @@ export async function recordForgeFacts(
   review: ReviewState | null,
   repo: RepoId,
   cr: ChangeRequest,
-  add: Pick<ForgeFacts, "ci" | "posted"> = {},
+  add: Pick<ForgeFacts, "ci" | "posted" | "provenance"> = {},
 ): Promise<void> {
   if (!review || review.binding.kind !== "pr" || review.binding.name !== cr.number) return;
   const prev = await readJson<ForgeFacts>(forgeFactsFile(review.id));
@@ -61,6 +64,9 @@ export async function recordForgeFacts(
     state: cr.state,
     head: cr.head,
     ...(prev?.ci && prev.head === cr.head ? { ci: prev.ci } : {}),
+    ...(prev?.provenance && prev.provenance.head === cr.head
+      ? { provenance: prev.provenance }
+      : {}),
     ...(prev?.posted ? { posted: prev.posted } : {}),
     ...add,
   };

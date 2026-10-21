@@ -84,6 +84,24 @@ export interface ChangeRequest {
   labels: string[];
 }
 
+/**
+ * Who wrote a change request, and what the forge verified about its head.
+ * Facts the forge holds, read by thurview and sealed with a page rather than
+ * written by the agent; any that could not be read is `unknown`, never a
+ * guess. It says who and from where, not whether the change is safe.
+ */
+export interface Provenance {
+  /** The head these facts are about; a new push makes them stale. */
+  head: string;
+  author: string;
+  /** Whether the author can push to the repository. */
+  access: "write" | "read" | "unknown";
+  fork: boolean;
+  /** The forge's own verification of the head commit's signature. */
+  signature: "verified" | "unverified" | "unsigned" | "unknown";
+  forge: string;
+}
+
 /** One commit status: `context` names it, as a branch rule requires it. */
 export interface ReviewStatusCheck {
   context: string;
@@ -169,6 +187,8 @@ export interface Forge {
   /** Whether `user` can push to the repository. Any doubt, an error included, is `false`. */
   canWrite(repo: RepoId, user: string): Promise<boolean>;
   repoFromRemote(url: string): RepoId | null;
+  /** Who wrote the change request and whether the forge verified its head. Never throws. */
+  provenance(repo: RepoId, cr: ChangeRequest): Promise<Provenance>;
   /** A change request number or URL, resolved against `repo`. */
   get(repo: RepoId, ref: string): Promise<ChangeRequest>;
   /** The ref the forge publishes the head under, so a fork's head can be fetched. */

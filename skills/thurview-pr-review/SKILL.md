@@ -105,9 +105,11 @@ thurview pr-review status --change <ref>
 ```
 
 It prints the change request's head and base, the head the last pass reviewed
-(`review.reviewedHead`), every open finding with its `id`, and `reassess`
-with all of this account's findings (including resolved threads). It also
-prints the categories and confidence scale below. If `reassess` is missing,
+(`review.reviewedHead`), every open finding with its `id` under `open`, the
+resolved ones under `resolved`, and `reassess`: the id and thread of every one
+of this account's findings, open or resolved, each needing an assessment. The
+categories and confidence scale are the tables below; `--full` prints them
+too. If `reassess` is missing,
 run `thurview update` and retry once. If it is still missing, stop and report
 that this command does not support finding assessments; do not sync through
 an older command that could ignore them. A stopped review stays stopped:
@@ -284,14 +286,17 @@ but rewrite the page to describe the whole current change, rechecking every
 anchor that moved.
 
 Read the shared authoring contracts directly, without loading another
-workflow: [Document authoring](../thurview/references/document-authoring.md),
-[Components](../thurview/references/components.md),
-[Software map](../thurview/references/software-map.md) and
-[Searching the code](../thurview/references/searching.md).
+workflow: [Document authoring](../thurview/references/document-authoring.md)
+and [Components](../thurview/references/components.md).
+
+Read [Diagrams](../thurview/references/diagrams.md) only when the page draws a
+fenced diagram, and [Software map](../thurview/references/software-map.md) only
+when it adds a map: most passes do neither, and neither is needed to read one.
 Write `review.md`, `data.yaml` and `map.yaml` in `review.dir`. Anchor claims at
 the pins, include the findings and tests actually checked, state the
 `architecture` view, answer `security` and declare the interface changes. Add a map when it explains boundaries;
-otherwise leave `nodes: []` and say why.
+otherwise leave `nodes: []` and say why. Point at code with an anchor rather
+than pasting it: the page opens the pinned lines itself.
 
 Then write `pass.json` for this head, in the shape step 5 shows, without
 `reviewUrl` yet. The page is the review's report: `--pass` seals its verdict,
@@ -329,6 +334,7 @@ evidence for every own finding returned by `reassess`:
   "confidence": 2,
   "reason": "Safe once the retry loop stops on a 4xx.",
   "architecture": "Fits the design: retry policy stays in upload(), the one module that sends.",
+  "security": "Reads no new input; the author can write to the repository and the head is signed.",
   "risk": ["Every upload goes through the changed retry path.", "No test covers a 4xx."],
   "change": "Retries a failed upload three times with exponential backoff.",
   "reviewUrl": "https://reviews.example.com/pr-7/",
@@ -388,7 +394,16 @@ evidence for every own finding returned by `reassess`:
   target. It reads right under `reason` in the summary, never folded, and the
   page shows it with the verdict. `sync` and `publish --pass` refuse a pass
   without it.
-- `reason`, `architecture`, `change`, `signoff` and each `risk` bullet are one line each;
+- `security` is this review's view on security and trust, in one line: what
+  the change does to what an attacker can reach - a trust boundary it
+  crosses, a secret, a permission - and what you checked of who wrote it.
+  `scaffold` reads the author's access, a fork and the forge's signature
+  check on the head and the page shows them; state what they do not settle,
+  and never read them as the change being safe. Name a policy only when the
+  repository configures one and you checked it. It reads under
+  `architecture` in the summary and on the page. Every pass writes it; `sync`
+  still accepts a pass without it, written before it existed.
+- `reason`, `architecture`, `security`, `change`, `signoff` and each `risk` bullet are one line each;
   `sync` refuses a line break in any of them. `reason` is one sentence;
   `risk` is one to five bullets naming what could break, the blast radius, and
   anything touching security, data, infra or a public API; `change` is two or
@@ -407,7 +422,7 @@ evidence for every own finding returned by `reassess`:
   are folded separately; the reviewed head and UTC sync timestamp stay small
   below them. The sign-off is last. Both forges use ordinary Markdown tables
   and HTML `details`/`summary`, with blank lines around their Markdown.
-- The 120-word budget applies to authored `reason`, `architecture`, `change`, all `risk`
+- The 120-word budget applies to authored `reason`, `architecture`, `security`, `change`, all `risk`
   bullets and `signoff` together, including folded text. Generated verdicts,
   finding rows, links, update counts, labels and head/time metadata are
   excluded. Finding titles/bodies still have their separate five-line limit.

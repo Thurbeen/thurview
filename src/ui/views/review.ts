@@ -13,6 +13,8 @@ import {
   findingsList,
   findingKeys,
   scopeColumns,
+  landsIn,
+  provenanceFacts,
 } from "./report.js";
 
 let disposeKeys: (() => void) | undefined;
@@ -54,68 +56,114 @@ export function renderReview(root: HTMLElement): void {
       : k === "explainer"
         ? "Explainer"
         : "Design";
-  const summary = reportSection("summary", null, null, h("div", { class: "kicker" }, kicker));
-  const lede = verdict ? h("p", { class: "lede" }, verdict.change) : null;
+  const summary = reportSection("summary", "Summary", null, h("div", { class: "kicker" }, kicker));
+  // what changed, then the verdict on it, then the author's own summary
+  const lede = verdict
+    ? [h("p", { class: "lede" }, verdict.change), verdictBlock(verdict), summaryFacts()]
+    : null;
   let placed = false;
   for (const b of landing) {
     summary.appendChild(renderBlock(b));
     if (!placed && b.type === "heading" && b.level === 1 && lede) {
-      summary.appendChild(lede);
+      summary.append(...lede);
       placed = true;
     }
   }
-  if (lede && !placed) summary.insertBefore(lede, summary.children[1] ?? null);
-  summary.appendChild(summaryFacts());
+  if (lede && !placed)
+    lede.reverse().forEach((el) => summary.insertBefore(el, summary.children[2] ?? null));
+  if (!verdict) summary.appendChild(summaryFacts());
   report.appendChild(summary);
 
-  if (verdict) {
-    const n = verdict.findings.length;
-    report.append(
-      reportSection("verdict", "Verdict", null, verdictBlock(verdict)),
+  // A review reads as parts, each answering one question the reader brings to
+  // a change, in the order they ask them; an explainer or a design keeps its
+  // summary, its bound and its document.
+  const parts: [string, string, string | null][] = [["report-summary", "Summary", null]];
+  const add = (sec: HTMLElement, title: string, n: string | null = null) => {
+    report.appendChild(sec);
+    parts.push([sec.id, title, n]);
+  };
+  if (k === "review") {
+    add(
       reportSection(
-        "findings",
-        "Findings",
-        n ? `${n}, most severe first` : null,
-        findingsList(verdict),
+        "architecture",
+        "Architecture",
+        "where it lands, and whether it fits the design",
+        verdict?.architecture ? h("p", { class: "part-lead" }, verdict.architecture) : null,
+        landsIn(),
+        architecturePanel(doc.architecture),
+        interfaceDelta(doc.interfaces),
       ),
+      "Architecture",
+    );
+    add(
+      reportSection(
+        "security",
+        "Security & trust",
+        "who wrote it, and what it lets in",
+        verdict?.security ? h("p", { class: "part-lead" }, verdict.security) : null,
+        provenanceFacts(),
+        securityPanel(doc.security),
+      ),
+      "Security & trust",
+    );
+    if (verdict) {
+      const n = verdict.findings.length;
+      add(
+        reportSection(
+          "findings",
+          "Findings",
+          n ? `${n} to act on, most severe first` : "what to fix before merge",
+          findingsList(verdict),
+        ),
+        "Findings",
+        n ? String(n) : null,
+      );
+    }
+    add(
       reportSection(
         "risks",
-        "Risks",
-        null,
-        h(
-          "ul",
-          { class: "risks" },
-          verdict.risk.map((x) => h("li", null, x)),
-        ),
+        verdict ? "Risks & evidence" : "Evidence",
+        verdict
+          ? "what could still break, and what the verdict rests on"
+          : "what was reviewed, and what was not",
+        verdict
+          ? h(
+              "div",
+              { class: "risk-block" },
+              h("h3", null, "Not ruled out"),
+              h(
+                "ul",
+                { class: "risks" },
+                verdict.risk.map((x) => h("li", null, x)),
+              ),
+            )
+          : null,
+        scopeColumns(verdict),
       ),
+      verdict ? "Risks & evidence" : "Evidence",
+    );
+  } else {
+    const bound = k === "explainer" ? "Coverage" : "What it proposes";
+    add(
+      reportSection(
+        "scope",
+        bound,
+        null,
+        k === "explainer"
+          ? coveragePanel(state.data?.coverage ?? null)
+          : interfaceDelta(doc.interfaces),
+      ),
+      bound,
     );
   }
 
-  const scope = reportSection(
-    "scope",
-    k === "review" ? "Scope" : k === "explainer" ? "Coverage" : "What it proposes",
-    null,
-  );
-  if (k === "review")
-    scope.append(
-      scopeColumns(verdict),
-      architecturePanel(doc.architecture),
-      interfaceDelta(doc.interfaces),
-      securityPanel(doc.security),
-    );
-  else if (k === "explainer") scope.append(coveragePanel(state.data?.coverage ?? null));
-  else scope.append(interfaceDelta(doc.interfaces));
-  report.appendChild(scope);
-
   const docTitle =
-    k === "explainer"
-      ? "The explainer"
-      : k === "design"
-        ? "The design"
-        : verdict
-          ? "How the review got there"
-          : "The review";
-  const docSec = reportSection("document", body.length ? docTitle : null, null);
+    k === "explainer" ? "The explainer" : k === "design" ? "The design" : "Walkthrough";
+  const docSec = reportSection(
+    "document",
+    body.length ? docTitle : null,
+    k === "review" && body.length ? "the change step by step, with its code" : null,
+  );
   let section: HTMLElement | null = null;
   for (const b of body) {
     const el = renderBlock(b);
@@ -131,29 +179,9 @@ export function renderReview(root: HTMLElement): void {
     } else (section ?? docSec).appendChild(el);
   }
   report.appendChild(docSec);
+  if (body.length) parts.push([docSec.id, docTitle, null]);
 
-  const entries: [string, string, string | null][] = [
-    ["report-summary", "Summary", null],
-    ...(verdict
-      ? ([
-          ["report-verdict", "Verdict", null],
-          [
-            "report-findings",
-            "Findings",
-            verdict.findings.length ? String(verdict.findings.length) : null,
-          ],
-          ["report-risks", "Risks", null],
-        ] as [string, string, string | null][])
-      : []),
-    [
-      "report-scope",
-      k === "review" ? "Scope" : k === "explainer" ? "Coverage" : "What it proposes",
-      null,
-    ],
-    ...(body.length
-      ? ([["report-document", docTitle, null]] as [string, string, string | null][])
-      : []),
-  ];
+  const entries = parts;
   const link = (id: string, text: string, cls: string, n: string | null) =>
     h(
       "a",
@@ -593,6 +621,8 @@ function scrollToBlock(id: string): void {
   if (!el) return;
   el.closest(".section")?.classList.remove("section-collapsed");
   el.scrollIntoView({ block: "start", behavior: "smooth" });
+  // a part takes the focus too, so the keyboard carries on from where the link went
+  if (el.classList.contains("report-section")) el.focus({ preventScroll: true });
   el.style.transition = "background .8s";
   el.style.background = "var(--sel)";
   setTimeout(() => (el.style.background = ""), 1200);

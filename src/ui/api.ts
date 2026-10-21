@@ -9,6 +9,7 @@ import type { QueueRow } from "../queue.js";
 import { published } from "./published.js";
 
 import type { Verdict } from "../pr-review/format.js";
+import type { Provenance } from "../forge/types.js";
 
 export interface Payload {
   review: ReviewState;
@@ -21,6 +22,8 @@ export interface Payload {
   meta: { revision: number; at: string; title: string; hasMap: boolean } | null;
   /** the review's verdict - confidence, findings, risks - when published with its pass */
   verdict: Verdict | null;
+  /** who wrote the change request and what its forge verified of the head; absent before it was sealed */
+  provenance?: Provenance | null;
   threads: Thread[];
   decisions: Decision[];
   /** whether an agent is listening to this document right now */
