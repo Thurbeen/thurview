@@ -90,8 +90,8 @@ conflict.
 
 Read [Architecture](references/architecture.md) before you study the change:
 it is the review's first lens. Read [Document authoring](references/document-authoring.md) before you write.
-Read [Components](references/components.md) before you edit `data.yaml` or add
-a fenced component. Read [Lifecycle](references/lifecycle.md) for statuses,
+Read [Components](references/components.md) before you edit `data.yaml`, and
+[Diagrams](references/diagrams.md) before you add a fenced diagram. Read [Lifecycle](references/lifecycle.md) for statuses,
 storage and thread rules. Read [Software map](references/software-map.md)
 before you author `map.yaml`.
 

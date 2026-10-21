@@ -3,6 +3,7 @@
   "confidence": 4,
   "reason": "The audit trail and the cap work for one caller at a time; two reliability gaps are worth a look before merge.",
   "architecture": "Fits the design: auditing is one new module behind audit(), called from the two functions that own the events.",
+  "security": "No new input crosses a trust boundary; audit.log holds user names, no secrets.",
   "risk": [
     "Every login and logout now writes to audit.log; a failing disk now fails logins that already saved a session.",
     "The cap is read and written without a lock, so concurrent logins can exceed it.",

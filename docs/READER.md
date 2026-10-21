@@ -22,30 +22,41 @@ columns empty.
 
 ## The tabs
 
-- **Review**: the document as a report, in the order a reader opening it from
-  a pull request needs it. First what the change is about: the title, what it
-  does, the author's summary and its size. Then, when the review was published
-  with its pass (`thurview publish --pass`), the verdict - the confidence from
-  1 to 5 and what it means, the reason, the findings by severity - followed by
-  the findings themselves, most severe first, each one step from its diff
-  lines and its fix, and the risks. Then the scope: what was reviewed beside
-  what was not, how many added lines the document discusses per file, the
-  interface delta and the trust boundaries. The document the agent wrote comes
-  last as the reasoning, with anchor links that open the exact code beside the
-  text. On a phone a finding opens in place and the sections sit in a strip at
-  the top. An explainer opens on its summary and its coverage, a design on its
-  summary and what it proposes.
-- **Architecture**: first in the scope, the view the review takes on the
-  design - whether the change fits it, or each defect it introduces with its
-  cause, the target shape and the next step, opening the code it names. Every
-  review past its first stub has one.
-- **Interface delta**: in the scope, what the change added to, changed
-  in or removed from the surfaces other code can reach - exported functions
-  and types, CLI flags, routes, config keys and formats. The agent declares
-  each one, and publish holds it to an anchor on lines the diff really moved,
-  so an entry cannot invent a feature the change did not deliver. Under it, the
-  security entry says where the change lets input cross a trust boundary, or
-  "not assessed" when the agent did not look.
+- **Review**: the document as a report, split into parts that each answer one
+  question a reader brings to a change, in the order they ask them:
+  - **Summary** - what changed, and can it merge? The title, what the change
+    does, its size, and when the review was published with its pass
+    (`thurview publish --pass`) the verdict: the confidence from 1 to 5 and
+    what it means, the reason, and the findings counted by severity.
+  - **Architecture** - where does it land, and does it fit? The review's view
+    on the design in one line, the parts of the map it adds to or changes,
+    and the view and defects from `data.yaml` - each defect with its cause,
+    the target shape and the next step, opening the code it names. Under it
+    the interface delta: what the change added to, changed in or removed from
+    the surfaces other code can reach. The agent declares each entry, and
+    publish holds it to an anchor on lines the diff really moved, so it cannot
+    invent a feature the change did not deliver.
+  - **Security & trust** - who wrote it, and what does it let in? The review's
+    view in one line; for a pull or merge request, the author's write access,
+    whether it comes from a fork and the forge's signature check on the head,
+    read from the forge when the review was pinned and said to be provenance,
+    not a verdict that the change is safe; then where the change lets input
+    cross a trust boundary, or "not assessed" when the agent did not look.
+    What was not read is said, never left blank.
+  - **Findings** - what must change? Each one most severe first, one step
+    from its diff lines and its fix. With none, the part says so.
+  - **Risks & evidence** - what could still break, and what does the verdict
+    rest on? The risks the review could not rule out, kept apart from the
+    findings; what the review ran beside what it did not cover; and, on
+    demand, how many added lines the document discusses per file.
+  - **Walkthrough** - the document the agent wrote, with anchor links that
+    open the exact code beside the text.
+
+  The outline beside the page names the same parts; on a phone a finding
+  opens in place and the parts sit in a strip at the top. An explainer opens
+  on its summary and its coverage, a design on its summary and what it
+  proposes.
+
 - **Files**: split or unified diff of every changed file at the pinned
   commits, with expandable context. Click a line number to comment on it.
   Click an identifier to see where it is defined at that commit; Ctrl-click

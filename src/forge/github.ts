@@ -10,6 +10,7 @@ import type {
   ReviewStatusCheck,
   PriorPass,
   PriorThread,
+  Provenance,
   RepoId,
   Submission,
   SubmitResult,
@@ -190,6 +191,45 @@ export class GitHubForge implements Forge {
     } catch {
       return false;
     }
+  }
+
+  async provenance(repo: RepoId, cr: ChangeRequest): Promise<Provenance> {
+    const [access, signature] = await Promise.all([
+      runJson<{ permission?: string }>(
+        "gh",
+        this.api(repo, [
+          `repos/${repo.path}/collaborators/${encodeURIComponent(cr.author)}/permission`,
+        ]),
+      ).then(
+        (p): Provenance["access"] =>
+          !p.permission
+            ? "unknown"
+            : ["admin", "maintain", "write"].includes(p.permission)
+              ? "write"
+              : "read",
+        () => "unknown" as const,
+      ),
+      runJson<{ commit?: { verification?: { verified?: boolean; reason?: string } } }>(
+        "gh",
+        this.api(repo, [`repos/${repo.path}/commits/${cr.head}`]),
+      ).then(
+        (c): Provenance["signature"] => {
+          const v = c.commit?.verification;
+          if (!v) return "unknown";
+          if (v.verified) return "verified";
+          return v.reason === "unsigned" ? "unsigned" : "unverified";
+        },
+        () => "unknown" as const,
+      ),
+    ]);
+    return {
+      head: cr.head,
+      author: cr.author,
+      access,
+      fork: cr.fromFork,
+      signature,
+      forge: this.id,
+    };
   }
 
   repoFromRemote(url: string): RepoId | null {

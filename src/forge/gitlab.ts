@@ -11,6 +11,7 @@ import type {
   ReviewStatusCheck,
   PriorPass,
   PriorThread,
+  Provenance,
   RepoId,
   Submission,
   SubmitResult,
@@ -186,6 +187,46 @@ export class GitLabForge implements Forge {
     } catch {
       return false;
     }
+  }
+
+  async provenance(repo: RepoId, cr: ChangeRequest): Promise<Provenance> {
+    const [access, signature] = await Promise.all([
+      runJson<{ username: string; access_level: number }[]>(
+        "glab",
+        this.api(
+          repo,
+          `projects/${this.project(repo)}/members/all?query=${encodeURIComponent(cr.author)}`,
+        ),
+      ).then(
+        (members): Provenance["access"] => {
+          const m = members.find((x) => x.username === cr.author);
+          // 30 is Developer, the first level that can push.
+          return m && m.access_level >= 30 ? "write" : "read";
+        },
+        () => "unknown" as const,
+      ),
+      runJson<{ verification_status?: string }>(
+        "glab",
+        this.api(repo, `projects/${this.project(repo)}/repository/commits/${cr.head}/signature`),
+      ).then(
+        (s): Provenance["signature"] =>
+          s.verification_status === "verified"
+            ? "verified"
+            : s.verification_status
+              ? "unverified"
+              : "unknown",
+        // GitLab answers 404 for a commit with no signature at all
+        (e: Error) => (/\b404\b|not found/i.test(e.message) ? "unsigned" : "unknown"),
+      ),
+    ]);
+    return {
+      head: cr.head,
+      author: cr.author,
+      access,
+      fork: cr.fromFork,
+      signature,
+      forge: this.id,
+    };
   }
 
   repoFromRemote(url: string): RepoId | null {

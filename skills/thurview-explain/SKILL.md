@@ -62,10 +62,10 @@ Read the guidance files that exist, in this order; the second wins on conflict.
 `thurview explain` lists the ones it found under `guidance`.
 
 The `thurview` skill ships the references this one shares - document authoring,
-components, software map, searching the code, lifecycle. `thurview skill` prints the path of
+components, diagrams, software map, searching the code, lifecycle. `thurview skill` prints the path of
 every bundled SKILL.md; the references sit beside each one. Read **Document
 authoring** before you write `review.md`, **Components** before you edit
-`data.yaml`, **Software map** before you author `map.yaml`, **Searching the
+`data.yaml`, **Diagrams** before you draw a fence, **Software map** before you author `map.yaml`, **Searching the
 code** before you look for callers, tests or importers, and **Lifecycle** for
 statuses, storage and thread rules -
 they are identical for all three kinds.

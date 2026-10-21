@@ -33,6 +33,7 @@ import {
   writeText,
   writeJson,
   readJson,
+  forgeFactsFile,
   serverStateFile,
   deleteReview,
   kindOf,
@@ -58,7 +59,7 @@ import {
   type RepoId,
 } from "./forge/index.js";
 import { parseSubmission, longComments, buildPass } from "./forge/submission.js";
-import { recordForgeFacts, ciFacts } from "./queue.js";
+import { recordForgeFacts, ciFacts, type ForgeFacts } from "./queue.js";
 import { parsePass, verdictOf, type Verdict } from "./pr-review/format.js";
 import { CATEGORIES, CONFIDENCE } from "./pr-review/categories.js";
 import {
@@ -836,6 +837,10 @@ const SPECS: Record<
       repo: { kind: "string", help: "host/path, when `origin` is not the repository to post to" },
       file: { kind: "string", help: "sync: the JSON pass to post" },
       "dry-run": { kind: "boolean", help: "sync: validate and render, post nothing" },
+      full: {
+        kind: "boolean",
+        help: "status: also print the category definitions and the confidence scale",
+      },
       interval: { kind: "string", help: "wait: seconds between polls", default: "120" },
       timeout: {
         kind: "string",
@@ -845,6 +850,7 @@ const SPECS: Record<
     },
     examples: [
       "thurview pr-review status --change 123",
+      "thurview pr-review status --change 123 --full",
       "thurview pr-review sync --change 123 --file pass.json --dry-run",
       "thurview pr-review wait --change 123",
       "thurview pr-review stop --change 123",
@@ -935,7 +941,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     let base: string;
     let head: string;
     let title = str(p, "title") ?? "";
-    let pinned: { repo: RepoId; cr: ChangeRequest } | null = null;
+    let pinned: { repo: RepoId; cr: ChangeRequest; forge: Forge } | null = null;
     const b = existing?.binding;
     const pr = str(p, "pr");
     if (pr || b?.kind === "pr") {
@@ -958,7 +964,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       base = await g.mergeBase(worktree, baseRef, head);
       binding = { kind: "pr", name: cr.number, url: cr.url, forge: forge.id };
       title ||= cr.title;
-      pinned = { repo, cr };
+      pinned = { repo, cr, forge };
     } else if (str(p, "base") || str(p, "head") || b?.kind === "range") {
       const [bb, hh] =
         b?.kind === "range" && !str(p, "base") && !str(p, "head")
@@ -1041,7 +1047,10 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         await writeReview(review);
       }
     }
-    if (pinned) await recordForgeFacts(review, pinned.repo, pinned.cr);
+    if (pinned)
+      await recordForgeFacts(review, pinned.repo, pinned.cr, {
+        provenance: await pinned.forge.provenance(pinned.repo, pinned.cr),
+      });
     const stat = await g.shortStat(worktree, base, head);
     const dir = reviewDir(review.id);
     return {
@@ -1346,6 +1355,13 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     await writeJson(join(rdir, "changes.json"), changes);
     await writeJson(join(rdir, "coverage.json"), coverage);
     await writeJson(join(rdir, "verdict.json"), verdict);
+    // Sealed only when the forge's facts are about the pinned head itself.
+    const facts =
+      kind === "review" && review.binding.kind === "pr"
+        ? await readJson<ForgeFacts>(forgeFactsFile(review.id))
+        : null;
+    const provenance = facts?.provenance?.head === review.pins.head ? facts.provenance : null;
+    await writeJson(join(rdir, "provenance.json"), provenance);
     await writeJson(join(rdir, "meta.json"), {
       revision: n,
       at: now(),
@@ -2292,17 +2308,31 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
               })),
             }
           : {}),
-        reassess: st.findings.map((f) => ({
-          id: f.id,
-          open: f.open,
-          thread: f.thread,
-          title: f.title,
-          at: f.path ? `${f.path}:${f.line ?? ""}` : "",
-        })),
-        categories: Object.fromEntries(
-          Object.entries(CATEGORIES).map(([k, v]) => [k, v.definition]),
-        ),
-        confidence: CONFIDENCE,
+        // Each finding's words are printed once: the open ones above, the
+        // resolved ones here. `reassess` is the checklist of every one of them.
+        ...(st.findings.some((f) => !f.open)
+          ? {
+              resolved: st.findings
+                .filter((f) => !f.open)
+                .map((f) => ({
+                  id: f.id,
+                  category: f.category,
+                  severity: f.severity,
+                  at: f.path ? `${f.path}:${f.line ?? ""}` : "",
+                  title: f.title,
+                })),
+            }
+          : {}),
+        reassess: st.findings.map((f) => ({ id: f.id, open: f.open, thread: f.thread })),
+        // the tables the skill already holds, only when asked
+        ...(bool(p, "full")
+          ? {
+              categories: Object.fromEntries(
+                Object.entries(CATEGORIES).map(([k, v]) => [k, v.definition]),
+              ),
+              confidence: CONFIDENCE,
+            }
+          : {}),
         help: [
           st.summary && st.summary.marker.head !== ctx.cr.head
             ? `Review only \`git diff ${st.summary.marker.head.slice(0, 12)} ${ctx.cr.head.slice(0, 12)}\`, then recheck every own finding, including resolved threads: fixed, still-present or partial with evidence`

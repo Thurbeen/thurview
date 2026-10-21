@@ -13,6 +13,7 @@ import { CATEGORIES, SEVERITIES, CONFIDENCE } from "../src/pr-review/categories.
 import {
   parsePass,
   renderSummary,
+  verdictOf,
   summaryWords,
   SUMMARY_WORDS,
   type Pass,
@@ -696,6 +697,47 @@ describe("the view on the architecture", () => {
     expect(body).toContain(
       "Safe once the retry loop is bounded.\n\n**Architecture:** Retry policy stays in upload(), the one module that sends.",
     );
+  });
+});
+
+describe("the view on security and trust", () => {
+  const security = "Reads no new input; the author has write access and the head is signed.";
+
+  it("reads under the architecture, never folded", () => {
+    const body = renderSummary(
+      { ...base, security },
+      { head: SHA(1), state: "active", seen: "0" },
+      "dev",
+      [],
+    );
+    expect(body).toContain(
+      `**Architecture:** Retry policy stays in upload(), the one module that sends.\n\n**Security & trust:** ${security}`,
+    );
+  });
+
+  it("is optional, so a pass written before it still syncs and reads as before", () => {
+    expect(parsePass(JSON.stringify(base), "pass.json").security).toBeUndefined();
+    const body = renderSummary(base, { head: SHA(1), state: "active", seen: "0" }, "dev", []);
+    expect(body).not.toContain("Security & trust");
+  });
+
+  it("is one line, and counts against the word budget", () => {
+    expect(() => parsePass(JSON.stringify({ ...base, security: "a\nb" }), "pass.json")).toThrow(
+      /security/,
+    );
+    const words = (n: number) => Array.from({ length: n }, () => "word").join(" ");
+    expect(() =>
+      renderSummary(
+        { ...base, change: words(80), security: words(40) },
+        { head: SHA(1), state: "active", seen: "0" },
+        "dev",
+        [],
+      ),
+    ).toThrow(/word budget/);
+  });
+
+  it("reaches the page with the verdict", () => {
+    expect(verdictOf({ ...base, security }).security).toBe(security);
   });
 });
 

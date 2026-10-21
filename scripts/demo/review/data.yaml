@@ -27,3 +27,4 @@ stores:
       events: { schema: { at: { type: iso-date }, event: { type: enum }, user: { type: string } } }
 architecture:
   view: Auditing is one new module behind audit(), called from the two functions that own the events; the cap stays in login(), beside the read it depends on.
+security: none

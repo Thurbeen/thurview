@@ -75,9 +75,9 @@ Read the guidance files that exist, in this order; the second wins on conflict.
 `thurview design` lists the ones it found under `guidance`.
 
 The `thurview` skill ships the references this one shares — components,
-software map, lifecycle. `thurview skill` prints the path of every
+diagrams, software map, lifecycle. `thurview skill` prints the path of every
 bundled SKILL.md; the references sit beside each one. Read **Components**
-before you edit `data.yaml`, **Software map** before you author `map.yaml`,
+before you edit `data.yaml`, **Diagrams** before you draw a fence, **Software map** before you author `map.yaml`,
 and **Lifecycle** for statuses, storage and thread rules — they are identical
 for all three kinds.
 
@@ -180,7 +180,7 @@ code that exists at the pinned commit; a plain fence is a sketch. The reader
 tells them apart at a glance, and that difference is the whole trust model.
 
 **Pick the diagram by the reader's question, or draw none.** The `thurview`
-skill's Components reference carries the table under "Choosing a shape" and the
+skill's Diagrams reference carries the table under "Choosing a shape" and the
 shape of every fence. Two rows decide most design documents:
 
 - A proposed flow across actors is a `sequence`: give a message a `code:`

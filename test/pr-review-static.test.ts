@@ -119,6 +119,12 @@ require('node:module').syncBuiltinESMExports();
             },
           },
         },
+        { cli: "gh", match: ["collaborators/dev/permission"], body: { permission: "write" } },
+        {
+          cli: "gh",
+          match: [`repos/acme/web/commits/${head}`],
+          body: { commit: { verification: { verified: true, reason: "valid" } } },
+        },
         { cli: "gh", match: ["repos/acme/web/pulls/7"], body: pull },
         { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
       ]),
@@ -173,6 +179,20 @@ require('node:module').syncBuiltinESMExports();
       if (out.published) expect(out.help.join("\n")).not.toMatch(/thurview (?:open|wait) /);
     }
     expect(snapshot.revision).toBe(1);
+    // Who wrote the change and whether the forge verified its head is read from
+    // the forge at scaffold and sealed with the revision, never typed by the agent.
+    process.env["THURVIEW_HOME"] = home;
+    const { revisionData } = await import("../src/server/server.ts");
+    const { readReview } = await import("../src/store.ts");
+    const sealed = await revisionData((await readReview(review.uuid))!, 1);
+    expect(sealed.provenance).toEqual({
+      head,
+      author: "dev",
+      access: "write",
+      fork: false,
+      signature: "verified",
+      forge: "github",
+    });
     const { createHash } = await import("node:crypto");
     const target = createHash("sha256").update("test-reviews").digest("hex");
     const assets = join(home, "static", target, "assets", new URL(snapshot.url).pathname);

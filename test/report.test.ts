@@ -4,7 +4,7 @@
 // exported copy opened from disk with no server.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, writeFile, cp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, chmod, cp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -23,13 +23,15 @@ let head: string;
 let reviewId: string;
 let reviewDir: string;
 let exported: string;
+let zero: string;
+let pr: string;
 
-async function cli(args: string[], expectCode = 0) {
+async function cli(args: string[], expectCode = 0, env: NodeJS.ProcessEnv = {}) {
   try {
     const { stdout } = await execFileP(
       process.execPath,
       [join(ROOT, "node_modules", "tsx", "dist", "cli.mjs"), join(ROOT, "src", "main.ts"), ...args],
-      { cwd: repo, env: { ...process.env, THURVIEW_HOME: home } },
+      { cwd: repo, env: { ...process.env, THURVIEW_HOME: home, ...env } },
     );
     expect(expectCode).toBe(0);
     return decode(stdout.trim()) as Record<string, any>;
@@ -124,6 +126,66 @@ describe("publish --pass", { timeout: 60_000 }, () => {
     await cli(["publish", "--review", reviewId, "--pass", file]);
     exported = join(tmp, "out", "report.html");
     await cli(["export", "--review", reviewId, "--out", exported, "--no-threads"]);
+    const clean = join(tmp, "clean.json");
+    await writePass(clean, { confidence: 5, findings: [], risk: ["Only the audit path changes."] });
+    await cli(["publish", "--review", reviewId, "--pass", clean]);
+    zero = join(tmp, "out", "zero.html");
+    await cli(["export", "--review", reviewId, "--out", zero, "--no-threads"]);
+  });
+
+  it("seals what the forge says about a pull request's author and head", async () => {
+    const bin = join(tmp, "bin");
+    await mkdir(bin, { recursive: true });
+    await writeFile(
+      join(bin, "gh"),
+      `#!/bin/sh\nexec "${process.execPath}" "${join(ROOT, "test", "fake-forge.mjs")}" gh "$@"\n`,
+    );
+    await chmod(join(bin, "gh"), 0o755);
+    const base = (await execFileP("git", ["rev-parse", "main"], { cwd: repo })).stdout.trim();
+    const responses = join(tmp, "responses.json");
+    await writeFile(
+      responses,
+      JSON.stringify([
+        { cli: "gh", match: ["collaborators/dev/permission"], body: { permission: "write" } },
+        {
+          cli: "gh",
+          match: [`repos/acme/web/commits/${head}`],
+          body: { commit: { verification: { verified: true, reason: "valid" } } },
+        },
+        {
+          cli: "gh",
+          match: ["repos/acme/web/pulls/7"],
+          body: {
+            number: 7,
+            title: "Audit every login",
+            html_url: "https://github.com/acme/web/pull/7",
+            body: "",
+            draft: false,
+            state: "open",
+            merged: false,
+            user: { login: "dev" },
+            labels: [],
+            head: { sha: head, ref: "audit-logins", repo: { full_name: "acme/web" } },
+            base: { sha: base, ref: "main", repo: { full_name: "acme/web" } },
+          },
+        },
+      ]),
+    );
+    const env = { PATH: `${bin}:${process.env["PATH"]}`, FORGE_RESPONSES: responses, GH_HOST: "" };
+    const { review } = await cli(
+      ["scaffold", "--pr", "7", "--repo", "github.com/acme/web"],
+      0,
+      env,
+    );
+    for (const f of ["review.md", "data.yaml", "map.yaml"])
+      await cp(join(DEMO, "review", f), join(review.dir, f));
+    const file = join(tmp, "pr-pass.json");
+    await writePass(file, {
+      security: "Reads no new input; audit.log is written by the process that owns sessions.json.",
+    });
+    await cli(["publish", "--review", review.uuid, "--pass", file], 0, env);
+    pr = join(tmp, "out", "pr.html");
+    await cli(["export", "--review", review.uuid, "--out", pr, "--no-threads"], 0, env);
   });
 });
 
@@ -135,7 +197,7 @@ describe.skipIf(!browserBin)("the exported report in a browser", { timeout: 60_0
   }, 90_000);
   afterAll(() => browser?.close(), 30_000);
 
-  async function open(width: number) {
+  async function open(width: number, file = exported) {
     const target = (await (
       await fetch(`http://127.0.0.1:${browser.devtools}/json/new?about:blank`, { method: "PUT" })
     ).json()) as { webSocketDebuggerUrl: string };
@@ -171,7 +233,7 @@ describe.skipIf(!browserBin)("the exported report in a browser", { timeout: 60_0
       deviceScaleFactor: 1,
       mobile: false,
     });
-    await call("Page.navigate", { url: pathToFileURL(exported).href });
+    await call("Page.navigate", { url: pathToFileURL(file).href });
     const until = (cond: string) =>
       evaluate(`new Promise((ok, no) => {
         const t = Date.now();
@@ -185,31 +247,93 @@ describe.skipIf(!browserBin)("the exported report in a browser", { timeout: 60_0
     return { evaluate, until, errors, close: () => ws.close() };
   }
 
-  it("opens on what changed, then the verdict, the findings, the risks and the scope", async () => {
+  it("splits the review into parts, each answering one question, in reading order", async () => {
     const p = await open(1440);
     try {
-      const order = await p.evaluate<string[]>(
-        `[...document.querySelectorAll(".report > section")].map(s => s.id)`,
+      const parts = await p.evaluate<{ id: string; title: string }[]>(
+        `[...document.querySelectorAll(".report > section")].map(s => ({ id: s.id, title: document.getElementById(s.getAttribute("aria-labelledby"))?.textContent.trim() }))`,
       );
-      expect(order.slice(0, 5)).toEqual([
-        "report-summary",
-        "report-verdict",
-        "report-findings",
-        "report-risks",
-        "report-scope",
+      expect(parts).toEqual([
+        { id: "report-summary", title: "Summary" },
+        { id: "report-architecture", title: "Architecture" },
+        { id: "report-security", title: "Security & trust" },
+        { id: "report-findings", title: "Findings" },
+        { id: "report-risks", title: "Risks & evidence" },
+        { id: "report-document", title: "Walkthrough" },
       ]);
-      const text = await p.evaluate<string>("document.body.innerText");
-      expect(text).toContain("login() and logout() append one JSON line per event");
-      expect(text).toContain("Not yet: non-blocking findings are worth a look before merge.");
-      expect(text).toContain("Concurrent logins can exceed the cap.");
-      expect(text).toContain("The cap is read and written without a lock");
-      expect(text).toContain("Trust boundaries");
-      expect(text).toContain("the repository has no tests");
+      const part = (id: string) =>
+        p.evaluate<string>(`document.getElementById("report-${id}").innerText`);
+      // the summary says what changed and the verdict on it, together
+      const summary = await part("summary");
+      expect(summary).toContain("login() and logout() append one JSON line per event");
+      expect(summary).toContain("Not yet: non-blocking findings are worth a look before merge.");
+      expect(summary).toMatch(/3 non-blocking/);
+      // where the change lands, before any line of it
+      const arch = await part("architecture");
+      expect(arch).toContain("auditing is one new module behind audit()");
+      expect(arch).toContain("Interface delta");
+      // trust is stated as what was checked, and what was not, never as a blanket claim
+      const sec = await part("security");
+      expect(sec).toContain("Trust boundaries");
+      expect(sec).toContain("not bound to a pull or merge request");
+      expect(sec).not.toMatch(/\b(secure|compliant)\b/i);
+      // findings are what to fix; risks are what could not be ruled out, kept apart
+      const found = await part("findings");
+      expect(found).toContain("Concurrent logins can exceed the cap.");
+      expect(found).not.toContain("Nothing tests the cap or the denied path.");
+      const risks = await part("risks");
+      expect(risks).toContain("Nothing tests the cap or the denied path.");
+      expect(risks).toContain("the repository has no tests");
+      expect(risks).not.toContain("Concurrent logins can exceed the cap.");
       // most severe first: the nit is last
       const sev = await p.evaluate<string[]>(
         `[...document.querySelectorAll(".finding .sev")].map(s => s.textContent)`,
       );
       expect(sev.at(-1)).toBe("nit");
+      // the rail names the same parts, each a link the keyboard reaches
+      const toc = await p.evaluate<string[]>(
+        `[...document.querySelectorAll(".toc a.l2")].map(a => a.querySelector("span").textContent)`,
+      );
+      expect(toc).toEqual([
+        "Summary",
+        "Architecture",
+        "Security & trust",
+        "Findings",
+        "Risks & evidence",
+        "Walkthrough",
+      ]);
+      expect(p.errors).toEqual([]);
+    } finally {
+      p.close();
+    }
+  }, 60_000);
+
+  it("says plainly when there is nothing to fix", async () => {
+    const p = await open(1440, zero);
+    try {
+      const found = await p.evaluate<string>(
+        `document.getElementById("report-findings").innerText`,
+      );
+      expect(found).toContain("No open findings");
+      const summary = await p.evaluate<string>(
+        `document.getElementById("report-summary").innerText`,
+      );
+      expect(summary).toContain("0 blocking");
+      expect(p.errors).toEqual([]);
+    } finally {
+      p.close();
+    }
+  }, 60_000);
+
+  it("states who wrote a pull request and what the forge verified, and that it is not a safety verdict", async () => {
+    const p = await open(1440, pr);
+    try {
+      const sec = await p.evaluate<string>(`document.getElementById("report-security").innerText`);
+      expect(sec).toContain("dev");
+      expect(sec).toContain("can write to the repository");
+      expect(sec).toContain("signature verified by GitHub");
+      expect(sec).toContain("not whether the change is safe");
+      expect(sec).toContain("Reads no new input");
       expect(p.errors).toEqual([]);
     } finally {
       p.close();

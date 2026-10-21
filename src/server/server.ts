@@ -9,6 +9,7 @@ import { highlightLines, languageFor } from "../highlight.js";
 import { changedFiles, log, showFile, type ChangedFile } from "../git.js";
 import { symbolIndex } from "../symbols.js";
 import type { Verdict } from "../pr-review/format.js";
+import type { Provenance } from "../forge/types.js";
 import {
   listReviews,
   readReview,
@@ -119,13 +120,14 @@ export async function revisionData(
 ) {
   const id = review.id;
   const dir = revisionDir(id, n);
-  const [document, map, changes, coverage, meta, verdict] = await Promise.all([
+  const [document, map, changes, coverage, meta, verdict, provenance] = await Promise.all([
     readJson<unknown>(join(dir, "document.json")),
     readJson<unknown>(join(dir, "map.json")),
     readJson<ChangedFile[]>(join(dir, "changes.json")),
     readJson<unknown>(join(dir, "coverage.json")),
     readJson<unknown>(join(dir, "meta.json")),
     readJson<Verdict>(join(dir, "verdict.json")),
+    readJson<Provenance>(join(dir, "provenance.json")),
   ]);
   const sealedPins = (meta as { pins?: Pins } | null)?.pins ?? review.pins;
   await rehighlightPeeks(document, review.worktree, sealedPins);
@@ -144,6 +146,8 @@ export async function revisionData(
     meta,
     /** the review's verdict, when it was published with its pass; null otherwise */
     verdict: verdict ?? null,
+    /** who wrote the change request and what its forge verified of the head; null when not read */
+    provenance: provenance ?? null,
   };
 }
 
