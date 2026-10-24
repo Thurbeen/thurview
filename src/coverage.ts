@@ -16,6 +16,7 @@
  * Nothing here grades the code - no scores, no thresholds, no severity.
  */
 import { globToRegExp } from "./document/compile.js";
+import { SCOPE_FILE } from "./scope.js";
 
 /** How a file at the pinned commit is accounted for. */
 export type FileState =
@@ -58,7 +59,7 @@ export interface Coverage {
   commit: string;
   /** the path glob the explainer is scoped to; `**` is the whole repository */
   scope: string;
-  files: { total: number };
+  files: { total: number; excludedByScope: number };
   states: Record<FileState, number>;
   /** the files in scope grouped by the directory under the scope, largest first */
   clusters: ClusterCoverage[];
@@ -108,12 +109,17 @@ export interface CoverageInput {
   owners: { node: string; globs: string[] }[];
   /** the agent's searches, re-run at the pinned commit */
   searches: SearchRecord[];
+  /** the repository's declared review scope; a path it excludes is counted and never listed */
+  inScope?: (path: string) => boolean;
 }
 
 /** Account for every file in scope at the pinned commit. */
 export function computeCoverage(input: CoverageInput): Coverage {
   const glob = scopeGlob(input.scope);
-  const inScope = glob === "**" ? () => true : (f: string) => globToRegExp(glob).test(f);
+  const declared = input.inScope ?? (() => true);
+  const inPathScope = glob === "**" ? () => true : (f: string) => globToRegExp(glob).test(f);
+  const inScope = (f: string) => inPathScope(f) && declared(f);
+  const excludedByScope = input.allFiles.filter((f) => inPathScope(f) && !declared(f)).length;
   const files = input.allFiles.filter(inScope);
 
   const explained = new Set([...input.anchored].filter(inScope));
@@ -163,11 +169,14 @@ export function computeCoverage(input: CoverageInput): Coverage {
     verdict: "",
     commit: input.commit,
     scope: glob,
-    files: { total: files.length },
+    files: { total: files.length, excludedByScope },
     states,
     clusters,
     uncovered: files.filter((f) => stateOf(f) === "uncovered").slice(0, FILES_LISTED),
-    searches: input.searches.map((s) => ({ ...s, files: s.files.slice(0, FILES_LISTED) })),
+    searches: input.searches.map((s) => ({
+      ...s,
+      files: s.files.filter(inScope).slice(0, FILES_LISTED),
+    })),
     owners: owners.sort((a, b) => b.files - a.files || a.node.localeCompare(b.node)),
   };
   record.verdict = coverageVerdict(record);
@@ -186,5 +195,9 @@ function coverageVerdict(c: Coverage): string {
     `${uncovered} not examined`,
   ]
     .join(", ")
-    .concat(".");
+    .concat(
+      c.files.excludedByScope
+        ? `. A further ${c.files.excludedByScope} files withheld by the review scope in ${SCOPE_FILE}.`
+        : ".",
+    );
 }

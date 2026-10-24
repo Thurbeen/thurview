@@ -172,7 +172,14 @@ describe("thurview end to end", () => {
     expect(out["diagnostics"]).toBeUndefined();
     const p = await api<{
       document: { title: string; anchors: Record<string, unknown>; blocks: { type: string }[] };
+      scope: { declared: boolean; withheld: number };
+      changes: { path: string }[];
     }>(`/api/reviews/${id}`);
+    // this repository declares no thurview-scope.yaml, so nothing is withheld and
+    // every path stays readable - the behaviour a declared scope opts out of
+    expect(p.scope.declared).toBe(false);
+    expect(p.scope.withheld).toBe(0);
+    expect(p.changes.map((c) => c.path).sort()).toEqual(["src/audit.ts", "src/auth.ts"]);
     expect(p.document.title).toBe("feature");
     expect(Object.keys(p.document.anchors)).toEqual([]);
     expect(p.document.blocks.length).toBeGreaterThan(0);

@@ -21,8 +21,8 @@ import {
   deleteReview,
   writeJson,
   serverStateFile,
-  type ThreadTarget,
   type ReviewState,
+  type ThreadTarget,
 } from "../store.js";
 import { queue } from "../queue.js";
 import {
@@ -33,6 +33,15 @@ import {
   deleteThread,
 } from "../threads.js";
 import { presenceOf } from "../presence.js";
+import {
+  allowsEverything,
+  changeInScope,
+  scopeAt,
+  OPEN_SCOPE,
+  SCOPE_FILE,
+  type ReviewScope,
+  type SealedRules,
+} from "../scope.js";
 
 const UI_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "ui");
 
@@ -82,6 +91,62 @@ async function findReview(idOrPrefix: string) {
   throw new HttpError(404, all.length ? "ambiguous review id" : "review not found");
 }
 
+/** The scope stamp a revision's `meta.json` carries, with the shape old revisions have. */
+function sealedRules(meta: unknown): SealedRules & { digest: string; withheld: number | null } {
+  const s =
+    meta && typeof meta === "object" && "scope" in meta
+      ? (
+          meta as {
+            scope?: {
+              declared?: boolean;
+              digest?: string;
+              extensions?: string[];
+              filenames?: string[];
+              exclude?: string[];
+              withheld?: number;
+            };
+          }
+        ).scope
+      : undefined;
+  return {
+    declared: s?.declared ?? false,
+    digest: s?.digest ?? OPEN_SCOPE.digest,
+    extensions: s?.extensions ?? [],
+    filenames: s?.filenames ?? [],
+    exclude: s?.exclude ?? [],
+    withheld: typeof s?.withheld === "number" ? s.withheld : null,
+  };
+}
+
+/**
+ * A revision is read back exactly as it was sealed, so the rules it was sealed
+ * under have to match the rules in force. They come apart in one ordinary way:
+ * a repository adds or narrows `thurview-scope.yaml` after a revision was
+ * published, and that revision still holds the peeked source, the file list and
+ * the coverage listing from before. Serving it would be the "declared but not
+ * enforced" failure by the back door, so it is refused and the message names the
+ * one command that fixes it.
+ *
+ * Widening the rules is not that case: a revision holds only what the rules in
+ * force when it was sealed let in, so if every path those rules allowed is still
+ * allowed, there is nothing in it to withhold and refusing it would cost the
+ * reader the history for nothing. The stamp records the rules in full so that
+ * question can be asked at all.
+ *
+ * A revision sealed before this stamp existed carries no `scope`. That reads as
+ * "sealed under no rules", which is what it was, so it is served unchanged while
+ * no rules are declared and refused once some are.
+ */
+export function requireRevisionUnderScope(meta: unknown, n: number, scope: ReviewScope): void {
+  const sealed = sealedRules(meta);
+  if (sealed.digest === scope.digest) return;
+  if (allowsEverything(scope, sealed)) return;
+  throw new HttpError(
+    409,
+    `excluded by scope: revision ${n} was sealed under different rules than ${SCOPE_FILE} declares at the pinned head commit, so what it holds cannot be shown under the rules in force. Run \`thurview publish\` to seal a revision under them.`,
+  );
+}
+
 type Pins = { base: string; head: string };
 type SealedPeek = {
   file: string;
@@ -129,6 +194,7 @@ export async function revisionData(
     readJson<Verdict>(join(dir, "verdict.json")),
     readJson<Provenance>(join(dir, "provenance.json")),
   ]);
+  requireRevisionUnderScope(meta, n, await scopeOf(review));
   const sealedPins = (meta as { pins?: Pins } | null)?.pins ?? review.pins;
   await rehighlightPeeks(document, review.worktree, sealedPins);
   return {
@@ -153,9 +219,12 @@ export async function revisionData(
 
 /** One changed file's diff between the review's pins, highlighted. */
 export async function fileDiff(review: ReviewState, path: string): Promise<FileDiff> {
+  const scope = await scopeOf(review);
+  requireInScope(scope, path);
   const changes = await changedFiles(review.worktree, review.pins.base, review.pins.head);
   const entry = changes.find((c) => c.path === path);
   const oldPath = entry?.oldPath ?? path;
+  requireInScope(scope, oldPath);
   const [oldText, newText] = await Promise.all([
     entry?.status === "A"
       ? Promise.resolve(null)
@@ -185,6 +254,7 @@ export async function fileLines(
   total: number;
   lines: string[];
 } | null> {
+  requireInScope(await scopeOf(review), path);
   const commit = graph === "base" ? review.pins.base : review.pins.head;
   const text = await showFile(review.worktree, commit, path);
   if (text === null) return null;
@@ -204,6 +274,42 @@ export function tailscaleAddresses(): string[] {
     }
   }
   return out;
+}
+
+/**
+ * The review scope the reviewed repository declares at the pinned head commit.
+ *
+ * HTTP and export share the guarded file readers. Symbols and commit file
+ * lists are filtered separately because they do not go through those readers.
+ *
+ * Malformed rules fail the request rather than falling back to an open scope.
+ * `publish` refuses a document whose rules do not parse, so this is the case
+ * where somebody edited the file after publishing; answering as though no scope
+ * were declared is the one outcome that must not happen.
+ */
+export async function scopeOf(review: { worktree: string; pins: Pins }): Promise<ReviewScope> {
+  try {
+    return await scopeAt(review.worktree, review.pins.head);
+  } catch (e) {
+    throw new HttpError(
+      500,
+      `${SCOPE_FILE} at the pinned head commit does not parse, so the review scope it declares cannot be applied: ${(e as Error).message}`,
+    );
+  }
+}
+
+/**
+ * Refuse an excluded path by saying so. A 404 would claim the file does not
+ * exist, when it does and was withheld on purpose - and a reviewer who reads
+ * that as a defect in the tool goes and opens the file by hand, which is the
+ * opposite of what the rules are for.
+ */
+function requireInScope(scope: ReviewScope, path: string): void {
+  if (!scope.inScope(path))
+    throw new HttpError(
+      403,
+      `${path} is excluded by scope: the review scope this repository declares in ${SCOPE_FILE} does not allow it`,
+    );
 }
 
 export interface ServerHandle {
@@ -263,14 +369,41 @@ export async function startServer(
         return { ok: true };
       }
       const n = Number(url.searchParams.get("revision") ?? review.revision);
+      const scopeNow = await scopeOf(review);
       const data = review.revision
         ? await revisionData(review, n)
         : { document: null, map: null, changes: [], coverage: null, meta: null };
+      // Keyed on "a revision was published", not on "meta.json is there": that
+      // file is written last, so a revision left half-written by an interrupted
+      // publish has a document.json and no stamp, and a guard hung on the stamp
+      // would wave it through with the peeks the rules in force now withhold.
+      if (review.revision) requireRevisionUnderScope(data.meta, n, scopeNow);
       const threads = await readThreads(id);
+      // The sealed revision was filtered when it was published, so what is left
+      // to tell the reader is that something WAS withheld and by which rules.
+      // A shorter file list than the change really has, with nothing saying so,
+      // is worse for the reader than seeing all of it.
+      //
+      // The count comes from the revision, not from the pins: it has to describe
+      // the file list next to it. Counted live it would say "3 withheld" over a
+      // list sealed when one was, the moment the reviewer re-pinned to pick up
+      // new commits - and it would put a `git diff` on a page that is otherwise
+      // read entirely off disk, so a review whose repository has moved away
+      // answered 500 instead of serving what it had sealed.
+      const scope = scopeNow;
+      const withheld = sealedRules(data.meta).withheld;
       return {
         review,
         revision: n,
         ...data,
+        scope: {
+          declared: scope.declared,
+          verdict: scope.verdict,
+          extensions: scope.extensions,
+          filenames: scope.filenames,
+          exclude: scope.exclude,
+          withheld,
+        },
         threads: threads.threads,
         decisions: threads.decisions,
         agent: await presenceOf(id),
@@ -288,10 +421,21 @@ export async function startServer(
       return out.filter(Boolean) as unknown[];
     }
     if (sub === "changes") {
-      return await changedFiles(review.worktree, review.pins.base, review.pins.head);
+      const scope = await scopeOf(review);
+      return (await changedFiles(review.worktree, review.pins.base, review.pins.head)).filter((c) =>
+        changeInScope(scope, c),
+      );
     }
     if (sub === "commits") {
-      return await log(review.worktree, review.pins.base, review.pins.head);
+      // A path scope is about paths, so the per-commit file list is filtered and
+      // the message is not. Commit prose is content nobody thinks of as part of
+      // a review and no path rule touches it; README says so where it says what
+      // the scope does not cover.
+      const scope = await scopeOf(review);
+      return (await log(review.worktree, review.pins.base, review.pins.head)).map((c) => ({
+        ...c,
+        files: c.files.filter((f) => scope.inScope(f)),
+      }));
     }
     if (sub === "diff") {
       const path = url.searchParams.get("path") ?? "";
@@ -314,6 +458,7 @@ export async function startServer(
       const idx = symbolIndex(
         review.worktree,
         graph === "base" ? review.pins.base : review.pins.head,
+        await scopeOf(review),
       );
       return (await idx.lookup(name)).slice(0, 20);
     }

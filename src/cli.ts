@@ -44,6 +44,14 @@ import {
 } from "./store.js";
 import { compileDocument, compileMap, globToRegExp, type Diagnostic } from "./document/compile.js";
 import { computeCoverage, scopeGlob, type Coverage } from "./coverage.js";
+import {
+  changeInScope,
+  excludeMatcher,
+  scopeAt,
+  ScopeError,
+  SCOPE_FILE,
+  type ReviewScope,
+} from "./scope.js";
 import { replyThread, setThreadStatus, needsAgent } from "./threads.js";
 import { targetLabel, truncate } from "./thread-state.js";
 import { attach } from "./presence.js";
@@ -279,6 +287,25 @@ function reviewUrl(base: string, id: string, view?: string): string {
   return `${base}/review/${id}${view ? `#/${view}` : ""}`;
 }
 /**
+ * The declared review scope at a commit, as an AxiError when the rules do not
+ * parse. Failing loudly is the point: rules that are declared and quietly not
+ * applied are worse than none, because they read as an assurance.
+ */
+async function scopeOrFail(worktree: string, commit: string): Promise<ReviewScope> {
+  try {
+    return await scopeAt(worktree, commit);
+  } catch (e) {
+    if (e instanceof ScopeError)
+      throw new AxiError(
+        `${SCOPE_FILE} at ${short(commit)} does not declare a usable review scope: ${e.message}`,
+        "VALIDATION_ERROR",
+        [`Fix ${SCOPE_FILE} at the pinned commit, or delete it to review every path`],
+      );
+    throw e;
+  }
+}
+
+/**
  * Base and head as `--base` and `--head` name them. Head defaults to HEAD and
  * base to where head forked from trunk, so a branch is diffed against what it
  * branched from rather than against wherever trunk has moved since.
@@ -502,6 +529,8 @@ async function pinOneCommit(
   commit: string;
   worktree: string;
   inScope: string[];
+  /** the review scope the repository declares at the pinned commit */
+  rules: ReviewScope;
 }> {
   const worktree = await worktreeOf(process.cwd());
   if (!worktree)
@@ -532,20 +561,33 @@ async function pinOneCommit(
   }
   // A scope that matches nothing is a typo, and a document of nothing would
   // still publish and still state honest-looking coverage of zero files.
+  const rules = await scopeOrFail(worktree, commit);
   const files = await g.listFiles(worktree, commit);
-  const inScope = scope === "**" ? files : files.filter((f) => globToRegExp(scope).test(f));
+  const matched = scope === "**" ? files : files.filter((f) => globToRegExp(scope).test(f));
+  const inScope = matched.filter(rules.inScope);
   if (!inScope.length)
-    throw new AxiError(`no file matches "${scope}" at ${commit.slice(0, 12)}`, "VALIDATION_ERROR", [
-      `Pass a path that exists at that commit: \`thurview ${k.command} src/server\``,
-      `Run \`thurview ${k.command}\` with no scope for the whole repository`,
-    ]);
+    throw new AxiError(
+      matched.length
+        ? `every file matching "${scope}" at ${commit.slice(0, 12)} is excluded by the review scope in ${SCOPE_FILE}`
+        : `no file matches "${scope}" at ${commit.slice(0, 12)}`,
+      "VALIDATION_ERROR",
+      matched.length
+        ? [
+            `Widen ${SCOPE_FILE} at that commit, or pass a path it allows`,
+            `The rules there: ${rules.verdict}`,
+          ]
+        : [
+            `Pass a path that exists at that commit: \`thurview ${k.command} src/server\``,
+            `Run \`thurview ${k.command}\` with no scope for the whole repository`,
+          ],
+    );
   const binding: Binding = { kind: "codebase", name: scope };
   if (existing) {
     existing.pins = { base: commit, head: commit };
     existing.binding = binding;
     if (str(p, "title")) existing.title = str(p, "title")!;
     await writeReview(existing);
-    return { review: existing, reused: false, scope, commit, worktree, inScope };
+    return { review: existing, reused: false, scope, commit, worktree, inScope, rules };
   }
   const match = bool(p, "new")
     ? []
@@ -560,7 +602,7 @@ async function pinOneCommit(
     const review = match[0]!;
     review.pins = { base: commit, head: commit };
     await writeReview(review);
-    return { review, reused: true, scope, commit, worktree, inScope };
+    return { review, reused: true, scope, commit, worktree, inScope, rules };
   }
   const id = newId();
   const review: ReviewState = {
@@ -583,7 +625,7 @@ async function pinOneCommit(
   await writeText(join(reviewDir(id), "data.yaml"), k.templates.data);
   await writeText(join(reviewDir(id), "map.yaml"), k.templates.map);
   await writeReview(review);
-  return { review, reused: false, scope, commit, worktree, inScope };
+  return { review, reused: false, scope, commit, worktree, inScope, rules };
 }
 
 // ---- commands ----
@@ -1052,6 +1094,13 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         provenance: await pinned.forge.provenance(pinned.repo, pinned.cr),
       });
     const stat = await g.shortStat(worktree, base, head);
+    // Named here so the agent learns the rules before it anchors anything: an
+    // out-of-scope peek is a publish error, and finding that out at publish is
+    // finding it out after the writing.
+    const rules = await scopeOrFail(worktree, head);
+    const withheld = (await g.changedFiles(worktree, base, head)).filter(
+      (c) => !changeInScope(rules, c),
+    ).length;
     const dir = reviewDir(review.id);
     return {
       review: {
@@ -1074,6 +1123,9 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       },
       change: stat,
       guidance: await guidanceFiles(worktree),
+      ...(rules.declared
+        ? { scopeRules: rules.verdict, scopeWithheld: `${withheld} of ${stat.files} changed files` }
+        : {}),
       help: [
         `Edit ${join(dir, "review.md")} and data.yaml, then run \`thurview publish --review ${short(review.id)}\``,
         `Run \`git grep -n -w <symbol> ${head.slice(0, 12)} --\` in ${worktree} for who reaches a symbol the change moved`,
@@ -1110,6 +1162,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       },
       scale: { filesInScope: pinned.inScope.length },
       guidance: await guidanceFiles(worktree),
+      ...(pinned.rules.declared ? { scopeRules: pinned.rules.verdict } : {}),
       help: [
         `Run \`git ls-tree -d -r --name-only ${commit.slice(0, 12)}\` in ${worktree} for the directories in scope`,
         `Author ${join(dir, "map.yaml")} first: it carries the breadth the prose cannot`,
@@ -1144,6 +1197,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       },
       scale: { filesInScope: pinned.inScope.length },
       guidance: await guidanceFiles(worktree),
+      ...(pinned.rules.declared ? { scopeRules: pinned.rules.verdict } : {}),
       help: [
         `Run \`git grep -n -w <symbol> ${commit.slice(0, 12)} --\` in ${worktree} for who depends on what the design changes`,
         `Declare in ${join(dir, "data.yaml")} what the design would add, change or remove, each anchored to the code it lands in today`,
@@ -1223,6 +1277,10 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           ],
         );
     }
+    // Resolved before any file is read: the scope decides what publish is allowed
+    // to copy into the sealed revision, and malformed rules stop the publish
+    // rather than silently becoming no rules at all.
+    const scope = await scopeOrFail(review.worktree, review.pins.head);
     const threads = await readThreads(review.id);
     if (review.revision > 0) {
       const openC = threads.threads.filter(
@@ -1248,6 +1306,16 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         message:
           "ignored: a review no longer restyles thurview's own light and dark theme; delete the file",
       });
+    if (scope.exclude.length) {
+      const tree = await g.listFiles(review.worktree, review.pins.head);
+      for (const dir of scope.exclude)
+        if (!tree.some(excludeMatcher(dir)))
+          diags.push({
+            level: "warning",
+            file: SCOPE_FILE,
+            message: `exclude: "${dir}" matches no path at the pinned head commit, so it withholds nothing - check the spelling and the case`,
+          });
+    }
     const kind = kindOf(review);
     const doc = await compileDocument({
       cwd: review.worktree,
@@ -1255,6 +1323,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       reviewMd,
       dataYaml: dataYaml ?? "",
       kind,
+      scope,
     });
     diags.push(...doc.diagnostics);
     let map = null;
@@ -1265,6 +1334,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         mapYaml,
         anchors: doc.anchors,
         kind,
+        scope,
       });
       diags.push(...m.diagnostics);
       map = m.map;
@@ -1297,6 +1367,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           scope: review.binding.name,
           allFiles: await g.listFiles(review.worktree, review.pins.head),
           searches: doc.searches,
+          inScope: scope.inScope,
           anchored: Object.values(doc.document.anchors)
             .map((a) => a.peek?.file)
             .filter((f): f is string => !!f),
@@ -1349,7 +1420,10 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     await cp(join(dir, "review.md"), join(rdir, "review.md"));
     if (dataYaml !== null) await cp(join(dir, "data.yaml"), join(rdir, "data.yaml"));
     if (mapYaml !== null) await cp(join(dir, "map.yaml"), join(rdir, "map.yaml"));
-    const changes = await g.changedFiles(review.worktree, review.pins.base, review.pins.head);
+    // The sealed file list is a path listing on disk under whatever the umask
+    // gives, so the rules apply here too rather than only on the way out.
+    const allChanges = await g.changedFiles(review.worktree, review.pins.base, review.pins.head);
+    const changes = allChanges.filter((c) => changeInScope(scope, c));
     await writeJson(join(rdir, "document.json"), doc.document);
     await writeJson(join(rdir, "map.json"), map);
     await writeJson(join(rdir, "changes.json"), changes);
@@ -1370,6 +1444,25 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       pins: review.pins,
       kind,
       hasMap: !!map,
+      // Which rules this revision was sealed under, and how much they held back
+      // from it. A revision is served back exactly as it was sealed, so without
+      // this stamp a repository that narrows its rules would keep handing out the
+      // revision it sealed before narrowing them - the peeks, the file list and
+      // the coverage listing included. The rules are recorded in full, not just
+      // as a digest, so widening them later does not cost the reader the history:
+      // the server can see that everything this revision holds is still allowed.
+      // `withheld` is counted here rather than at request time because it is a
+      // statement about THIS file list: counted live it would drift the moment
+      // the pins move and claim a number about a revision nobody has published.
+      scope: {
+        declared: scope.declared,
+        digest: scope.digest,
+        extensions: scope.extensions,
+        filenames: scope.filenames,
+        exclude: scope.exclude,
+        withheld: allChanges.length - changes.length,
+        of: allChanges.length,
+      },
     });
     review.title = doc.document.title;
     review.revision = n;
@@ -1411,6 +1504,15 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         url: url ?? "(server not running)",
       },
     };
+    // What the rules withheld, said out loud: a shorter change than was made,
+    // with nothing naming the rule that shortened it, is the failure mode.
+    if (scope.declared)
+      out["scope"] = {
+        rules: SCOPE_FILE,
+        verdict: scope.verdict,
+        withheld: allChanges.length - changes.length,
+        of: allChanges.length,
+      };
     if (coverage)
       out["notExamined"] = {
         files: coverage.states.uncovered,

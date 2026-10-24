@@ -14,6 +14,7 @@ import { parseDocument, FOREIGN_DIAGRAM_FENCES, type RawBlock } from "./parse.js
 import { sortEntries, countsOf, type InterfaceDelta } from "../interfaces.js";
 import type { SearchRecord } from "../coverage.js";
 import type { DocumentKind } from "../store.js";
+import { changeInScope, OPEN_SCOPE, SCOPE_FILE, type ReviewScope } from "../scope.js";
 import {
   DataSchema,
   SequenceSchema,
@@ -168,6 +169,13 @@ export interface CompileInput {
   dataYaml: string;
   /** review (a change), explainer (a codebase at one commit) or design (a proposal); default review */
   kind?: DocumentKind;
+  /**
+   * The review scope the repository declared. A peek is the one place file
+   * content is copied into a sealed revision, so an out-of-scope one is an error
+   * here rather than something to strip later: the author gets told, and the
+   * content never reaches `document.json` on disk.
+   */
+  scope?: ReviewScope;
 }
 
 /** The kind, as a message names it, so one sentence serves every kind that needs it. */
@@ -259,6 +267,7 @@ export async function compileDocument(input: CompileInput): Promise<{
       `searches feed an explainer's coverage, and ${kindWord(kind)} has none; say in the prose what you searched and how`,
     );
 
+  const scope = input.scope ?? OPEN_SCOPE;
   const parsed = parseDocument(input.reviewMd);
   if (!parsed.title) err("review.md", "the document needs an H1 title");
 
@@ -282,6 +291,11 @@ export async function compileDocument(input: CompileInput): Promise<{
       err(
         "data.yaml",
         `anchor ${id}: ${kindWord(kind)} has one pinned commit, so \`graph: base\` has no meaning`,
+      );
+    } else if (a.peek && !scope.inScope(a.peek.file)) {
+      err(
+        "data.yaml",
+        `anchor ${id}: ${a.peek.file} is excluded by the review scope this repository declares in ${SCOPE_FILE}, so its source cannot be copied into the published revision`,
       );
     } else if (a.peek) {
       const text = await fileAt(a.peek.graph, a.peek.file);
@@ -1111,6 +1125,8 @@ export async function compileMap(input: {
   mapYaml: string;
   anchors: Record<string, unknown>;
   kind?: DocumentKind;
+  /** the declared review scope: `filesByNode` is a path listing sealed into map.json, so it is filtered too */
+  scope?: ReviewScope;
 }): Promise<{ map: CompiledMap | null; diagnostics: Diagnostic[] }> {
   const diags: Diagnostic[] = [];
   const err = (message: string) => diags.push({ level: "error", file: "map.yaml", message });
@@ -1135,6 +1151,7 @@ export async function compileMap(input: {
   // about today, while `nodes` is the structure the design proposes, and a part
   // it would create owns no file yet. Warning about that would be noise the
   // author cannot fix except by deleting the proposal.
+  const scope = input.scope ?? OPEN_SCOPE;
   const proposedHead = input.kind === "design";
   const validateGraph = async (
     g: { nodes: MapNode[]; edges: MapEdge[] },
@@ -1145,7 +1162,8 @@ export async function compileMap(input: {
       if (ids.has(n.id)) err(`${graph}: duplicate node "${n.id}"`);
       ids.add(n.id);
     }
-    const files = await listFiles(input.cwd, graph === "head" ? input.pins.head : input.pins.base);
+    const all = await listFiles(input.cwd, graph === "head" ? input.pins.head : input.pins.base);
+    const files = all.filter((f) => scope.inScope(f));
     for (const n of g.nodes) {
       const parent = n.id.includes(".") ? n.id.slice(0, n.id.lastIndexOf(".")) : null;
       if (parent && !ids.has(parent))
@@ -1159,7 +1177,14 @@ export async function compileMap(input: {
         // author looking for the very thing `graph: base` is refused for.
         const at = proposedHead ? "the pinned commit" : `the pinned ${graph} commit`;
         if (!files.some((f) => re.test(f)))
-          warn(`${graph}: node "${n.id}": no file matches "${glob}" at ${at}`);
+          // A node pointing only into withheld paths gets a map node with no
+          // files behind it and no reason given, so name the rules instead of
+          // letting the author read this as "the glob is wrong".
+          warn(
+            all.some((f) => re.test(f))
+              ? `${graph}: node "${n.id}": every file matching "${glob}" at ${at} is excluded by the review scope this repository declares in ${SCOPE_FILE}`
+              : `${graph}: node "${n.id}": no file matches "${glob}" at ${at}`,
+          );
       }
     }
     for (const e of g.edges) {
@@ -1171,7 +1196,9 @@ export async function compileMap(input: {
   if (m.base) await validateGraph(m.base, "base");
   if (diags.some((d) => d.level === "error")) return { map: null, diagnostics: diags };
 
-  const changed: ChangedFile[] = await changedFiles(input.cwd, input.pins.base, input.pins.head);
+  const changed: ChangedFile[] = (
+    await changedFiles(input.cwd, input.pins.base, input.pins.head)
+  ).filter((f) => changeInScope(scope, f));
   const filesByNode: Record<string, string[]> = {};
   for (const n of m.nodes) {
     const res = n.files?.map(globToRegExp) ?? [];

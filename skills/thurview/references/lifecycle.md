@@ -148,6 +148,13 @@ ${THURVIEW_HOME:-~/.thurview}/
                              --pr` read them for the pinned head
 ```
 
+The reviewed repository's own `thurview-scope.yaml` is not stored here: it is
+read from git at the pinned head commit every time it is needed, so the rules a
+document is held to are the ones the reviewed commit carries. Each sealed revision records the rules
+it was sealed under, in full, in its `meta.json`: widening them later leaves it
+readable, because it holds only what the older rules allowed, while narrowing
+them makes it refuse until a revision is published under the rules in force.
+
 A failed publish leaves the last sealed revision in place. The reader can
 switch between revisions in the browser.
 

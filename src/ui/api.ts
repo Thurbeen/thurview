@@ -17,6 +17,22 @@ export interface Payload {
   document: CompiledDocument | null;
   map: CompiledMap | null;
   changes: ChangedFile[];
+  /**
+   * The review scope the reviewed repository declares, and how many of the
+   * changed files it withheld. The reader is told a file list was shortened and
+   * by which rules; a shorter change with nothing saying so is the failure this
+   * field exists to prevent. `withheld` is the count the presented revision was
+   * sealed with, so it describes the file list beside it; it is null before the
+   * first publish and on a revision sealed before the count was recorded.
+   */
+  scope: {
+    declared: boolean;
+    verdict: string;
+    extensions: string[];
+    filenames: string[];
+    exclude: string[];
+    withheld: number | null;
+  };
   /** explainers only: what the document examined at the pinned commit, and what it did not */
   coverage: Coverage | null;
   meta: { revision: number; at: string; title: string; hasMap: boolean } | null;

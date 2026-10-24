@@ -78,6 +78,11 @@ code explainer, per the `thurview-explain` skill. A request for how something
 _should_ be built rather than what was built: a design, per the
 `thurview-design` skill.
 
+When `scaffold` prints `scopeRules`, the repository declares enforced file rules
+in `thurview-scope.yaml` at the pinned head. Read them before choosing anchors:
+a withheld peek fails publish, and HTTP and HTML export omit excluded files.
+The [README](../../README.md#declaring-what-is-in-scope) owns the configuration.
+
 ## Before authoring
 
 Read the guidance files that exist, in this order. The second wins on
