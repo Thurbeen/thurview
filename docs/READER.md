@@ -3,30 +3,27 @@
 The document does not review the code for you. It helps you understand the
 code fast enough to judge it yourself.
 
-A review pins a base and a head. An explainer pins one commit, so it has no
-diff and nothing to approve. A design pins the commit it argues from: its
-anchors land on the code as it stands, and what it would build rides beside
-them as proposals.
+A review pins a base and a head, so everything below is read at those two
+commits.
 
 ## The home page
 
-The home page is a queue: every review, explainer and design, grouped by
+The home page is a queue: every review, grouped by
 repository and ordered by whose turn it is - a decision not yet posted to its
 change request first, then documents waiting for your reading, then ones whose
 change request moved past the pin, then ones waiting for the agent, then ones
 not published yet. A row bound to a change request also says whether the pin is
 still the head, what you decided and whether it reached the forge, and whether
 CI is a real gate there, as of the last `forge` command and with that age on
-screen. The browser never calls the forge; explainers and designs carry those
-columns empty.
+screen. The browser never calls the forge; a review of a branch or a range
+carries those columns empty.
 
 ## The tabs
 
 - **Review**: the document as a report, split into parts that each answer one
   question a reader brings to a change, in the order they ask them. The
   outline beside the page names the same parts; on a phone a finding opens in
-  place and the parts sit in a strip at the top. An explainer opens on its
-  summary and its coverage, a design on its summary and what it proposes.
+  place and the parts sit in a strip at the top.
   - **Summary** - what changed, and can it merge? The title, what the change
     does, its size, and when the review was published with its pass
     (`thurview publish --pass`) the verdict: the confidence from 1 to 5 and
@@ -57,19 +54,13 @@ columns empty.
 - **Files**: split or unified diff of every changed file at the pinned
   commits, with expandable context. Click a line number to comment on it.
   Click an identifier to see where it is defined at that commit; Ctrl-click
-  jumps there. Explainers and designs show full files at their pinned commit.
-  A file tree sits beside Files, Commits and Coverage: compact folder chains,
+  jumps there.
+  A file tree sits beside Files and Commits: compact folder chains,
   change statuses and line totals, comment and anchor markers, and a path
   filter. Use arrows to move, Left/Right to fold, Enter to open, or the expand
   and collapse all buttons. Drag the divider to resize it; the width and folds
   are remembered. On a narrow screen, use Files to open the drawer.
 - **Commits**: the commits between base and head.
-- **Coverage** (explainers): every file in scope at the pinned commit, in one
-  of four states - anchored in the document, placed on the map only, matched
-  by a search the agent recorded, or not examined - grouped by directory, with
-  each search and what it matched. Derived at publish, which re-runs every
-  recorded search with `git grep` at the pinned commit, so what the explainer
-  skipped is a stated fact rather than something the reader has to infer.
 - **Map**: systems, containers, components and code, with what the change
   added, removed or touched, linked to files and code - where the change landed
   in the system, and what sits next to it.
@@ -96,7 +87,7 @@ them, and the selected node's files, code and neighbours](../media/review-map.pn
 _Send to the agent_ delivers a question at once and the answer lands in the
 same thread. _Add to the review_ holds a comment until you submit with
 _Approve_ or _Request changes_. _Close the review_ ends it without approving
-it; a design says _Drop the design_ and an explainer _Stop reading_.
+it.
 Each thread says where it stands - held, queued, delivered or answered - and
 the panel says whether an agent is listening at all. Nothing claims a reader is
 there when none is: a question asked with no agent attached is queued, not

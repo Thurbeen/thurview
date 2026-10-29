@@ -320,7 +320,8 @@ export function findingEvidence(f: Finding): HTMLElement {
           "button",
           {
             class: "small ghost",
-            onclick: () => navigate("files", { path: f.path, line: f.line, side: f.side ?? "head" }),
+            onclick: () =>
+              navigate("files", { path: f.path, line: f.line, side: f.side ?? "head" }),
           },
           "Open in Files",
         ),

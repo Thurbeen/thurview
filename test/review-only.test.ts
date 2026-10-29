@@ -80,7 +80,10 @@ beforeAll(async () => {
   home = await mkdtemp(join(tmpdir(), "thurview-home-"));
   repo = await mkdtemp(join(tmpdir(), "thurview-repo-"));
   await git("init", "-q", "-b", "main");
-  await writeFile(join(repo, "auth.ts"), "export function login(user: string) {\n  return !!user;\n}\n");
+  await writeFile(
+    join(repo, "auth.ts"),
+    "export function login(user: string) {\n  return !!user;\n}\n",
+  );
   await git("add", ".");
   await git("commit", "-q", "-m", "base");
   await git("checkout", "-q", "-b", "feature");
@@ -114,7 +117,7 @@ describe("thurview is a review tool only", () => {
     expect(Object.keys(help["commands"]).join(" ")).not.toMatch(/\b(explain|design)\b/);
     for (const name of await readdir(join(ROOT, "skills"))) {
       const skill = await readFile(join(ROOT, "skills", name, "SKILL.md"), "utf8");
-      expect(skill, name).not.toMatch(/thurview-(explain|design)|\bexplainer\b|software map/i);
+      expect(skill, name).not.toMatch(/thurview-(explain|design)|\bexplainers?\b/i);
     }
   });
 

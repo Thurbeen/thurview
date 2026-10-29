@@ -65,7 +65,7 @@ describe("SKILL.md frontmatter", () => {
     const broken = [
       "---",
       "name: thurview",
-      "description: A thing. Two kinds: a review, and an explainer.",
+      "description: A thing. Two kinds: a branch, and a range.",
       "---",
       "",
     ].join("\n");

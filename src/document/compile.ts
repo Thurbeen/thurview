@@ -923,7 +923,7 @@ export interface CompiledMap {
   filesByNode: Record<string, string[]>;
 }
 
-export function globToRegExp(glob: string): RegExp {
+function globToRegExp(glob: string): RegExp {
   let re = "^";
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i]!;

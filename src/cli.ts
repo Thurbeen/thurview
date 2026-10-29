@@ -41,7 +41,7 @@ import {
   type Binding,
   type Thread,
 } from "./store.js";
-import { compileDocument, compileMap, globToRegExp, type Diagnostic } from "./document/compile.js";
+import { compileDocument, compileMap, type Diagnostic } from "./document/compile.js";
 import { replyThread, setThreadStatus, needsAgent } from "./threads.js";
 import { targetLabel, truncate } from "./thread-state.js";
 import { attach } from "./presence.js";
@@ -424,8 +424,7 @@ const SPECS: Record<
     ],
   },
   info: {
-    description:
-      "Reviews bound to this worktree (or all of them with --all)",
+    description: "Reviews bound to this worktree (or all of them with --all)",
     flags: {
       all: { kind: "boolean", help: "every review, not only this worktree" },
       fields: {

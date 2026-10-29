@@ -91,11 +91,7 @@ export function commentPopover(target: ThreadTarget, quote?: string): HTMLElemen
       "div",
       { class: "muted", style: { fontSize: "12px", marginTop: "6px" } },
       h("div", null, `Send to the agent — ${listeningLine()}`),
-      h(
-        "div",
-        null,
-        `${held} — held until you submit the review.`,
-      ),
+      h("div", null, `${held} — held until you submit the review.`),
     ),
   );
   setTimeout(() => ta.focus());

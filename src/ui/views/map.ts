@@ -172,11 +172,7 @@ export function renderMap(root: HTMLElement): void {
       return h(
         "div",
         null,
-        h(
-          "div",
-          { class: "map-note muted" },
-          "Nothing here was touched. The change is elsewhere.",
-        ),
+        h("div", { class: "map-note muted" }, "Nothing here was touched. The change is elsewhere."),
         group(null, cold),
       );
     return h(
