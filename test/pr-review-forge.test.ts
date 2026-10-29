@@ -1058,6 +1058,70 @@ describe("compact summary golden Markdown", { timeout: 30_000 }, () => {
     expect(out.pass.open).toBe(2);
   });
 
+  // The operator who may not publish a page: the skill's own commands, a pass
+  // with no reviewUrl, and the same summary as with a page, less its link.
+  it.each([
+    ["github", false],
+    ["gitlab", false],
+    ["github", true],
+    ["gitlab", true],
+  ] as const)("the skill's page-less path on %s (edited: %s)", async (provider, edited) => {
+    const skill = await readFile(join(ROOT, "skills/thurview-pr-review/SKILL.md"), "utf8");
+    const section = skill.split("\n## Without a page\n")[1]?.split("\n## ")[0];
+    expect(section, "the skill documents a page-less path").toBeDefined();
+    const commands = [...section!.matchAll(/^thurview [^\n]*$/gm)].map(([l]) => l.split(" "));
+    expect(commands.map((c) => c.slice(1, 3).join(" "))).toEqual([
+      "pr-review sync",
+      "pr-review sync",
+    ]);
+    expect(section).not.toMatch(/thurview (?:publish|scaffold|open|serve|wait --review)/);
+
+    await setup(provider, edited);
+    const pass = edited
+      ? {
+          ...PASS,
+          findings: [],
+          assessments: [
+            { id: "loop", status: "still-present", evidence: "The 4xx test still fails." },
+            { id: "keep", status: "still-present", evidence: "The timeout test still fails." },
+          ],
+        }
+      : PASS;
+    const cwd = provider === "github" ? github : gitlab;
+    await writeFile(join(cwd, "pass.json"), JSON.stringify(pass));
+    for (const command of commands)
+      await cli(
+        command.slice(1).map((a) => (a === "<ref>" ? "7" : a)),
+        cwd,
+      );
+    const sent = (await calls()).filter((c) =>
+      /issues\/7\/comments --method POST|issues\/comments\/9 --method PATCH|merge_requests\/7\/notes --method POST|notes\/9 --method PUT/.test(
+        c.args.join(" "),
+      ),
+    );
+    expect(sent, "the dry run posts nothing, the sync one summary").toHaveLength(1);
+    const body: string =
+      provider === "github"
+        ? JSON.parse(sent[0]!.body).body
+        : sent[0]!.args.find((a) => a.startsWith("body="))!.slice(5);
+    expect(body).not.toContain("Full review");
+    expect(body).not.toContain("reviews.example.com");
+    if (!edited) {
+      const paged = await readFile(join(GOLDENS, `first-${provider}.md`), "utf8");
+      expect(body.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/, "REVIEWED_AT") + "\n").toBe(
+        paged.replace("\n\n[**Full review**](https://reviews.example.com/r/7/)", ""),
+      );
+    } else expect(body).toContain("Since this review: 0 resolved · 0 new · 2 still open");
+    const [status] = await statusCalls();
+    const cr =
+      provider === "github"
+        ? "https://github.com/acme/web/pull/7"
+        : "https://gitlab.example.com/acme/web/-/merge_requests/7";
+    expect(
+      provider === "github" ? JSON.parse(status!.body).target_url : status!.args.join(" "),
+    ).toContain(cr);
+  });
+
   it("dry run shows pending locations without inventing thread URLs", async () => {
     await setup("github");
     const file = join(bin, "golden-pass.json");

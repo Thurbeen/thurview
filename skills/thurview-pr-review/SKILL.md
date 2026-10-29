@@ -1,6 +1,6 @@
 ---
 name: thurview-pr-review
-description: Review an opened GitHub PR or GitLab MR in one flow - check publishing setup, author and seal the anchored thurview page, publish a public snapshot, then post or edit one summary linking it and follow new pushes. Use for PR/MR review requests, including browser walkthroughs of opened change requests, or /thurview-pr-review. For a local branch or commit range use thurview; for fixes use thurview-fix.
+description: Review an opened GitHub PR or GitLab MR in one flow - check publishing setup, author and seal the anchored thurview page, publish a public snapshot, then post or edit one summary linking it and follow new pushes - or, when asked for no page, the same summary and threads alone. Use for PR/MR review requests, including browser walkthroughs of opened change requests, or /thurview-pr-review. For a local branch or commit range use thurview; for fixes use thurview-fix.
 user-invocable: true
 argument-hint: "<PR or MR number or URL> [--once] [--stop]"
 ---
@@ -38,6 +38,26 @@ $ARGUMENTS
 
 `--once` posts one pass and stops there. `--stop` runs
 `thurview pr-review stop --change <ref>` and nothing else.
+
+## Without a page
+
+When the user asks for no page - publishing one is not allowed, or not
+wanted - the review lives on the forge alone. Of step 0, read the rules and
+guidance but skip the publishing check; skip all of step 4: no `scaffold`,
+`publish` or `publish-static`, no server, no snapshot. Every other step and
+rule stands: the confidence scale and its caps, the categories, one thread
+per finding, the assessments, a disposition for every other reviewer's
+thread, one summary edited in place, the follow loop. Write `pass.json` as
+step 5 shows, without `reviewUrl`, and sync it:
+
+```sh
+thurview pr-review sync --change <ref> --file pass.json --dry-run
+thurview pr-review sync --change <ref> --file pass.json
+```
+
+The summary then has no link line, and the `thurview/review` status links the
+change request. Stay page-less for the whole follow loop unless the user
+changes it.
 
 ## Never
 
@@ -93,10 +113,11 @@ repository, get the user's publication authorization or use their already
 authorized protected target before proceeding. Do not turn a saved target
 into authorization to expose another private repository.
 
-A summary must have the public review link on the first pass and every update.
-Do not post a summary with a missing link or a `pending` placeholder. Leave
-`allowLiveLink: false` in the cloud configuration so the snapshot cannot
-disclose a separately running interactive page.
+A summary must have the public review link on the first pass and every update,
+unless the review is [without a page](#without-a-page). Do not post a summary
+with a missing link or a `pending` placeholder. Leave `allowLiveLink: false`
+in the cloud configuration so the snapshot cannot disclose a separately
+running interactive page.
 
 ## 1. Where the review stands
 
@@ -455,9 +476,9 @@ evidence for every own finding returned by `reassess`:
   scope. Say so when a suite does not exist or did not run. The summary leaves
   it out.
 - `reviewUrl` is required by this workflow on **every** pass, even when there
-  are no findings. Use only the public snapshot from step 4. Never use the
-  live URL on a public repository. The CLI keeps the field optional for other
-  callers; that compatibility does not make the link optional here.
+  are no findings, unless the review is [without a page](#without-a-page).
+  Use only the public snapshot from step 4. Never use the live URL on a
+  public repository.
 
 ```sh
 thurview pr-review sync --change <ref> --file pass.json --dry-run
@@ -488,14 +509,14 @@ stop.
 Read and address feedback on the forge; keep finding assessments and the
 summary current when a push arrives. Do not run a document wait or claim an
 agent is listening on a live page. The PR/MR's merge, close or stop ends this
-workflow. With `--once`, stop after the first complete publish and sync.
-Do not change the source branch as part of this review.
+workflow. With `--once`, stop after the first complete publish and sync, or
+the first sync without a page. Do not change the source branch as part of this review.
 
 A reader stops the loop with the `thurview:stop` label or a comment that
 starts `/thurview stop`; you stop it with `thurview pr-review stop`. A stopped
 review resumes with `thurview pr-review start --change <ref>` once the label
-is gone. Report what you posted, the summary comment URL and the public page when the
-loop ends.
+is gone. Report what you posted, the summary comment URL and the public page,
+if any, when the loop ends.
 
 How GitHub and GitLab differ, and what each supports, is in
 [Forges](references/forges.md).

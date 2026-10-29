@@ -877,7 +877,10 @@ const SPECS: Record<
         help: "github or gitlab, when the host is not one of the two known ones",
       },
       repo: { kind: "string", help: "host/path, when `origin` is not the repository to post to" },
-      file: { kind: "string", help: "sync: the JSON pass to post" },
+      file: {
+        kind: "string",
+        help: "sync: the JSON pass to post; without `reviewUrl` the summary has no page link",
+      },
       "dry-run": { kind: "boolean", help: "sync: validate and render, post nothing" },
       full: {
         kind: "boolean",
