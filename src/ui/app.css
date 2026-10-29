@@ -1631,6 +1631,10 @@ kbd {
     opacity: 0.35;
   }
 }
+/* The queue scrolls as a page; document views keep their own pane scrollers. */
+body:has(> #app > .home) {
+  overflow-y: auto;
+}
 .home {
   max-width: 900px;
   margin: 0 auto;
