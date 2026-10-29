@@ -858,8 +858,9 @@ describe("the maintainer's queue", () => {
       ids[name] = out["review"].uuid;
       await cli(["publish", "--review", ids[name]!], { cwd: dir });
     }
-    ids["explainer"] = (await cli(["explain"], { cwd: dir }))["explainer"].uuid;
-    ids["design"] = (await cli(["design"], { cwd: dir }))["design"].uuid;
+    ids["range"] = (
+      await cli(["scaffold", "--base", "main", "--head", "clipboard", "--new"], { cwd: dir })
+    )["review"].uuid;
     await fetch(`http://127.0.0.1:${server.port}/api/reviews/${ids["decided"]}/submit`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -894,7 +895,7 @@ describe("the maintainer's queue", () => {
     const all = (await rows()).filter((r) => Object.values(ids).includes(r.id));
     const order = all.map((r) => r.id);
     expect(order.slice(0, 3)).toEqual([ids["decided"], ids["read"], ids["stale"]]);
-    expect(order.slice(3).sort()).toEqual([ids["explainer"], ids["design"]].sort());
+    expect(order.slice(3)).toEqual([ids["range"]]);
 
     const [decided, read, stale] = all as [Row, Row, Row];
     expect(decided.queue).toMatchObject({
@@ -912,20 +913,16 @@ describe("the maintainer's queue", () => {
     expect(stale.queue["factsAt"]).toBeTruthy();
   });
 
-  it("lists explainers and designs in the same repository, with the change request columns empty", async () => {
-    const all = await rows();
-    for (const kind of ["explainer", "design"]) {
-      const row = all.find((r) => r.id === ids[kind])!;
-      expect(row.kind).toBe(kind);
-      expect(row.queue).toMatchObject({
-        repo: "github.example.com/acme/web",
-        change: null,
-        pin: null,
-        ci: null,
-        decision: null,
-        turn: "agent",
-      });
-    }
+  it("lists a review of a range in the same repository, with the change request columns empty", async () => {
+    const row = (await rows()).find((r) => r.id === ids["range"])!;
+    expect(row.queue).toMatchObject({
+      repo: "github.example.com/acme/web",
+      change: null,
+      pin: null,
+      ci: null,
+      decision: null,
+      turn: "agent",
+    });
   });
 
   it("drops a decision down the queue once it reached the change request", async () => {
@@ -957,7 +954,7 @@ describe("the maintainer's queue", () => {
     expect(all[0]!.id).toBe(ids["read"]);
   });
 
-  it("groups a checkout's explainer with its change requests when origin names no forge", async () => {
+  it("groups a checkout's range review with its change requests when origin names no forge", async () => {
     const fork = await mkdtemp(join(tmpdir(), "thurview-queue-fork-"));
     await execFileP("git", ["clone", "-q", "--origin", "upstream", dir, fork]);
     await fixtures([pull(7, first)]);
@@ -967,7 +964,11 @@ describe("the maintainer's queue", () => {
         { cwd: fork },
       )
     )["review"].uuid;
-    const ex = (await cli(["explain"], { cwd: fork }))["explainer"].uuid;
+    const ex = (
+      await cli(["scaffold", "--base", "main", "--head", "upstream/clipboard", "--new"], {
+        cwd: fork,
+      })
+    )["review"].uuid;
     const all = await rows();
     expect(all.find((r) => r.id === cr)!.queue["repo"]).toBe("github.example.com/acme/web");
     expect(all.find((r) => r.id === ex)!.queue["repo"]).toBe("github.example.com/acme/web");

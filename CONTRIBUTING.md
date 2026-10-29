@@ -50,10 +50,6 @@ locally.
   other skills draw on - the architecture lens every review leads with, the
   document, `data.yaml` and `map.yaml` shapes, the search recipes, and the
   lifecycle.
-- `skills/thurview-explain/` and `skills/thurview-design/`: one skill per other
-  document kind, each keeping a reference of its own only for what is its
-  alone - `thurview-design/references/anchors-and-proposals.md` is the only
-  one today.
 - `skills/thurview-fix/`: the skill that reviews a change by searching what it
   reaches, commits the fixes that pass, and can post the rest through
   `thurview forge`.
@@ -74,9 +70,6 @@ locally.
 - `test/e2e.test.ts`: the suite, driving the CLI and the server end to end.
 - `test/forge.test.ts`: the same, with a fake `gh` and `glab` on PATH, so both
   forge adapters are driven rather than asserted.
-- `examples/terminal-poc/`: a proof of concept drawing a published document in
-  a thurbox terminal pane; not shipped. Its README says how to run it, and
-  `test/terminal-poc.test.ts` drives it.
 
 ## Demo media
 
@@ -96,9 +89,9 @@ steps change, and keep it to what the skills do.
 
 ## The skills and the command
 
-`skills/` holds six skills - `thurview`, `thurview-explain` and
-`thurview-design` author and publish one document kind each,
-`thurview-fix` reviews a change and commits the fixes that pass,
+`skills/` holds four skills, all for reviewing a change - `thurview` authors
+and publishes a review, `thurview-fix` reviews a change and commits the fixes
+that pass,
 `thurview-pr-review` authors a PR/MR review page, publishes its public
 snapshot, and keeps one forge summary linked to it,
 and `thurview-publish` uploads an exported document to the

@@ -1,5 +1,5 @@
 import { h, append, popover, clickPoint } from "../dom.js";
-import { state, navigate, threadsFor, kind, canWrite } from "../state.js";
+import { state, navigate, threadsFor, canWrite } from "../state.js";
 import { openAnchorPeek } from "../code.js";
 import { commentPopover, threadPinRow } from "../threads.js";
 import {
@@ -22,47 +22,21 @@ export function renderMap(root: HTMLElement): void {
   const map = state.data?.map;
   // A map with no nodes is the same to the reader as no map at all, and the
   // reason for both is worth saying: an absent map is a claim, not a gap.
-  const explainer = kind() === "explainer";
-  // A design's map is the structure it PROPOSES, with the structure as it stands
-  // under `base`, so every mark on it is future tense. The review words - "where
-  // the change landed", "what the change touched" - would state it as done.
-  const design = kind() === "design";
   if (!map || !map.head.nodes.length) {
     append(root, [
-      explainer
-        ? h(
-            "div",
-            { class: "empty-state" },
-            h("p", null, "No map in this explainer."),
-            h(
-              "p",
-              null,
-              "The map is where an explainer carries breadth: it places the parts the prose ",
-              "had no room for. Without one, every file the document does not anchor counts ",
-              "as not examined on the Coverage tab.",
-            ),
-          )
-        : h(
-            "div",
-            { class: "empty-state" },
-            h("p", null, design ? "No map in this design." : "No map in this review."),
-            h(
-              "p",
-              null,
-              design
-                ? "The map is where a design shows the shape it proposes: the parts it would add, change or remove, beside the structure as it stands. A design that changes one part in place ships without one."
-                : "The map places a change inside the system and shows what sits next to it. A change that lands in one place, where the Files tab already answers that, ships without one.",
-            ),
-          ),
+      h(
+        "div",
+        { class: "empty-state" },
+        h("p", null, "No map in this review."),
+        h(
+          "p",
+          null,
+          "The map places a change inside the system and shows what sits next to it. A change that lands in one place, where the Files tab already answers that, ships without one.",
+        ),
+      ),
     ]);
     return;
   }
-  // A design without a `base` map states the proposed structure and nothing to
-  // compare it against, so no node carries a status. Marking every part as
-  // untouched then reads as "this design changes nothing", which is the
-  // opposite of what the document says - the same reason an explainer imposes
-  // no reading order on its parts.
-  const unmarked = design && !map.base;
   const headNodes = new Map(map.head.nodes.map((n) => [n.id, n]));
   const baseNodes = new Map((map.base?.nodes ?? []).map((n) => [n.id, n]));
   const all = collect(map);
@@ -87,28 +61,6 @@ export function renderMap(root: HTMLElement): void {
   // so it says what the map answers that the diff cannot, and hands them one
   // place to start rather than a board of equal boxes.
   const intro = () => {
-    if (explainer)
-      return h(
-        "div",
-        { class: "map-intro" },
-        h("h2", null, "The parts of the system"),
-        h(
-          "p",
-          null,
-          "The document carries depth on the parts it selected; this carries breadth over the",
-          " rest — what the parts are, what they own, and what they connect to at the pinned",
-          " commit. Open a part to see its files, its code and its neighbours.",
-        ),
-        h(
-          "div",
-          { class: "map-route" },
-          h(
-            "button",
-            { class: "small", onclick: () => navigate("coverage") },
-            "What this explainer left out ▸",
-          ),
-        ),
-      );
     const counts: [number, string, string][] = [
       [map.diff.added.length, "ok", "added"],
       [map.diff.changed.length, "warn", "changed"],
@@ -118,30 +70,18 @@ export function renderMap(root: HTMLElement): void {
     return h(
       "div",
       { class: "map-intro" },
-      h("h2", null, design ? "The shape this design proposes" : "Where the change landed"),
+      h("h2", null, "Where the change landed"),
       h(
         "p",
         null,
-        unmarked
-          ? "These are the parts the design proposes. Nothing is marked added, changed or removed: the document declares no structure as it stands to compare them against."
-          : design
-            ? "Marked parts are what the design would add, change or remove; the rest is the structure as it stands, which is what it has to fit."
-            : "The Files tab has the lines. This has the parts of the system they landed in, and what those parts connect to — the neighbours a diff never names. Marked parts are the change; the rest is the context you need to judge it.",
+        "The Files tab has the lines. This has the parts of the system they landed in, and what those parts connect to — the neighbours a diff never names. Marked parts are the change; the rest is the context you need to judge it.",
       ),
       h(
         "div",
         { class: "map-route" },
         marks.length
           ? marks.map(([n, cls, word]) => h("span", { class: `badge ${cls}` }, `${n} ${word}`))
-          : unmarked
-            ? null
-            : h(
-                "span",
-                { class: "muted" },
-                design
-                  ? "This design changes no part of the map."
-                  : "This change touched no part of the map.",
-              ),
+          : h("span", { class: "muted" }, "This change touched no part of the map."),
         route
           ? h(
               "button",
@@ -152,9 +92,7 @@ export function renderMap(root: HTMLElement): void {
               `Start at ${route.label} ›`,
             )
           : null,
-        // On a design the paragraph above already says this, so saying it again
-        // two lines down is the same sentence twice.
-        map.base || unmarked
+        map.base
           ? null
           : h(
               "span",
@@ -184,7 +122,7 @@ export function renderMap(root: HTMLElement): void {
     return h(
       "div",
       {
-        class: `map-node ${n.status} ${explainer || unmarked || touched(all, n) ? "" : "quiet"} ${n.id === selected ? "selected" : ""}`,
+        class: `map-node ${n.status} ${touched(all, n) ? "" : "quiet"} ${n.id === selected ? "selected" : ""}`,
         onclick: () => navigate("map", { node: n.id }),
         ondblclick: () => inside && openLevel(n.id),
       },
@@ -230,31 +168,18 @@ export function renderMap(root: HTMLElement): void {
             h("div", { class: "map-grid" }, items.map(card)),
           )
         : null;
-    // An explainer has no change, so there is no reading order to impose: the
-    // parts are drawn as the author grouped them, and none of them is "context".
-    // A design with nothing to compare against is in the same position.
-    if (explainer || unmarked) return group(null, kids) ?? h("div", null);
     if (!hot.length)
       return h(
         "div",
         null,
-        h(
-          "div",
-          { class: "map-note muted" },
-          design
-            ? "Nothing here changes. The design is elsewhere."
-            : "Nothing here was touched. The change is elsewhere.",
-        ),
+        h("div", { class: "map-note muted" }, "Nothing here was touched. The change is elsewhere."),
         group(null, cold),
       );
     return h(
       "div",
       null,
-      group(
-        cold.length ? (design ? "What the design changes" : "What the change touched") : null,
-        hot,
-      ),
-      group(design ? "Context — untouched by the design" : "Context — unchanged here", cold),
+      group(cold.length ? "What the change touched" : null, hot),
+      group("Context — unchanged here", cold),
     );
   };
 
@@ -288,13 +213,7 @@ export function renderMap(root: HTMLElement): void {
       h(
         "div",
         { class: "muted map-note" },
-        explainer
-          ? "A link is a dependency the parts have on each other, drawn as the author declared it."
-          : unmarked
-            ? "A link is a dependency the design says the parts would have on each other."
-            : design
-              ? "A link touching a part the design changes is where the two sides can fall out of step."
-              : "A link touching a changed part is where the two sides can fall out of step.",
+        "A link touching a changed part is where the two sides can fall out of step.",
       ),
       rankEdges(folded, all).map(({ edge, touchesChange }) =>
         h(
@@ -331,11 +250,7 @@ export function renderMap(root: HTMLElement): void {
         h(
           "div",
           { class: "muted" },
-          explainer || unmarked
-            ? "Pick a part to see what it owns, the code behind it, and what it connects to."
-            : design
-              ? "Pick a part to see what the design changes in it, the code behind it, and what it connects to."
-              : "Pick a part to see what changed in it, the code behind it, and what it connects to.",
+          "Pick a part to see what changed in it, the code behind it, and what it connects to.",
         ),
       );
       return;

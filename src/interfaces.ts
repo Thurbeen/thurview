@@ -10,7 +10,7 @@
  * the code that moved it.
  */
 export interface InterfaceEntry {
-  /** `authored:<key>` for a review's entry, `proposed:<key>` for a design's */
+  /** `authored:<key>` */
   id: string;
   change: "added" | "changed" | "removed";
   /** what a consumer names it, in the agent's own words */
@@ -24,7 +24,7 @@ export interface InterfaceEntry {
   graph: "head" | "base";
   /** what this lets a consumer do, written by the agent */
   capability?: string;
-  /** the anchor that proves the entry is in this diff, or names a design's site */
+  /** the anchor that proves the entry is in this diff */
   anchor?: string;
 }
 

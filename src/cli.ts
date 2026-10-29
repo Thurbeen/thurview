@@ -36,14 +36,12 @@ import {
   forgeFactsFile,
   serverStateFile,
   deleteReview,
-  kindOf,
+  removedKind,
   type ReviewState,
   type Binding,
-  type DocumentKind,
   type Thread,
 } from "./store.js";
-import { compileDocument, compileMap, globToRegExp, type Diagnostic } from "./document/compile.js";
-import { computeCoverage, scopeGlob, type Coverage } from "./coverage.js";
+import { compileDocument, compileMap, type Diagnostic } from "./document/compile.js";
 import { replyThread, setThreadStatus, needsAgent } from "./threads.js";
 import { targetLabel, truncate } from "./thread-state.js";
 import { attach } from "./presence.js";
@@ -75,7 +73,7 @@ import { VERSION } from "./version.js";
 const execFileP = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DESCRIPTION =
-  "Guided, evidence-anchored reviews of a change, explainers of a codebase and designs of what to build, read and answered in the browser";
+  "Guided, evidence-anchored reviews of a change, read and answered in the browser";
 type Out = Record<string, unknown>;
 
 function note(msg: string): void {
@@ -123,13 +121,12 @@ async function worktreeOf(cwd: string): Promise<string | null> {
  */
 async function resolveReview(
   idOpt: string | undefined,
-  opts: { terminal?: boolean } = {},
+  opts: { terminal?: boolean; removed?: boolean } = {},
 ): Promise<ReviewState> {
   if (idOpt) {
-    const r = await readReview(idOpt);
-    if (r) return r;
-    const m = (await listReviews()).filter((x) => x.id.startsWith(idOpt));
-    if (m.length === 1) return m[0]!;
+    const m = (await listReviews({ removed: true })).filter((x) => x.id.startsWith(idOpt));
+    const r = (await readReview(idOpt)) ?? (m.length === 1 ? m[0]! : null);
+    if (r) return opts.removed ? r : refuseRemoved(r);
     throw new AxiError(
       m.length ? `review id ${idOpt} is ambiguous` : `review ${idOpt} not found`,
       "NOT_FOUND",
@@ -152,6 +149,23 @@ async function resolveReview(
   throw new AxiError("no active review for this worktree", "NOT_FOUND", [
     "Run `thurview scaffold` to create one",
   ]);
+}
+
+/**
+ * thurview reviews and nothing else. A record an older version wrote for an
+ * explainer or a design is refused by name, with the one thing left to do.
+ */
+function refuseRemoved(r: ReviewState): ReviewState {
+  const kind = removedKind(r);
+  if (!kind) return r;
+  throw new AxiError(
+    `${short(r.id)} is ${kind === "explainer" ? "an explainer" : "a design"}, and thurview no longer supports that kind: it reviews changes only`,
+    "VALIDATION_ERROR",
+    [
+      `Run \`thurview delete --review ${short(r.id)}\` to remove it`,
+      "Run `thurview scaffold` to review a change instead",
+    ],
+  );
 }
 
 interface ForgeCtx {
@@ -205,7 +219,6 @@ async function reviewRow(r: ReviewState, fields: Set<string>): Promise<Out> {
   const t = await readThreads(r.id);
   const row: Out = {
     id: short(r.id),
-    kind: kindOf(r),
     title: r.title,
     status: r.status,
     rev: r.revision,
@@ -214,10 +227,7 @@ async function reviewRow(r: ReviewState, fields: Set<string>): Promise<Out> {
   };
   if (fields.has("all") || fields.has("binding")) row["binding"] = bindingLabel(r.binding);
   if (fields.has("all") || fields.has("pins"))
-    row["pins"] =
-      kindOf(r) === "review"
-        ? `${r.pins.base.slice(0, 12)}..${r.pins.head.slice(0, 12)}`
-        : r.pins.head.slice(0, 12);
+    row["pins"] = `${r.pins.base.slice(0, 12)}..${r.pins.head.slice(0, 12)}`;
   if (fields.has("all") || fields.has("worktree")) row["worktree"] = r.worktree;
   if (fields.has("all") || fields.has("inSync"))
     row["inSync"] = await g
@@ -370,220 +380,15 @@ const TEMPLATE_MAP = `# Software map: where this change landed in the system, an
 nodes: []
 edges: []
 `;
-const TEMPLATE_EXPLAIN_MD = (title: string) => `# ${title}
-
-**Summary**
-
-- The agent is still writing this explainer. The Coverage tab already states
-  what it has and has not examined at the pinned commit; this page offers the
-  new revision when the walkthrough lands.
-`;
-const TEMPLATE_EXPLAIN_DATA = `# Typed inputs for the explainer: actors, anchors and stores. An explainer has
-# one pinned commit, so every anchor reads that commit and \`graph: base\` is an
-# error. It has no interface delta: there is no change to take one from.
-#
-# anchors:
-#   dispatch:
-#     title: where a request picks its handler
-#     peek: { file: src/server/router.ts, from: 41, to: 58 }
-#
-# searches records the searches you ran to find callers, tests and importers.
-# publish re-runs each one with \`git grep -E\` at the pinned commit, and the
-# Coverage tab counts the files it matches as searched. A search that matched
-# nothing is stated too.
-#
-# searches:
-#   dispatchCallers: { pattern: '\\bdispatch\\(', paths: ["src/"], why: who routes a request }
-actors: {}
-anchors: {}
-stores: {}
-searches: {}
-`;
-const TEMPLATE_EXPLAIN_MAP = `# The structure of the code at the pinned commit: systems, containers,
-# components, code. The map carries breadth so the prose can carry depth, and a
-# node's \`files\` globs are what tell the Coverage tab a file was at least placed.
-# Seed it from the directories: \`git ls-tree -d -r --name-only <commit>\`.
-nodes: []
-edges: []
-`;
-
-const TEMPLATE_DESIGN_MD = (title: string) => `# ${title}
-
-**Summary**
-
-- The agent is still writing this design. The page offers the new revision
-  when the proposal lands.
-`;
-const TEMPLATE_DESIGN_DATA = `# Typed inputs for the design: actors, anchors, stores, and the proposals it
-# makes. A design is pinned to ONE commit - the code as it stands, which the
-# design changes - so every anchor reads that commit and \`graph: base\` is an
-# error.
-#
-# An anchor is evidence, never a proposal. It points at code that exists today:
-# what the design changes, and what constrains it.
-#
-# anchors:
-#   login:
-#     title: where a request is authenticated today
-#     peek: { file: src/auth.ts, from: 41, to: 58 }
-#
-# interfaces holds what the design WOULD add, change or remove. Each entry names
-# the interface, what it would let a consumer do, and the anchor of the code it
-# lands in, replaces or plugs into today. A design with no entry here proposes
-# nothing, and publish refuses it: that document is a code explainer.
-#
-# interfaces:
-#   strict:
-#     name: auth.login --strict
-#     change: added
-#     capability: Rejects an empty user instead of answering false.
-#     anchor: login
-actors: {}
-anchors: {}
-stores: {}
-interfaces: {}
-`;
-const TEMPLATE_DESIGN_MAP = `# The structure the design proposes, with the structure as it stands under
-# \`base\`, so the Map tab shows what it adds, changes and removes. A node under
-# \`nodes\` may own files that do not exist yet - that is a proposed part. A node
-# under \`base\` may not: it is a claim about today, and publish warns.
-# Seed base from the directories: \`git ls-tree -d -r --name-only <commit>\`.
-nodes: []
-edges: []
-`;
-
-/**
- * The two kinds pinned to ONE commit. They differ in what the document is for -
- * an explainer reads the code as it stands, a design argues for changing it -
- * and in nothing about how it is pinned, so the pinning lives here once.
- */
-interface OneCommitKind {
-  kind: DocumentKind;
-  /** the command that creates it, as its own messages name it */
-  command: "explain" | "design";
-  title: (scope: string, worktree: string) => string;
-  templates: { md: (title: string) => string; data: string; map: string };
-}
-
-const EXPLAINER: OneCommitKind = {
-  kind: "explainer",
-  command: "explain",
-  title: (scope, worktree) =>
-    scope === "**" ? worktree.split("/").pop() || "Codebase" : scope.replace(/\/\*\*$/, ""),
-  templates: { md: TEMPLATE_EXPLAIN_MD, data: TEMPLATE_EXPLAIN_DATA, map: TEMPLATE_EXPLAIN_MAP },
-};
-
-const DESIGN: OneCommitKind = {
-  kind: "design",
-  command: "design",
-  title: (scope) => (scope === "**" ? "Design" : `${scope.replace(/\/\*\*$/, "")} design`),
-  templates: { md: TEMPLATE_DESIGN_MD, data: TEMPLATE_DESIGN_DATA, map: TEMPLATE_DESIGN_MAP },
-};
-
-/** The kind with its article, so a generated sentence reads as one: "an explainer". */
-function kindWord(kind: DocumentKind): string {
-  return kind === "explainer" ? "an explainer" : kind === "design" ? "a design" : "a review";
-}
-
-/** The command that re-pins a document of this kind, for a message that offers it. */
-function repinCommand(kind: DocumentKind): string {
-  return kind === "review"
-    ? "thurview scaffold"
-    : `thurview ${kind === "design" ? "design" : "explain"}`;
-}
-
-async function pinOneCommit(
-  p: Parsed,
-  k: OneCommitKind,
-): Promise<{
-  review: ReviewState;
-  reused: boolean;
-  scope: string;
-  commit: string;
-  worktree: string;
-  inScope: string[];
-}> {
-  const worktree = await worktreeOf(process.cwd());
-  if (!worktree)
-    throw new AxiError("not inside a git repository", "VALIDATION_ERROR", [
-      `Run \`thurview ${k.command}\` inside the source worktree`,
-    ]);
-  const existing =
-    bool(p, "update") || str(p, "review") ? await resolveReview(str(p, "review")) : null;
-  if (existing && kindOf(existing) !== k.kind) {
-    const other = kindOf(existing);
-    throw new AxiError(
-      `${short(existing.id)} is ${kindWord(other)}, not ${kindWord(k.kind)}`,
-      "VALIDATION_ERROR",
-      [
-        `Run \`${repinCommand(other)} --update --review ${short(existing.id)}\` to re-pin that ${other}`,
-        `Run \`thurview ${k.command}\` with no --review to start ${kindWord(k.kind)}`,
-      ],
-    );
-  }
-  const scope = scopeGlob(p.positional[0] ?? existing?.binding.name);
-  let commit: string;
-  try {
-    commit = await g.revParse(worktree, str(p, "commit") ?? "HEAD");
-  } catch (e) {
-    throw new AxiError((e as Error).message, "VALIDATION_ERROR", [
-      `Pass a resolvable ref: \`thurview ${k.command} --commit <ref>\``,
-    ]);
-  }
-  // A scope that matches nothing is a typo, and a document of nothing would
-  // still publish and still state honest-looking coverage of zero files.
-  const files = await g.listFiles(worktree, commit);
-  const inScope = scope === "**" ? files : files.filter((f) => globToRegExp(scope).test(f));
-  if (!inScope.length)
-    throw new AxiError(`no file matches "${scope}" at ${commit.slice(0, 12)}`, "VALIDATION_ERROR", [
-      `Pass a path that exists at that commit: \`thurview ${k.command} src/server\``,
-      `Run \`thurview ${k.command}\` with no scope for the whole repository`,
-    ]);
-  const binding: Binding = { kind: "codebase", name: scope };
-  if (existing) {
-    existing.pins = { base: commit, head: commit };
-    existing.binding = binding;
-    if (str(p, "title")) existing.title = str(p, "title")!;
-    await writeReview(existing);
-    return { review: existing, reused: false, scope, commit, worktree, inScope };
-  }
-  const match = bool(p, "new")
-    ? []
-    : (await reviewsFor(worktree)).filter(
-        (r) =>
-          kindOf(r) === k.kind &&
-          r.binding.name === scope &&
-          r.status !== "accepted" &&
-          r.status !== "closed",
-      );
-  if (match.length) {
-    const review = match[0]!;
-    review.pins = { base: commit, head: commit };
-    await writeReview(review);
-    return { review, reused: true, scope, commit, worktree, inScope };
-  }
-  const id = newId();
-  const review: ReviewState = {
-    schema: SCHEMA,
-    id,
-    kind: k.kind,
-    title: str(p, "title") || k.title(scope, worktree),
-    worktree,
-    repoRoot: worktree,
-    binding,
-    pins: { base: commit, head: commit },
-    status: "draft",
-    revision: 0,
-    dismissed: false,
-    createdAt: now(),
-    updatedAt: now(),
-  };
-  await mkdir(reviewDir(id), { recursive: true });
-  await writeText(join(reviewDir(id), "review.md"), k.templates.md(review.title));
-  await writeText(join(reviewDir(id), "data.yaml"), k.templates.data);
-  await writeText(join(reviewDir(id), "map.yaml"), k.templates.map);
-  await writeReview(review);
-  return { review, reused: false, scope, commit, worktree, inScope };
+function removedCommand(command: "explain" | "design"): AxiError {
+  return new AxiError(
+    `\`thurview ${command}\` was removed: thurview reviews changes only`,
+    "VALIDATION_ERROR",
+    [
+      "Run `thurview scaffold` to review the current branch",
+      "Run `thurview scaffold --pr <number>` to review a change request",
+    ],
+  );
 }
 
 // ---- commands ----
@@ -618,45 +423,8 @@ const SPECS: Record<
       "thurview scaffold --update --review <id>",
     ],
   },
-  explain: {
-    description:
-      "Create a code explainer pinned to one commit: a whole codebase, or one subsystem of it",
-    args: "[<path scope>]",
-    flags: {
-      commit: { kind: "string", help: "commit to pin (default: HEAD)" },
-      title: { kind: "string", help: "initial title" },
-      new: { kind: "boolean", help: "create another explainer even if one matches the scope" },
-      update: { kind: "boolean", help: "re-pin an existing explainer to a new commit" },
-      review: { kind: "string", help: "explainer to update (id prefix)" },
-    },
-    examples: [
-      "thurview explain",
-      "thurview explain src/server",
-      "thurview explain --commit v1.2.0",
-      "thurview explain --update --review <id>",
-    ],
-  },
-  design: {
-    description:
-      "Create a design or architecture document: what to build, argued against the code as it stands",
-    args: "[<path scope>]",
-    flags: {
-      commit: { kind: "string", help: "commit to pin (default: HEAD)" },
-      title: { kind: "string", help: "initial title" },
-      new: { kind: "boolean", help: "create another design even if one matches the scope" },
-      update: { kind: "boolean", help: "re-pin an existing design to a new commit" },
-      review: { kind: "string", help: "design to update (id prefix)" },
-    },
-    examples: [
-      "thurview design",
-      "thurview design src/server",
-      "thurview design --title 'Queue the forge pass'",
-      "thurview design --update --review <id>",
-    ],
-  },
   info: {
-    description:
-      "Reviews, explainers and designs bound to this worktree (or all of them with --all)",
+    description: "Reviews bound to this worktree (or all of them with --all)",
     flags: {
       all: { kind: "boolean", help: "every review, not only this worktree" },
       fields: {
@@ -908,8 +676,6 @@ async function homeView(): Promise<Out> {
       help: [
         "Run `thurview scaffold` to create a review of the current branch",
         "Run `thurview scaffold --pr <number>` for a pull request",
-        "Run `thurview explain [<path>]` to explain the codebase at HEAD instead",
-        "Run `thurview design [<path>]` to design a change before writing it",
       ],
     };
   const reviews = [];
@@ -1084,72 +850,14 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     };
   },
 
-  async explain(args) {
-    const p = parseFlags("explain", args, spec("explain").flags, 1);
-    const pinned = await pinOneCommit(p, EXPLAINER);
-    const { review, scope, commit, worktree } = pinned;
-    const dir = reviewDir(review.id);
-    return {
-      explainer: {
-        id: short(review.id),
-        uuid: review.id,
-        kind: "explainer",
-        title: review.title,
-        status: review.status,
-        rev: review.revision,
-        scope,
-        commit,
-        worktree,
-        reused: pinned.reused,
-        dir,
-      },
-      files: {
-        document: join(dir, "review.md"),
-        data: join(dir, "data.yaml"),
-        map: join(dir, "map.yaml"),
-      },
-      scale: { filesInScope: pinned.inScope.length },
-      guidance: await guidanceFiles(worktree),
-      help: [
-        `Run \`git ls-tree -d -r --name-only ${commit.slice(0, 12)}\` in ${worktree} for the directories in scope`,
-        `Author ${join(dir, "map.yaml")} first: it carries the breadth the prose cannot`,
-        `Edit ${join(dir, "review.md")} and data.yaml, then run \`thurview publish --review ${short(review.id)}\``,
-      ],
-    };
+  // Removed kinds answer by name rather than as an unknown command, so an agent
+  // following an older skill learns what replaced them.
+  async explain() {
+    throw removedCommand("explain");
   },
 
-  async design(args) {
-    const p = parseFlags("design", args, spec("design").flags, 1);
-    const pinned = await pinOneCommit(p, DESIGN);
-    const { review, scope, commit, worktree } = pinned;
-    const dir = reviewDir(review.id);
-    return {
-      design: {
-        id: short(review.id),
-        uuid: review.id,
-        kind: "design",
-        title: review.title,
-        status: review.status,
-        rev: review.revision,
-        scope,
-        commit,
-        worktree,
-        reused: pinned.reused,
-        dir,
-      },
-      files: {
-        document: join(dir, "review.md"),
-        data: join(dir, "data.yaml"),
-        map: join(dir, "map.yaml"),
-      },
-      scale: { filesInScope: pinned.inScope.length },
-      guidance: await guidanceFiles(worktree),
-      help: [
-        `Run \`git grep -n -w <symbol> ${commit.slice(0, 12)} --\` in ${worktree} for who depends on what the design changes`,
-        `Declare in ${join(dir, "data.yaml")} what the design would add, change or remove, each anchored to the code it lands in today`,
-        `Edit ${join(dir, "review.md")}, then run \`thurview publish --review ${short(review.id)}\``,
-      ],
-    };
+  async design() {
+    throw removedCommand("design");
   },
 
   async info(args) {
@@ -1201,12 +909,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     let verdict: Verdict | null = null;
     const passArg = str(p, "pass");
     if (passArg) {
-      if (kindOf(review) !== "review")
-        throw new AxiError(
-          `a pass is a review's verdict, and this is ${kindOf(review) === "explainer" ? "an explainer" : "a design"}`,
-          "VALIDATION_ERROR",
-          [`Run \`thurview publish --review ${short(review.id)}\` without --pass`],
-        );
       const file = resolve(process.cwd(), passArg);
       const text = await readText(file);
       if (text === null)
@@ -1248,13 +950,11 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         message:
           "ignored: a review no longer restyles thurview's own light and dark theme; delete the file",
       });
-    const kind = kindOf(review);
     const doc = await compileDocument({
       cwd: review.worktree,
       pins: review.pins,
       reviewMd,
       dataYaml: dataYaml ?? "",
-      kind,
     });
     diags.push(...doc.diagnostics);
     let map = null;
@@ -1264,7 +964,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         pins: review.pins,
         mapYaml,
         anchors: doc.anchors,
-        kind,
       });
       diags.push(...m.diagnostics);
       map = m.map;
@@ -1287,55 +986,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         ],
       };
     }
-    // Coverage is derived, not claimed: every file in scope at the pinned commit
-    // is accounted for, so the reader is told what the prose never reached.
-    let coverage: Coverage | null = null;
-    if (kind === "explainer") {
-      try {
-        coverage = computeCoverage({
-          commit: review.pins.head,
-          scope: review.binding.name,
-          allFiles: await g.listFiles(review.worktree, review.pins.head),
-          searches: doc.searches,
-          anchored: Object.values(doc.document.anchors)
-            .map((a) => a.peek?.file)
-            .filter((f): f is string => !!f),
-          owners: (map?.head.nodes ?? [])
-            .filter((n) => n.files?.length)
-            .map((n) => ({ node: n.id, globs: n.files! })),
-        });
-      } catch (e) {
-        diags.push({
-          level: "error",
-          file: "review.md",
-          message: `coverage is unavailable, so the explainer cannot state what it skipped: ${(e as Error).message}`,
-        });
-        process.exitCode = 1;
-        return {
-          error: "publish failed: coverage could not be derived",
-          code: "PUBLISH_FAILED",
-          diagnostics: diags.map((d) => ({
-            level: d.level,
-            file: d.file,
-            line: d.line ?? "",
-            message: d.message,
-          })),
-          help: [`Run \`thurview publish --review ${short(review.id)}\` again`],
-        };
-      }
-    }
     const warnings: string[] = [];
-    if (kind === "explainer" && !map)
-      warnings.push(
-        "this explainer has no map, so every file it does not anchor counts as not examined; author map.yaml to place the rest",
-      );
-    if (review.binding.kind === "codebase") {
-      const tip = await g.revParse(review.worktree, "HEAD").catch(() => null);
-      if (tip && tip !== review.pins.head)
-        warnings.push(
-          `HEAD has moved past the pinned commit; run \`${repinCommand(kind)} --update --review ${short(review.id)}\` to re-pin`,
-        );
-    }
     if (review.binding.kind === "branch") {
       const tip = await g.revParse(review.worktree, review.binding.name).catch(() => null);
       if (tip && tip !== review.pins.head)
@@ -1353,13 +1004,10 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     await writeJson(join(rdir, "document.json"), doc.document);
     await writeJson(join(rdir, "map.json"), map);
     await writeJson(join(rdir, "changes.json"), changes);
-    await writeJson(join(rdir, "coverage.json"), coverage);
     await writeJson(join(rdir, "verdict.json"), verdict);
     // Sealed only when the forge's facts are about the pinned head itself.
     const facts =
-      kind === "review" && review.binding.kind === "pr"
-        ? await readJson<ForgeFacts>(forgeFactsFile(review.id))
-        : null;
+      review.binding.kind === "pr" ? await readJson<ForgeFacts>(forgeFactsFile(review.id)) : null;
     const provenance = facts?.provenance?.head === review.pins.head ? facts.provenance : null;
     await writeJson(join(rdir, "provenance.json"), provenance);
     await writeJson(join(rdir, "meta.json"), {
@@ -1368,7 +1016,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       title: doc.document.title,
       binding: review.binding,
       pins: review.pins,
-      kind,
       hasMap: !!map,
     });
     review.title = doc.document.title;
@@ -1389,20 +1036,13 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const out: Out = {
       published: {
         id: short(review.id),
-        kind,
         rev: n,
         title: review.title,
         status: review.status,
         map: !!map,
-        ...(kind === "explainer"
-          ? { coverage: coverage ? coverage.verdict : "(unavailable)" }
-          : kind === "design"
-            ? { proposes: doc.document.interfaces?.verdict ?? "(unavailable)" }
-            : {
-                architecture: doc.document.architecture?.verdict ?? "(unavailable)",
-                interfaces: doc.document.interfaces?.verdict ?? "(unavailable)",
-                security: doc.document.security?.verdict ?? "(unavailable)",
-              }),
+        architecture: doc.document.architecture.verdict,
+        interfaces: doc.document.interfaces.verdict,
+        security: doc.document.security.verdict,
         ...(verdict
           ? {
               verdict: `confidence ${verdict.confidence}/5, ${verdict.findings.length} finding${verdict.findings.length === 1 ? "" : "s"}`,
@@ -1411,14 +1051,6 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         url: url ?? "(server not running)",
       },
     };
-    if (coverage)
-      out["notExamined"] = {
-        files: coverage.states.uncovered,
-        first: coverage.uncovered.slice(0, 8),
-        byPart: coverage.clusters
-          .filter((c) => c.uncovered.length)
-          .map((c) => ({ part: c.label, files: c.uncovered.length })),
-      };
     if (rows.length) out["diagnostics"] = rows;
     if (warnings.length) out["warnings"] = warnings;
     out["help"] =
@@ -2145,7 +1777,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       throw new AxiError("--review is required", "VALIDATION_ERROR", [
         "thurview delete --review <id>",
       ]);
-    const review = await resolveReview(idOpt);
+    const review = await resolveReview(idOpt, { removed: true });
     await deleteReview(review.id);
     return { deleted: short(review.id) };
   },
@@ -2444,7 +2076,6 @@ function topLevelHelp(): string {
       examples: [
         "thurview",
         "thurview scaffold",
-        "thurview explain src/server",
         "thurview publish --view files --open",
         "thurview wait",
         'thurview threads reply <threadId> --body "<answer>"',

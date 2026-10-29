@@ -7,7 +7,6 @@ import {
   readHash,
   navigate,
   readOnly,
-  kind,
   view,
   VIEWS,
   NARROW,
@@ -20,7 +19,6 @@ import { renderFindingSide } from "./views/report.js";
 import { renderFiles } from "./views/files.js";
 import { renderCommits } from "./views/commits.js";
 import { renderMap } from "./views/map.js";
-import { renderCoverage } from "./views/coverage.js";
 
 const app = document.getElementById("app")!;
 
@@ -42,7 +40,7 @@ async function home(): Promise<void> {
       h(
         "div",
         { class: "empty-state" },
-        "Nothing published yet. Ask your agent for a review of a change, an explainer of the codebase, or a design of what to build next.",
+        "Nothing published yet. Ask your agent for a review of a change.",
       ),
     );
   const groups = new Map<string, Row[]>();
@@ -81,7 +79,7 @@ function queueItem(r: Row) {
       "span",
       { class: "t" },
       r.title,
-      h("span", { class: "why" }, [r.kind ?? "review", q.why, age].filter(Boolean).join(" · ")),
+      h("span", { class: "why" }, [q.why, age].filter(Boolean).join(" · ")),
     ),
     cr
       ? h(
@@ -133,7 +131,6 @@ function queueItem(r: Row) {
 
 function bindingLabel(r: { binding: { kind: string; name: string } }): string {
   if (r.binding.kind === "pr") return `PR #${r.binding.name}`;
-  if (r.binding.kind === "codebase") return r.binding.name === "**" ? "codebase" : r.binding.name;
   return r.binding.name;
 }
 
@@ -178,16 +175,14 @@ function renderTopbar(): void {
   const r = d.review;
   const pending = d.threads.filter((t) => !t.submitted).length;
   const open = d.threads.filter((t) => t.status === "open").length;
-  const k = kind();
   const labels: Record<View, string> = {
-    review: k === "explainer" ? "Explainer" : k === "design" ? "Design" : "Review",
+    review: "Review",
     commits: "Commits",
     files: `Files${d.changes.length ? ` (${d.changes.length})` : ""}`,
     map: "Map",
-    coverage: "Coverage",
   };
   const current = view();
-  const tabs: [View, string][] = VIEWS[kind()].map((v) => [v, labels[v]]);
+  const tabs: [View, string][] = VIEWS.map((v) => [v, labels[v]]);
   const revSel = h("select", {
     class: "small",
     name: "revision",
@@ -343,9 +338,7 @@ function moreMenu(e: MouseEvent): void {
     h(
       "div",
       { class: "item muted" },
-      kind() === "review"
-        ? `base ${r.pins.base.slice(0, 12)} · head ${r.pins.head.slice(0, 12)}`
-        : `commit ${r.pins.head.slice(0, 12)}`,
+      `base ${r.pins.base.slice(0, 12)} · head ${r.pins.head.slice(0, 12)}`,
     ),
   );
   const at = clickPoint(e, -200, 10);
@@ -385,9 +378,6 @@ function renderCenter(): void {
       break;
     case "map":
       renderMap(center);
-      break;
-    case "coverage":
-      renderCoverage(center);
       break;
   }
   center.scrollTop = scroll;

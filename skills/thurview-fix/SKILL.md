@@ -1,6 +1,6 @@
 ---
 name: thurview-fix
-description: Review a change and fix what the review finds - architecture defects first, then bugs, regressions for callers, missing or broken tests, security issues - with a search of the callers and tests a diff does not show. Commits only the fixes that pass the repository's own tests and lint, and reports the rest. Use when the user asks to review and fix a branch, a commit range or a pull or merge request, to find and fix bugs in a change, or invokes /thurview-fix.
+description: Review a change and fix what it finds - architecture defects first, then bugs, caller regressions, tests, security - searching the callers and tests a diff does not show. Commits only fixes that pass the repository's tests and lint; reports the rest. Use to review and fix a branch, commit range or PR/MR, or /thurview-fix.
 user-invocable: true
 argument-hint: "[<branch> | <base>..<head> | <PR or MR number or URL>] [--post]"
 ---

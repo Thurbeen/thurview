@@ -5,7 +5,7 @@ covers the rest.
 
 ## What the install command does
 
-`--skill '*'` takes all six skills; quote the star so your shell does not
+`--skill '*'` takes all four skills; quote the star so your shell does not
 expand it against the current directory. `--skill` also takes names, one or
 several: `--skill thurview`, or `--skill thurview thurview-fix`.
 
@@ -13,7 +13,7 @@ several: `--skill thurview`, or `--skill thurview thurview-fix`.
 `universal` puts the one real copy of each skill under `~/.agents/skills/`,
 the directory no single agent owns, and every other agent you name gets a
 symlink to it - `~/.claude/skills/thurview` →
-`../../.agents/skills/thurview`, and the same for the other five - so an
+`../../.agents/skills/thurview`, and the same for the other three - so an
 update lands everywhere at once. Swap `claude-code` for any agent the skills
 CLI supports, but keep `universal` and at least one more: with `--yes` and a
 single target, the CLI copies instead of linking.
@@ -68,13 +68,21 @@ OpenCode, so every session opens with the reviews of its working directory.
 A skill name is an address, so nothing renames or splits one in place - the
 install command adds what is missing, and what is stale has to go.
 
-`thurview-explain` used to be a second kind inside the `thurview` skill, so an
-install made before the split does not have it. Under the `skills` CLI,
-updating `thurview` adds no second skill; run the install command, which
-takes all six. Under `thurview setup skill`, update the command first -
-`thurview update`, or pull and rebuild the checkout you linked from - and run
-`thurview setup skill` again: it links every skill the installed command
-carries, so it picks the new one up on its own.
+thurview reviews changes and nothing else: `thurview-explain` and
+`thurview-design` are gone, and so are the `thurview explain` and
+`thurview design` commands, which now refuse and point at `thurview scaffold`.
+An install made before that keeps both skills from a copy that will never
+change again. Remove them:
+
+```sh
+npx skills@latest remove --global thurview-explain thurview-design
+```
+
+An explainer or a design stored under `~/.thurview` is refused by name; delete
+it with `thurview delete --review <id>`. For a `thurview setup skill` install,
+delete the stale links - `~/.agents/skills/thurview-explain`,
+`~/.agents/skills/thurview-design` and the same paths under `~/.claude` and
+`~/.cursor` - and run `thurview setup skill` again.
 
 `thurview-fix` was called `review-fix`, and an install made before the rename
 keeps answering to `/review-fix` from a copy that will never change again.

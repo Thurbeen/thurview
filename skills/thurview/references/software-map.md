@@ -101,3 +101,29 @@ shows as added or removed.
 
 `thurview publish` validates the map with the document; map errors block
 publication like document errors. An empty `nodes: []` means no map.
+
+## Dispatching a sub-agent
+
+Fill in this prompt and hand it to one sub-agent, so the map is written while
+you write the document:
+
+```text
+Use the thurview skill's software-map reference (`thurview skill` prints the
+SKILL.md path; the reference is in references/software-map.md beside it).
+
+Review directory: <dir>
+Source worktree: <worktree>
+Base commit: <base>
+Head commit: <head>
+
+Seed the structure from the code rather than guessing it: the directories at
+each pin (`git ls-tree -d -r --name-only <commit>`) become candidate nodes, and
+the importers of each one (the recipes in the thurview skill's
+references/searching.md) the edges. What differs between base and head is the
+diff the map shows.
+
+Author <dir>/map.yaml: the head structure under nodes/edges and the base
+structure under base. Do not edit review.md or data.yaml. Do not publish.
+Return when `thurview publish --review <id>` reports no map.yaml errors, or
+report the errors you could not fix.
+```

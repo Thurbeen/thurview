@@ -37,10 +37,9 @@ document:
     introduction, the install command, the skills list and the CLI table, and
     stays short; docs/INSTALL.md owns the other install routes and upgrades,
     docs/READER.md the reader-facing feature list.
-    skills/thurview/SKILL.md owns the agent workflow for authoring a review,
-    skills/thurview-explain/SKILL.md the one for a code explainer, and
-    skills/thurview-design/SKILL.md the one for a design, with
-    references/anchors-and-proposals.md owning the anchor-versus-proposal rule;
+    thurview is a review tool only: no skill, command or document kind
+    explains a codebase or designs a change.
+    skills/thurview/SKILL.md owns the agent workflow for authoring a review;
     skills/thurview-fix/SKILL.md owns the workflow for reviewing a change and
     fixing what it finds, with references/forges.md owning the forge commands
     and the two forges' differences; skills/thurview-publish/SKILL.md owns uploading an exported

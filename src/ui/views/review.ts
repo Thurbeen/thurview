@@ -1,11 +1,10 @@
 import { h, popover, clickPoint, asButton } from "../dom.js";
-import { state, threadsFor, navigate, kind, VIEWS, canWrite } from "../state.js";
+import { state, threadsFor, navigate, canWrite } from "../state.js";
 import { codeTable, openAnchorPeek } from "../code.js";
 import { commentPopover, threadPinRow } from "../threads.js";
 import { sequenceDiagram, callstackDiff, databaseLens, flowDiagram } from "../diagrams.js";
 import type { Block, CompiledArchitecture, CompiledSecurity } from "../../document/compile.js";
 import type { InterfaceDelta, InterfaceEntry } from "../../interfaces.js";
-import type { Coverage } from "../../coverage.js";
 import {
   reportSection,
   summaryFacts,
@@ -23,8 +22,7 @@ let disposeKeys: (() => void) | undefined;
  * The document as a report. What a reader opening it from a pull request needs
  * comes first and in this order: what the change is, the verdict, the findings
  * with their evidence, the risks, and what was reviewed and what was not. The
- * document the agent wrote follows as the reasoning behind them. An explainer
- * or a design has no verdict, so it opens on its summary and its scope.
+ * document the agent wrote follows as the reasoning behind them.
  */
 export function renderReview(root: HTMLElement): void {
   disposeKeys?.();
@@ -42,20 +40,14 @@ export function renderReview(root: HTMLElement): void {
     );
     return;
   }
-  const k = kind();
-  const verdict = k === "review" ? (state.data?.verdict ?? null) : null;
+  const verdict = state.data?.verdict ?? null;
   const first = doc.blocks.findIndex((b) => b.type === "heading" && b.level === 2);
   const landing = first < 0 ? doc.blocks : doc.blocks.slice(0, first);
   const body = first < 0 ? [] : doc.blocks.slice(first);
   const report = h("article", { class: "doc report" });
 
   const r = state.data!.review;
-  const kicker =
-    k === "review"
-      ? `Review · ${r.binding.kind === "pr" ? `pull request #${r.binding.name}` : r.binding.name}`
-      : k === "explainer"
-        ? "Explainer"
-        : "Design";
+  const kicker = `Review · ${r.binding.kind === "pr" ? `pull request #${r.binding.name}` : r.binding.name}`;
   const summary = reportSection("summary", "Summary", null, h("div", { class: "kicker" }, kicker));
   // what changed, then the verdict on it, then the author's own summary
   const lede = verdict
@@ -75,94 +67,76 @@ export function renderReview(root: HTMLElement): void {
   report.appendChild(summary);
 
   // A review reads as parts, each answering one question the reader brings to
-  // a change, in the order they ask them; an explainer or a design keeps its
-  // summary, its bound and its document.
+  // a change, in the order they ask them.
   const parts: [string, string, string | null][] = [["report-summary", "Summary", null]];
   const add = (sec: HTMLElement, title: string, n: string | null = null) => {
     report.appendChild(sec);
     parts.push([sec.id, title, n]);
   };
-  if (k === "review") {
-    add(
-      reportSection(
-        "architecture",
-        "Architecture",
-        "where it lands, and whether it fits the design",
-        verdict?.architecture ? h("p", { class: "part-lead" }, verdict.architecture) : null,
-        landsIn(),
-        architecturePanel(doc.architecture),
-        interfaceDelta(doc.interfaces),
-      ),
+  add(
+    reportSection(
+      "architecture",
       "Architecture",
-    );
-    add(
-      reportSection(
-        "security",
-        "Security & trust",
-        "who wrote it, and what it lets in",
-        verdict?.security ? h("p", { class: "part-lead" }, verdict.security) : null,
-        provenanceFacts(),
-        securityPanel(doc.security),
-      ),
+      "where it lands, and whether it fits the design",
+      verdict?.architecture ? h("p", { class: "part-lead" }, verdict.architecture) : null,
+      landsIn(),
+      architecturePanel(doc.architecture),
+      interfaceDelta(doc.interfaces),
+    ),
+    "Architecture",
+  );
+  add(
+    reportSection(
+      "security",
       "Security & trust",
-    );
-    if (verdict) {
-      const n = verdict.findings.length;
-      add(
-        reportSection(
-          "findings",
-          "Findings",
-          n ? `${n} to act on, most severe first` : "what to fix before merge",
-          findingsList(verdict),
-        ),
+      "who wrote it, and what it lets in",
+      verdict?.security ? h("p", { class: "part-lead" }, verdict.security) : null,
+      provenanceFacts(),
+      securityPanel(doc.security),
+    ),
+    "Security & trust",
+  );
+  if (verdict) {
+    const n = verdict.findings.length;
+    add(
+      reportSection(
+        "findings",
         "Findings",
-        n ? String(n) : null,
-      );
-    }
-    add(
-      reportSection(
-        "risks",
-        verdict ? "Risks & evidence" : "Evidence",
-        verdict
-          ? "what could still break, and what the verdict rests on"
-          : "what was reviewed, and what was not",
-        verdict
-          ? h(
-              "div",
-              { class: "risk-block" },
-              h("h3", null, "Not ruled out"),
-              h(
-                "ul",
-                { class: "risks" },
-                verdict.risk.map((x) => h("li", null, x)),
-              ),
-            )
-          : null,
-        scopeColumns(verdict),
+        n ? `${n} to act on, most severe first` : "what to fix before merge",
+        findingsList(verdict),
       ),
-      verdict ? "Risks & evidence" : "Evidence",
-    );
-  } else {
-    const bound = k === "explainer" ? "Coverage" : "What it proposes";
-    add(
-      reportSection(
-        "scope",
-        bound,
-        null,
-        k === "explainer"
-          ? coveragePanel(state.data?.coverage ?? null)
-          : interfaceDelta(doc.interfaces),
-      ),
-      bound,
+      "Findings",
+      n ? String(n) : null,
     );
   }
+  add(
+    reportSection(
+      "risks",
+      verdict ? "Risks & evidence" : "Evidence",
+      verdict
+        ? "what could still break, and what the verdict rests on"
+        : "what was reviewed, and what was not",
+      verdict
+        ? h(
+            "div",
+            { class: "risk-block" },
+            h("h3", null, "Not ruled out"),
+            h(
+              "ul",
+              { class: "risks" },
+              verdict.risk.map((x) => h("li", null, x)),
+            ),
+          )
+        : null,
+      scopeColumns(verdict),
+    ),
+    verdict ? "Risks & evidence" : "Evidence",
+  );
 
-  const docTitle =
-    k === "explainer" ? "The explainer" : k === "design" ? "The design" : "Walkthrough";
   const docSec = reportSection(
     "document",
-    body.length ? docTitle : null,
-    k === "review" && body.length ? "the change step by step, with its code" : null,
+    body.length ? "Walkthrough" : null,
+    body.length ? "the change step by step, with its code" : null,
   );
   let section: HTMLElement | null = null;
   for (const b of body) {
@@ -179,7 +153,7 @@ export function renderReview(root: HTMLElement): void {
     } else (section ?? docSec).appendChild(el);
   }
   report.appendChild(docSec);
-  if (body.length) parts.push([docSec.id, docTitle, null]);
+  if (body.length) parts.push([docSec.id, "Walkthrough", null]);
 
   const entries = parts;
   const link = (id: string, text: string, cls: string, n: string | null) =>
@@ -279,7 +253,6 @@ function trackSection(scroller: HTMLElement, toc: HTMLElement, docEl: HTMLElemen
 
 /** Ids the parser cannot produce, so the panel can hold threads like a document block. */
 const DELTA_BLOCK = "interface-delta";
-const COVERAGE_BLOCK = "coverage";
 const SECURITY_BLOCK = "security";
 const ARCHITECTURE_BLOCK = "architecture";
 const DELTA_SHOWN = 12;
@@ -295,14 +268,8 @@ const CHANGE_CLASS: Record<InterfaceEntry["change"], string> = {
  * because it is the reader's first question. Declared by the author and held
  * at publish to anchors on lines the diff moved, so it cannot claim a change
  * the code did not make.
- *
- * On a design the same panel, in the same slot, states what the document
- * PROPOSES to do to those surfaces - declared by the author with no diff to
- * hold it to, since the code is not written. The words differ everywhere they must, so a proposal
- * can never be misread as something that already happened.
  */
 function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
-  const design = kind() === "design";
   const wrap = h("div", { class: "block ifd", "data-block": DELTA_BLOCK });
   const threads = threadsFor((t) => t.type === "document" && t.blockId === DELTA_BLOCK);
   if (threads.length) wrap.classList.add("has-threads");
@@ -314,7 +281,7 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
       "button",
       {
         class: threads.length ? "count" : "",
-        title: design ? "Comment on what this design proposes" : "Comment on the interface delta",
+        title: "Comment on the interface delta",
         onclick: (e: MouseEvent) => {
           if (!canWrite()) return;
           popover(commentPopover({ type: "document", blockId: DELTA_BLOCK }), clickPoint(e));
@@ -334,7 +301,7 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
     h(
       "div",
       { class: "ifd-head" },
-      h("span", { class: "t" }, design ? "What this design proposes" : "Interface delta"),
+      h("span", { class: "t" }, "Interface delta"),
       counts.map(([c, n]) => h("span", { class: `badge ${CHANGE_CLASS[c]}` }, `${n} ${c}`)),
       h("span", { class: "spacer" }),
       toggle,
@@ -345,11 +312,7 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
     h(
       "p",
       { class: "ifd-verdict" },
-      delta
-        ? delta.verdict
-        : design
-          ? "Unavailable: this revision declared no proposal."
-          : "Unavailable: this revision recorded no interface delta.",
+      delta ? delta.verdict : "Unavailable: this revision recorded no interface delta.",
     ),
   );
   const entries = delta?.entries ?? [];
@@ -368,70 +331,6 @@ function interfaceDelta(delta: InterfaceDelta | null): HTMLElement {
     );
     body.appendChild(more);
   }
-  wrap.appendChild(body);
-  if (threads.length)
-    wrap.appendChild(h("div", { class: "thread-pins" }, threads.map(threadPinRow)));
-  return wrap;
-}
-
-/**
- * What an explainer examined and what it did not, in the slot a review gives the
- * interface delta - because it is the same kind of thing: a fact publish
- * checks against the pinned commit, above prose the agent wrote, so the reader
- * knows the bound of the document before reading a word of it.
- */
-function coveragePanel(cov: Coverage | null): HTMLElement {
-  const wrap = h("div", { class: "block ifd", "data-block": COVERAGE_BLOCK });
-  const threads = threadsFor((t) => t.type === "document" && t.blockId === COVERAGE_BLOCK);
-  if (threads.length) wrap.classList.add("has-threads");
-  const actions = h(
-    "div",
-    { class: "block-actions" },
-    h(
-      "button",
-      {
-        class: threads.length ? "count" : "",
-        title: "Comment on coverage",
-        onclick: (e: MouseEvent) => {
-          if (!canWrite()) return;
-          popover(commentPopover({ type: "document", blockId: COVERAGE_BLOCK }), clickPoint(e));
-        },
-      },
-      threads.length ? String(threads.length) : "+",
-    ),
-  );
-  const body = h("div", { class: "ifd-body" });
-  const toggle = toggleButton(true, (shown) => (body.hidden = !shown));
-  wrap.appendChild(
-    h(
-      "div",
-      { class: "ifd-head" },
-      h("span", { class: "t" }, "Coverage"),
-      cov ? h("span", { class: "badge" }, `${cov.states.uncovered} not examined`) : null,
-      h("span", { class: "spacer" }),
-      toggle,
-      actions,
-    ),
-  );
-  body.appendChild(
-    h(
-      "p",
-      { class: "ifd-verdict" },
-      cov ? cov.verdict : "Unavailable: coverage could not be derived for this revision.",
-    ),
-  );
-  body.appendChild(
-    h(
-      "p",
-      { class: "ifd-verdict" },
-      "A codebase does not fit in one document, so this one selects. ",
-      h(
-        "button",
-        { class: "small", onclick: () => navigate("coverage") },
-        "See what it left out ▸",
-      ),
-    ),
-  );
   wrap.appendChild(body);
   if (threads.length)
     wrap.appendChild(h("div", { class: "thread-pins" }, threads.map(threadPinRow)));
@@ -569,18 +468,12 @@ function securityPanel(sec: CompiledSecurity | null | undefined): HTMLElement {
 }
 
 function interfaceRow(e: InterfaceEntry): HTMLElement {
-  // A design has no Files tab: its entry is a proposal, and what the reader can
-  // actually open is the site it names - real code at the pinned commit.
-  const anchor = kind() === "design" && e.anchor ? state.data?.document?.anchors[e.anchor] : null;
   const row = h(
     "div",
     {
       class: `ifd-entry ifd-${e.change}`,
-      title: anchor ? `Open ${anchor.title}` : "Open in Files",
-      onclick: () =>
-        anchor
-          ? openAnchorPeek(anchor)
-          : navigate("files", { path: e.file, line: e.line, side: e.graph }),
+      title: "Open in Files",
+      onclick: () => navigate("files", { path: e.file, line: e.line, side: e.graph }),
     },
     h("span", { class: `badge ${CHANGE_CLASS[e.change]}` }, e.change),
     h(
@@ -590,11 +483,7 @@ function interfaceRow(e: InterfaceEntry): HTMLElement {
       h("code", { class: "ifd-name" }, e.name),
       e.capability ? h("div", { class: "ifd-cap" }, e.capability) : null,
     ),
-    h(
-      "span",
-      { class: "ifd-where mono", title: anchor ? "Where it lands in the code today" : null },
-      `${anchor ? "at " : ""}${e.file}:${e.line}`,
-    ),
+    h("span", { class: "ifd-where mono" }, `${e.file}:${e.line}`),
   );
   return asButton(row);
 }
@@ -666,23 +555,18 @@ function renderBlock(b: Block): HTMLElement {
               "div",
               { class: "frame-head" },
               h("span", { class: "title" }, a.title),
-              // Only a review has a Files tab; on the other kinds this would
-              // navigate to a tab that does not exist and bounce the reader to
-              // the document, so it offers nothing rather than offering that.
               h(
                 "span",
-                VIEWS[kind()].includes("files")
-                  ? {
-                      class: "path",
-                      title: "Open in Files",
-                      onclick: () =>
-                        navigate("files", {
-                          path: a.peek!.file,
-                          line: a.peek!.from,
-                          side: a.peek!.graph,
-                        }),
-                    }
-                  : { class: "path inert" },
+                {
+                  class: "path",
+                  title: "Open in Files",
+                  onclick: () =>
+                    navigate("files", {
+                      path: a.peek!.file,
+                      line: a.peek!.from,
+                      side: a.peek!.graph,
+                    }),
+                },
                 `${a.peek.file}:${a.peek.from}-${a.peek.to}`,
               ),
               h("span", { class: `badge ${a.peek.graph === "base" ? "del" : ""}` }, a.peek.graph),

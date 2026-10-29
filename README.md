@@ -63,8 +63,6 @@ decision, and the queue on the home page) is in [docs/READER.md](docs/READER.md)
 | Skill                                                      | For                                                                                                         |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | [`thurview`](skills/thurview/SKILL.md)                     | A local change already written: a branch or commit range. Approve or send back.                             |
-| [`thurview-explain`](skills/thurview-explain/SKILL.md)     | A codebase or subsystem at one commit, with what it did not examine.                                        |
-| [`thurview-design`](skills/thurview-design/SKILL.md)       | A change not written yet, its proposals anchored to the code they land in.                                  |
 | [`thurview-fix`](skills/thurview-fix/SKILL.md)             | Review, commit the fixes that pass your tests and lint, report the rest. No browser.                        |
 | [`thurview-pr-review`](skills/thurview-pr-review/SKILL.md) | An opened PR or MR: a review page, a public snapshot and one summary on the forge, followed until merge.    |
 | [`thurview-publish`](skills/thurview-publish/SKILL.md)     | Put a document in your own Azure, S3, Cloud Storage or Cloudflare Pages account behind a link that expires. |
@@ -74,8 +72,6 @@ decision, and the queue on the home page) is in [docs/READER.md](docs/READER.md)
 | Command                                                     | Purpose                                                           |
 | ----------------------------------------------------------- | ----------------------------------------------------------------- |
 | `thurview scaffold [--pr N \| --base R --head R]`           | Create a review pinned to exact commits (`--update` re-pins)      |
-| `thurview explain [<path>] [--commit R]`                    | Create an explainer of a codebase or subsystem at one commit      |
-| `thurview design [<path>] [--commit R]`                     | Create a design, pinned to the commit it argues from              |
 | `thurview info [--all]`                                     | Documents bound to this worktree                                  |
 | `thurview publish [--review ID] [--pass F] [--open]`        | Validate the document and map, seal a revision and its verdict    |
 | `thurview open [--review ID] [--view T]`                    | Start the server if needed and open the browser                   |
