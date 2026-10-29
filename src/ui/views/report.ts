@@ -1,6 +1,6 @@
 import { h, popover, clickPoint } from "../dom.js";
 import { api } from "../api.js";
-import { state, emit, navigate, kind, VIEWS, canWrite, isNarrow } from "../state.js";
+import { state, emit, navigate, canWrite, isNarrow } from "../state.js";
 import { commentPopover } from "../threads.js";
 import { CATEGORIES, CONFIDENCE } from "../../pr-review/categories.js";
 import type { Verdict } from "../../pr-review/format.js";
@@ -82,7 +82,7 @@ export function landsIn(): HTMLElement | null {
     { class: "lands-in" },
     h("strong", null, "Lands in: "),
     parts.map((p, i) => [i ? ", " : "", p.added ? `${p.label} (new)` : p.label]).flat(),
-    VIEWS[kind()].includes("map") && state.data?.map
+    state.data?.map
       ? [
           " ",
           h(
@@ -164,37 +164,30 @@ export function provenanceFacts(): HTMLElement {
 /** What the change is about and how big it is, read before the verdict. */
 export function summaryFacts(): HTMLElement {
   const d = state.data!;
-  const k = kind();
   const facts: (string | HTMLElement)[] = [];
-  if (k === "review") {
-    const plus = d.changes.reduce((n, c) => n + c.additions, 0);
-    const minus = d.changes.reduce((n, c) => n + c.deletions, 0);
+  const plus = d.changes.reduce((n, c) => n + c.additions, 0);
+  const minus = d.changes.reduce((n, c) => n + c.deletions, 0);
+  facts.push(
+    `${d.changes.length} file${d.changes.length === 1 ? "" : "s"}`,
+    h(
+      "span",
+      { class: "diffstat" },
+      h("b", { class: "a" }, `+${plus}`),
+      " ",
+      h("b", { class: "d" }, `−${minus}`),
+    ),
+  );
+  const added = (d.map?.diff.added ?? [])
+    .map((id) => d.map?.head.nodes.find((n) => n.id === id)?.label)
+    .filter(Boolean);
+  if (added.length) facts.push(`New: ${added.join(", ")}`);
+  const ifd = d.document?.interfaces;
+  if (ifd)
     facts.push(
-      `${d.changes.length} file${d.changes.length === 1 ? "" : "s"}`,
-      h(
-        "span",
-        { class: "diffstat" },
-        h("b", { class: "a" }, `+${plus}`),
-        " ",
-        h("b", { class: "d" }, `−${minus}`),
-      ),
+      ifd.entries.length
+        ? `${ifd.entries.length} interface change${ifd.entries.length === 1 ? "" : "s"}`
+        : "No interface change",
     );
-    const added = (d.map?.diff.added ?? [])
-      .map((id) => d.map?.head.nodes.find((n) => n.id === id)?.label)
-      .filter(Boolean);
-    if (added.length) facts.push(`New: ${added.join(", ")}`);
-    const ifd = d.document?.interfaces;
-    if (ifd)
-      facts.push(
-        ifd.entries.length
-          ? `${ifd.entries.length} interface change${ifd.entries.length === 1 ? "" : "s"}`
-          : "No interface change",
-      );
-  } else {
-    facts.push(
-      `${k === "explainer" ? "Explains" : "Argued from"} ${d.review.binding.name === "**" ? "the codebase" : d.review.binding.name} at ${d.review.pins.head.slice(0, 7)}`,
-    );
-  }
   return h(
     "div",
     { class: "summary-facts" },
@@ -311,7 +304,6 @@ function diffWindow(f: Finding): HTMLElement {
 
 /** The finding in full: the fix, its lines in the diff, a suggestion as a change. */
 export function findingEvidence(f: Finding): HTMLElement {
-  const hasFiles = VIEWS[kind()].includes("files");
   return h(
     "div",
     { class: "finding-evidence" },
@@ -324,17 +316,14 @@ export function findingEvidence(f: Finding): HTMLElement {
         { class: "ev-head" },
         h("span", { class: "t" }, "In the diff"),
         h("span", { class: "p mono" }, where(f)),
-        hasFiles
-          ? h(
-              "button",
-              {
-                class: "small ghost",
-                onclick: () =>
-                  navigate("files", { path: f.path, line: f.line, side: f.side ?? "head" }),
-              },
-              "Open in Files",
-            )
-          : null,
+        h(
+          "button",
+          {
+            class: "small ghost",
+            onclick: () => navigate("files", { path: f.path, line: f.line, side: f.side ?? "head" }),
+          },
+          "Open in Files",
+        ),
       ),
       diffWindow(f),
     ),

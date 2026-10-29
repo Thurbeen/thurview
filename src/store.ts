@@ -10,20 +10,17 @@ export type ReviewStatus =
   "draft" | "awaiting-review" | "awaiting-agent-updates" | "accepted" | "closed";
 
 /**
- * What a document explains. A review explains a CHANGE, so its pins are a range
- * and the diff, the commits and the interface delta all mean something. An
- * explainer explains a CODEBASE at one commit: same anchors, same peeks, same
- * threads, no range — so the surfaces that describe a range are absent rather
- * than rendered empty. A design explains a CHANGE THAT IS NOT WRITTEN YET,
- * pinned to the one commit it argues from: its anchors are the code as it
- * stands, and what it would add, change or remove is a proposal rather than a
- * delta. Records written before this field read as reviews.
+ * The document kinds thurview dropped. A record an older thurview wrote for one
+ * keeps its `kind`, so it is refused by name instead of being read as a review
+ * it is not; it can still be deleted.
  */
-export type DocumentKind = "review" | "explainer" | "design";
+export const REMOVED_KINDS = ["explainer", "design"] as const;
+export type RemovedKind = (typeof REMOVED_KINDS)[number];
 
 export interface Binding {
+  /** `codebase` only on a record of a removed kind */
   kind: "branch" | "pr" | "range" | "codebase";
-  /** branch name, change request number, "base..head", or the path scope of an explainer or design */
+  /** branch name, change request number, or "base..head" */
   name: string;
   url?: string;
   /** `github` or `gitlab` for a change request; absent on reviews pinned before forges were named. */
@@ -33,8 +30,8 @@ export interface Binding {
 export interface ReviewState {
   schema: number;
   id: string;
-  /** absent on records written before explainers existed, which are reviews */
-  kind?: DocumentKind;
+  /** absent on a review; set only on a record of a removed kind */
+  kind?: string;
   title: string;
   worktree: string;
   repoRoot: string;
@@ -178,9 +175,9 @@ export async function writeJson(path: string, value: unknown): Promise<void> {
   await writeAtomic(path, JSON.stringify(value, null, 2) + "\n");
 }
 
-/** The kind of a stored document, defaulting old records to a review. */
-export function kindOf(r: Pick<ReviewState, "kind">): DocumentKind {
-  return r.kind === "explainer" || r.kind === "design" ? r.kind : "review";
+/** The removed kind a stored record was written for, or null for a review. */
+export function removedKind(r: Pick<ReviewState, "kind">): RemovedKind | null {
+  return REMOVED_KINDS.find((k) => k === r.kind) ?? null;
 }
 
 export async function readReview(id: string): Promise<ReviewState | null> {
@@ -198,13 +195,14 @@ export async function writeReview(state: ReviewState): Promise<void> {
   await writeJson(join(reviewDir(state.id), "review.json"), state);
 }
 
-export async function listReviews(): Promise<ReviewState[]> {
+/** Every review, newest first; `removed` keeps the records of removed kinds too. */
+export async function listReviews(opts: { removed?: boolean } = {}): Promise<ReviewState[]> {
   if (!existsSync(reviewsDir())) return [];
   const ids = await readdir(reviewsDir());
   const out: ReviewState[] = [];
   for (const id of ids) {
     const r = await readReview(id);
-    if (r) out.push(r);
+    if (r && (opts.removed || !removedKind(r))) out.push(r);
   }
   out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   return out;

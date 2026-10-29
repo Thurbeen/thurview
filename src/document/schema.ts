@@ -67,23 +67,6 @@ export const InterfaceSchema = z
   });
 
 /**
- * One search the agent ran while reading the code: the callers of a symbol, the
- * tests touching a file, the importers of a module. Publish re-runs it with
- * `git grep -E` at the pinned commit, so the files it reports are the commit's
- * and not the worktree's, and the reader can run the same line to check it.
- */
-export const SearchSchema = z
-  .object({
-    /** a POSIX extended regular expression, as `git grep -E` reads it */
-    pattern: z.string().min(1),
-    /** git pathspecs to search under, as `git grep` reads them; the whole commit when left out, though coverage counts only files in scope */
-    paths: z.array(z.string().min(1)).optional(),
-    /** the question the search answered, in the agent's words */
-    why: z.string().min(1).optional(),
-  })
-  .strict();
-
-/**
  * One place this change lets input cross a trust boundary, with the anchor that
  * shows it. What counts as one is defined once, in the `thurview-fix` skill's
  * SKILL.md under "Findings"; nothing here restates it, so the two cannot drift
@@ -155,7 +138,6 @@ export const DataSchema = z
     anchors: z.record(id, AnchorSchema).default({}),
     stores: z.record(id, StoreSchema).default({}),
     interfaces: z.record(id, InterfaceSchema).default({}),
-    searches: z.record(id, SearchSchema).default({}),
     /** read by hand, not here: see Security above for why a union cannot sit on this object */
     security: z.unknown().optional(),
     /** read by hand too: see Architecture above */

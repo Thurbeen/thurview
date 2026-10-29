@@ -98,9 +98,10 @@ describe("thurview is a review tool only", () => {
     const { stdout } = await execFileP("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
       cwd: ROOT,
     });
-    const packed = (JSON.parse(stdout) as { files: { path: string }[] }[])[0]!.files.map(
-      (f) => f.path,
-    );
+    // npm before 11 answers a list, npm 11 an object keyed by package name
+    type Pack = { files: { path: string }[] };
+    const parsed = JSON.parse(stdout) as Pack[] | Record<string, Pack>;
+    const packed = Object.values(parsed)[0]!.files.map((f) => f.path);
     const skills = new Set(
       packed.filter((f) => f.startsWith("skills/")).map((f) => f.split("/")[1]),
     );

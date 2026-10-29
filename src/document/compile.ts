@@ -4,7 +4,6 @@ import {
   showFile,
   lineChanges,
   listFiles,
-  grepAt,
   changedFiles,
   type ChangedFile,
   type LineChange,
@@ -12,8 +11,6 @@ import {
 import { highlightLines, languageFor } from "../highlight.js";
 import { parseDocument, FOREIGN_DIAGRAM_FENCES, type RawBlock } from "./parse.js";
 import { sortEntries, countsOf, type InterfaceDelta } from "../interfaces.js";
-import type { SearchRecord } from "../coverage.js";
-import type { DocumentKind } from "../store.js";
 import {
   DataSchema,
   SequenceSchema,
@@ -149,12 +146,10 @@ export interface CompiledArchitecture {
 export interface CompiledDocument {
   title: string;
   blocks: Block[];
-  /** what the agent declared, each entry proven on the pinned diff; null for an explainer */
-  interfaces: InterfaceDelta | null;
-  /** review only: an explainer and a design have no change to cross a boundary */
-  security: CompiledSecurity | null;
-  /** review only: an explainer surfaces structure and a design proposes it */
-  architecture: CompiledArchitecture | null;
+  /** what the agent declared, each entry proven on the pinned diff */
+  interfaces: InterfaceDelta;
+  security: CompiledSecurity;
+  architecture: CompiledArchitecture;
   anchors: Record<string, CompiledAnchor>;
   actors: Data["actors"];
   stores: Data["stores"];
@@ -166,13 +161,6 @@ export interface CompileInput {
   pins: { base: string; head: string };
   reviewMd: string;
   dataYaml: string;
-  /** review (a change), explainer (a codebase at one commit) or design (a proposal); default review */
-  kind?: DocumentKind;
-}
-
-/** The kind, as a message names it, so one sentence serves every kind that needs it. */
-function kindWord(kind: DocumentKind): string {
-  return kind === "explainer" ? "an explainer" : kind === "design" ? "a design" : "a review";
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -197,8 +185,6 @@ export async function compileDocument(input: CompileInput): Promise<{
   document: CompiledDocument | null;
   diagnostics: Diagnostic[];
   anchors: Record<string, CompiledAnchor>;
-  /** an explainer's searches, re-run at the pinned commit */
-  searches: SearchRecord[];
 }> {
   const diags: Diagnostic[] = [];
   const err = (file: string, message: string, line?: number) =>
@@ -215,49 +201,17 @@ export async function compileDocument(input: CompileInput): Promise<{
   const dataParsed = parseWith(DataSchema, dataRaw);
   const data: Data = dataParsed.ok
     ? dataParsed.value
-    : { actors: {}, anchors: {}, stores: {}, interfaces: {}, searches: {} };
+    : { actors: {}, anchors: {}, stores: {}, interfaces: {} };
   if (!dataParsed.ok) for (const m of dataParsed.errors) err("data.yaml", m);
 
-  const kind: DocumentKind = input.kind ?? "review";
-  if (kind === "explainer" && Object.keys(data.interfaces).length)
-    err(
-      "data.yaml",
-      "an explainer has no interface delta: it explains a codebase at one commit, not a change",
-    );
-  // A trust boundary is something a CHANGE carries input across, so the
-  // dimension belongs to the kind that has one. An explainer and a design are
-  // pinned to a single commit, and a crossing declared against one would be a
-  // statement about code nobody touched. The KEY is what they cannot carry, not
-  // one of its values: leaving `security: pending` through would make the
-  // documents' "an explainer has no such key" false, and the author is being
-  // told to delete the key, not to pick a better value for it.
-  if (kind !== "review" && isRecord(dataRaw) && "security" in dataRaw)
-    err(
-      "data.yaml",
-      `security is what a change crosses: ${kindWord(kind)} is pinned to one commit and has no diff, so it has none of its own to state`,
-    );
-  if (kind !== "review" && isRecord(dataRaw) && "architecture" in dataRaw)
-    err(
-      "data.yaml",
-      `architecture is a review's view on a change: ${kindWord(kind)} has no change to judge, so it has none of its own to state`,
-    );
   // Nothing derives a row for the agent to annotate any more: every entry names
   // its own interface, and an old `symbol:` entry is told how to say it now.
   for (const [key, e] of Object.entries(data.interfaces))
     if (e.symbol !== undefined)
       err(
         "data.yaml",
-        kind === "design"
-          ? `interface ${key}: a design proposes an interface, it does not annotate one; name it with \`name\`, \`change\` and \`anchor\``
-          : `interface ${key}: \`symbol\` is gone, thurview derives no interface to annotate; name it with \`name\`, \`change\` and \`anchor\``,
+        `interface ${key}: \`symbol\` is gone, thurview derives no interface to annotate; name it with \`name\`, \`change\` and \`anchor\``,
       );
-  // Searches are what an explainer's Coverage tab counts. A review and a design
-  // have no such tab, so a search recorded there would be shown to nobody.
-  if (kind !== "explainer" && Object.keys(data.searches).length)
-    err(
-      "data.yaml",
-      `searches feed an explainer's coverage, and ${kindWord(kind)} has none; say in the prose what you searched and how`,
-    );
 
   const parsed = parseDocument(input.reviewMd);
   if (!parsed.title) err("review.md", "the document needs an H1 title");
@@ -278,12 +232,7 @@ export async function compileDocument(input: CompileInput): Promise<{
       ...(a.detail ? { detail: a.detail } : {}),
       ...(a.map ? { map: a.map } : {}),
     };
-    if (a.peek && kind !== "review" && a.peek.graph === "base") {
-      err(
-        "data.yaml",
-        `anchor ${id}: ${kindWord(kind)} has one pinned commit, so \`graph: base\` has no meaning`,
-      );
-    } else if (a.peek) {
+    if (a.peek) {
       const text = await fileAt(a.peek.graph, a.peek.file);
       if (text === null) {
         err(
@@ -347,21 +296,13 @@ export async function compileDocument(input: CompileInput): Promise<{
     if (block) blocks.push(block);
   }
 
-  const interfaces =
-    kind === "explainer"
-      ? null
-      : kind === "design"
-        ? compileProposals({ declared: data.interfaces, anchors, used, err })
-        : compileInterfaces({
-            declared: data.interfaces,
-            anchors,
-            changes,
-            used,
-            err,
-          });
-
-  const searches =
-    kind === "explainer" ? await runSearches(input.cwd, input.pins.head, data.searches, err) : [];
+  const interfaces = compileInterfaces({
+    declared: data.interfaces,
+    anchors,
+    changes,
+    used,
+    err,
+  });
 
   // Two questions, and only one of them needs the rest of data.yaml. The SHAPE
   // of `security` is read from the raw file, so a mistake in it is reported
@@ -369,33 +310,26 @@ export async function compileDocument(input: CompileInput): Promise<{
   // crossing against `anchors` is the other: when the file did not parse those
   // came from the fallback, and every crossing would be blamed for naming an
   // anchor that is not missing, only unknown.
-  const declaredSecurity = kind === "review" ? parseSecurity(dataRaw, used, err) : "pending";
-  const security =
-    kind === "review"
-      ? compileSecurity({
-          declared: dataParsed.ok ? declaredSecurity : "pending",
-          anchors,
-          declaredAnchors: data.anchors,
-          used,
-          err,
-        })
-      : null;
-  const declaredArchitecture =
-    kind === "review" ? parseArchitecture(dataRaw, used, err) : "pending";
-  const architecture =
-    kind === "review"
-      ? compileArchitecture({
-          declared: dataParsed.ok ? declaredArchitecture : "pending",
-          anchors,
-          declaredAnchors: data.anchors,
-          used,
-          err,
-        })
-      : null;
+  const declaredSecurity = parseSecurity(dataRaw, used, err);
+  const security = compileSecurity({
+    declared: dataParsed.ok ? declaredSecurity : "pending",
+    anchors,
+    declaredAnchors: data.anchors,
+    used,
+    err,
+  });
+  const declaredArchitecture = parseArchitecture(dataRaw, used, err);
+  const architecture = compileArchitecture({
+    declared: dataParsed.ok ? declaredArchitecture : "pending",
+    anchors,
+    declaredAnchors: data.anchors,
+    used,
+    err,
+  });
   // The stub published before the walkthrough anchors nothing, and it may go
   // without a view. The first anchored claim makes it a review, and a review
   // that judges the lines but not the design has done the cheap half.
-  if (architecture?.state === "pending" && used.size)
+  if (architecture.state === "pending" && used.size)
     err(
       "data.yaml",
       "every review takes a view on the architecture: add `architecture: { view: ... }`, with `defects` for each one the change introduces or deepens",
@@ -404,26 +338,8 @@ export async function compileDocument(input: CompileInput): Promise<{
   for (const id of Object.keys(anchors))
     if (!used.has(id)) warn("data.yaml", `anchor "${id}" is defined but never used`);
 
-  // A review may publish a stub so the reader can read the diff while the
-  // walkthrough is written. An explainer has no diff to read in the meantime,
-  // so an unanchored one is only prose about code the reader cannot check.
-  if (kind === "explainer" && !used.size)
-    err(
-      "review.md",
-      "an explainer needs at least one anchored claim: link prose to code with [text](anchor:<id>)",
-    );
-
-  // What separates a design from an explainer is that it proposes something.
-  // Without a proposal it is prose about the code as it stands, which is the
-  // other kind, and the reader would be asked to approve a plan with no plan.
-  if (kind === "design" && !interfaces?.entries.length)
-    err(
-      "data.yaml",
-      "this design proposes nothing: declare under `interfaces` what it would add, change or remove, each with the anchor of the code it lands in today",
-    );
-
   const errors = diags.filter((d) => d.level === "error");
-  if (errors.length) return { document: null, diagnostics: diags, anchors, searches };
+  if (errors.length) return { document: null, diagnostics: diags, anchors };
   return {
     document: {
       title: parsed.title,
@@ -438,32 +354,7 @@ export async function compileDocument(input: CompileInput): Promise<{
     },
     diagnostics: diags,
     anchors,
-    searches,
   };
-}
-
-/**
- * Re-run each search the agent recorded, at the pinned commit. What the agent
- * saw in its worktree may be a different commit; what the reader is told it
- * matched is the one the document is pinned to.
- */
-async function runSearches(
-  cwd: string,
-  commit: string,
-  declared: Data["searches"],
-  err: (file: string, message: string) => void,
-): Promise<SearchRecord[]> {
-  const out: SearchRecord[] = [];
-  for (const [key, s] of Object.entries(declared)) {
-    const paths = s.paths ?? [];
-    try {
-      const { files, hits } = await grepAt(cwd, commit, s.pattern, paths);
-      out.push({ key, pattern: s.pattern, paths, ...(s.why ? { why: s.why } : {}), hits, files });
-    } catch (e) {
-      err("data.yaml", `search ${key}: git grep refused it: ${(e as Error).message}`);
-    }
-  }
-  return out;
 }
 
 /**
@@ -706,64 +597,6 @@ function compileInterfaces(ctx: {
   sortEntries(entries);
   const counts = countsOf(entries);
   return { entries, verdict: counts ? `${counts}.` : "No interface change declared." };
-}
-
-/**
- * What a design would add, change or remove, in the slot a review fills with
- * what its change did.
- *
- * The difference is the whole point of the kind and it is enforced here: a
- * review's entry is PROVEN - the anchor must sit on lines the pinned diff
- * really moved - while a design's entry is PROPOSED, and there is no diff to
- * prove it against. What stays true is the anchor: it is the SITE, real code at
- * the pinned commit that the proposal changes, replaces or plugs into, so a
- * proposal is always attached to something the reader can open. An anchor never
- * points at code that does not exist yet; nothing in thurview does.
- */
-function compileProposals(ctx: {
-  declared: Data["interfaces"];
-  anchors: Record<string, CompiledAnchor>;
-  used: Set<string>;
-  err: (file: string, message: string) => void;
-}): InterfaceDelta {
-  const entries: InterfaceDelta["entries"] = [];
-  for (const [key, e] of Object.entries(ctx.declared)) {
-    // a symbol entry is refused earlier, with the reason a design cannot carry one
-    if (e.symbol !== undefined) continue;
-    const anchor = ctx.anchors[e.anchor!];
-    ctx.used.add(e.anchor!);
-    if (!anchor) {
-      ctx.err("data.yaml", `proposal ${key}: unknown anchor "${e.anchor}"`);
-      continue;
-    }
-    if (!anchor.peek) {
-      ctx.err(
-        "data.yaml",
-        `proposal ${key}: anchor "${e.anchor}" has no peek, so it names no site in the code as it stands`,
-      );
-      continue;
-    }
-    entries.push({
-      id: `proposed:${key}`,
-      change: e.change!,
-      name: e.name!,
-      was: "",
-      kind: "proposed",
-      file: anchor.peek.file,
-      line: anchor.peek.from,
-      graph: "head",
-      capability: e.capability,
-      anchor: e.anchor!,
-    });
-  }
-  sortEntries(entries);
-  const counts = countsOf(entries);
-  return {
-    entries,
-    // "Proposed" up front, because the same panel on a review states what a
-    // change already did, and the two must never read the same.
-    verdict: counts ? `Proposed: ${counts}.` : "Nothing proposed.",
-  };
 }
 
 interface Ctx {
@@ -1022,7 +855,7 @@ function compileComponent(b: RawBlock, ctx: Ctx): Block | null {
     });
     // A flow of people alone is the picture this component exists to stop: the
     // reader can open none of it, and the anchored diagrams beside it lose by
-    // association. One anchored step is the floor, as it is for an explainer.
+    // association. One anchored step is the floor.
     if (!r.value.steps.some((s) => s.anchor))
       err(
         "review.md",
@@ -1110,7 +943,6 @@ export async function compileMap(input: {
   pins: { base: string; head: string };
   mapYaml: string;
   anchors: Record<string, unknown>;
-  kind?: DocumentKind;
 }): Promise<{ map: CompiledMap | null; diagnostics: Diagnostic[] }> {
   const diags: Diagnostic[] = [];
   const err = (message: string) => diags.push({ level: "error", file: "map.yaml", message });
@@ -1128,14 +960,6 @@ export async function compileMap(input: {
     return { map: null, diagnostics: diags };
   }
   const m: MapFile = r.value;
-  if (input.kind === "explainer" && m.base)
-    err("an explainer has one pinned commit, so there is no base structure to compare against");
-  // On a design the two halves of the map mean different things: `base` is the
-  // structure as it stands, so a glob matching nothing there is a wrong claim
-  // about today, while `nodes` is the structure the design proposes, and a part
-  // it would create owns no file yet. Warning about that would be noise the
-  // author cannot fix except by deleting the proposal.
-  const proposedHead = input.kind === "design";
   const validateGraph = async (
     g: { nodes: MapNode[]; edges: MapEdge[] },
     graph: "head" | "base",
@@ -1153,13 +977,9 @@ export async function compileMap(input: {
       if (n.anchor && !input.anchors[n.anchor])
         err(`${graph}: node "${n.id}" references unknown anchor "${n.anchor}"`);
       for (const glob of n.files ?? []) {
-        if (proposedHead && graph === "head") continue;
         const re = globToRegExp(glob);
-        // A design has one commit, so naming a "base commit" here would send the
-        // author looking for the very thing `graph: base` is refused for.
-        const at = proposedHead ? "the pinned commit" : `the pinned ${graph} commit`;
         if (!files.some((f) => re.test(f)))
-          warn(`${graph}: node "${n.id}": no file matches "${glob}" at ${at}`);
+          warn(`${graph}: node "${n.id}": no file matches "${glob}" at the pinned ${graph} commit`);
       }
     }
     for (const e of g.edges) {

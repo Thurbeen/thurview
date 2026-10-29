@@ -3,7 +3,6 @@ import { existsSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Coverage } from "./coverage.js";
 import { log, showFile } from "./git.js";
 import { readThreads, type ReviewState } from "./store.js";
 import { NOBODY } from "./presence.js";
@@ -43,14 +42,13 @@ export function localTarget(out: string): ExportTarget {
 async function snapshot(review: ReviewState, withThreads: boolean) {
   const data = await revisionData(review, review.revision);
   const t = await readThreads(review.id);
-  const isReview = (review.kind ?? "review") === "review";
-  const changes = isReview ? data.changes : [];
+  const changes = data.changes;
   const diffs: Record<string, unknown> = {};
   const files: Record<string, unknown> = {};
   const want = new Set<string>();
   // Drafts the reader never sent stay theirs; only what was said is shown.
   const threads = withThreads ? t.threads.filter((x) => x.submitted || x.mode === "ask") : [];
-  const commits = isReview ? await log(review.worktree, review.pins.base, review.pins.head) : [];
+  const commits = await log(review.worktree, review.pins.base, review.pins.head);
   for (const c of changes) {
     const d = await fileDiff(review, c.path);
     diffs[c.path] = d;
@@ -69,15 +67,6 @@ async function snapshot(review: ReviewState, withThreads: boolean) {
   for (const c of commits) for (const f of c.files) if (!diffs[f]) want.add(`head:${f}`);
   for (const th of threads)
     if (th.target.type === "file") want.add(`${side(th.target.side)}:${th.target.path}`);
-  const coverage = data.coverage as Coverage | null;
-  for (const cluster of coverage?.clusters ?? [])
-    for (const path of [
-      ...cluster.explained,
-      ...cluster.placed,
-      ...cluster.searched,
-      ...cluster.uncovered,
-    ])
-      want.add(`head:${path}`);
   for (const key of [...want].sort()) {
     const [graph, ...rest] = key.split(":");
     const path = rest.join(":");

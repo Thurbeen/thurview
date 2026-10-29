@@ -1,29 +1,12 @@
 import type { Payload } from "./api.js";
-import type { DocumentKind, Thread, ThreadTarget } from "../store.js";
+import type { Thread, ThreadTarget } from "../store.js";
 import { published } from "./published.js";
 
-export type View = "review" | "commits" | "files" | "map" | "coverage";
+export const VIEWS = ["review", "commits", "files", "map"] as const;
+export type View = (typeof VIEWS)[number];
 
-/**
- * Reviews show a change; explainers and designs browse files at one pinned
- * commit instead of showing a diff or commits. Coverage states an explainer's
- * scope, while a design's map places the proposed structure beside today's.
- */
-export const VIEWS: Record<DocumentKind, View[]> = {
-  review: ["review", "commits", "files", "map"],
-  explainer: ["review", "files", "map", "coverage"],
-  design: ["review", "files", "map"],
-};
-
-export function kind(): DocumentKind {
-  const k = state.data?.review.kind;
-  return k === "explainer" || k === "design" ? k : "review";
-}
-
-/** The current view, or the document's first tab when this kind has no such tab. */
 export function view(): View {
-  const allowed = VIEWS[kind()];
-  return allowed.includes(state.view) ? state.view : allowed[0]!;
+  return state.view;
 }
 
 export interface SideState {
@@ -100,9 +83,7 @@ export function navigate(
 export function readHash(): void {
   const m = /^#\/(\w+)(?:\?(.*))?$/.exec(location.hash);
   const v = (m?.[1] ?? "review") as View;
-  state.view = (["review", "commits", "files", "map", "coverage"] as View[]).includes(v)
-    ? v
-    : "review";
+  state.view = VIEWS.includes(v) ? v : "review";
   state.params = new URLSearchParams(m?.[2] ?? "");
 }
 

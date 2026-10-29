@@ -86,17 +86,6 @@ describe("publish --pass", { timeout: 60_000 }, () => {
     expect(String(out["error"])).toContain("confidence");
   });
 
-  it("refuses a pass on an explainer, which has no verdict to show", async () => {
-    const { explainer } = await cli(["explain", "src"]);
-    await cp(join(DEMO, "review", "review.md"), join(explainer.dir, "review.md"));
-    await cp(join(DEMO, "review", "data.yaml"), join(explainer.dir, "data.yaml"));
-    const file = join(tmp, "explainer-pass.json");
-    await writePass(file);
-    const out = await cli(["publish", "--review", explainer.uuid, "--pass", file], 2);
-    expect(out["code"]).toBe("VALIDATION_ERROR");
-    expect(String(out["error"])).toContain("explainer");
-  });
-
   it("seals the pass with the revision as its verdict, and the page receives it", async () => {
     const file = join(tmp, "pass.json");
     await writePass(file);
