@@ -22,6 +22,17 @@ export function renderFiles(
   const selected = state.params.get("path") ?? files[0]?.path ?? "";
   if (selected && !files.some((f) => f.path === selected)) files.push({ path: selected });
   const view = h("div", { class: "file-view" });
+  const scope = state.data?.scope;
+  if (scope?.declared && scope.withheld)
+    view.appendChild(
+      h(
+        "p",
+        { class: "scope-note" },
+        h("b", null, `${scope.withheld} file${scope.withheld === 1 ? "" : "s"} withheld`),
+        " by the repository's review scope. ",
+        scope.verdict,
+      ),
+    );
   const sections = new Map<string, HTMLElement>();
   const loading = new Map<string, Promise<void>>();
   let opening = false;
@@ -51,7 +62,8 @@ export function renderFiles(
     if (!lineJump)
       view.scrollTop +=
         section.getBoundingClientRect().top -
-        view.getBoundingClientRect().top +
+        view.getBoundingClientRect().top -
+        (view.querySelector<HTMLElement>(".scope-note")?.offsetHeight ?? 0) +
         (initial && position?.path === path ? position.offset : 0);
     current(path);
     opening = false;
@@ -69,7 +81,13 @@ export function renderFiles(
   root.appendChild(tree.element);
   if (!files.length)
     view.appendChild(
-      h("div", { class: "empty-state" }, "No changed files: base and head are the same commit."),
+      h(
+        "div",
+        { class: "empty-state" },
+        scope?.withheld
+          ? "No readable changed files under the declared review scope."
+          : "No changed files: base and head are the same commit.",
+      ),
     );
   // The surrounding scroll container owns this observer; a removed view no longer loads diffs.
   const observer = new IntersectionObserver(

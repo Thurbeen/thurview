@@ -2962,3 +2962,19 @@ button.linklike {
     opacity: 1;
   }
 }
+
+/* A filtered file list must explain the missing files before its first diff. */
+.scope-note {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg2);
+  padding: 8px 12px;
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg2);
+  overflow-wrap: anywhere;
+}
+.scope-note b {
+  color: var(--warn);
+}

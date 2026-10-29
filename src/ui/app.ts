@@ -194,10 +194,23 @@ function renderTopbar(): void {
     "aria-label": "Revision",
     style: { font: "inherit", fontSize: "12px" },
     onchange: async (e: Event) => {
-      const n = Number((e.target as HTMLSelectElement).value);
+      const sel = e.target as HTMLSelectElement;
+      const n = Number(sel.value);
+      const was = state.viewingRevision;
       state.viewingRevision = n === r.revision ? null : n;
-      state.data = await api.review(state.id, n);
-      emit("data");
+      try {
+        state.data = await api.review(state.id, n);
+        emit("data");
+      } catch (err) {
+        // A revision sealed under rules the repository has since narrowed is
+        // refused, and the refusal says why. Without this the click looked like
+        // it did nothing at all: the promise rejected and the page stayed put.
+        state.viewingRevision = was;
+        sel.value = String(was ?? r.revision);
+        sel.title = (err as Error).message;
+        clear(app);
+        app.appendChild(h("div", { class: "empty-state" }, (err as Error).message));
+      }
     },
   });
   for (let n = r.revision; n >= 1; n--)

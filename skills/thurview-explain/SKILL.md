@@ -61,6 +61,16 @@ Read the guidance files that exist, in this order; the second wins on conflict.
 
 `thurview explain` lists the ones it found under `guidance`.
 
+A repository may also declare a **review scope** in `thurview-scope.yaml` at its
+root: an allowlist of extensions, a list of whole file names, and path or glob exclusions
+matched from the first segment of the path. It is not guidance - it is
+enforced. A peek at a path it withholds fails `publish`, and the reader's
+browser is refused the same path with
+"excluded by scope". When rules are declared the command prints them under
+`scopeRules`; read them before you pick what to anchor, and anchor nothing they
+withhold. Widening them is a change to the repository, so propose it in the
+document rather than editing it to fit the walkthrough.
+
 The `thurview` skill ships the references this one shares - document authoring,
 components, diagrams, software map, searching the code, lifecycle. `thurview skill` prints the path of
 every bundled SKILL.md; the references sit beside each one. Read **Document

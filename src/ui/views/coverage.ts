@@ -100,6 +100,9 @@ function intro(cov: Coverage): HTMLElement {
       fact("scope", cov.scope === "**" ? "the whole repository" : cov.scope),
       fact("commit", cov.commit.slice(0, 12)),
       fact("files in scope", String(cov.files.total)),
+      cov.files.excludedByScope
+        ? fact("withheld by review scope", String(cov.files.excludedByScope))
+        : null,
     ),
   );
 }
