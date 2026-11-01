@@ -180,7 +180,7 @@ async function originOf(repoRoot: string): Promise<string> {
  * document moved would be stale by construction.
  *
  * A checkout is named once, and by what the forge said when any of its
- * documents has asked it, so an explainer lands in the same group as the
+ * documents has asked it, so a branch review lands in the same group as the
  * change requests beside it rather than under a second name for the same
  * repository.
  */

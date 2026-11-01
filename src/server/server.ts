@@ -13,6 +13,7 @@ import type { Provenance } from "../forge/types.js";
 import {
   listReviews,
   readReview,
+  removedKind,
   writeReview,
   readThreads,
   readJson,
@@ -85,6 +86,8 @@ async function readBody(req: http.IncomingMessage): Promise<Record<string, unkno
 
 async function findReview(idOrPrefix: string) {
   const r = await readReview(idOrPrefix);
+  if (r && removedKind(r))
+    throw new HttpError(410, `thurview no longer supports ${removedKind(r)} documents`);
   if (r) return r;
   const all = (await listReviews()).filter((x) => x.id.startsWith(idOrPrefix));
   if (all.length === 1) return all[0]!;
@@ -122,8 +125,8 @@ function sealedRules(meta: unknown): SealedRules & { digest: string; withheld: n
  * A revision is read back exactly as it was sealed, so the rules it was sealed
  * under have to match the rules in force. They come apart in one ordinary way:
  * a repository adds or narrows `thurview-scope.yaml` after a revision was
- * published, and that revision still holds the peeked source, the file list and
- * the coverage listing from before. Serving it would be the "declared but not
+ * published, and that revision still holds the peeked source and the file list
+ * from before. Serving it would be the "declared but not
  * enforced" failure by the back door, so it is refused and the message names the
  * one command that fixes it.
  *
@@ -185,11 +188,10 @@ export async function revisionData(
 ) {
   const id = review.id;
   const dir = revisionDir(id, n);
-  const [document, map, changes, coverage, meta, verdict, provenance] = await Promise.all([
+  const [document, map, changes, meta, verdict, provenance] = await Promise.all([
     readJson<unknown>(join(dir, "document.json")),
     readJson<unknown>(join(dir, "map.json")),
     readJson<ChangedFile[]>(join(dir, "changes.json")),
-    readJson<unknown>(join(dir, "coverage.json")),
     readJson<unknown>(join(dir, "meta.json")),
     readJson<Verdict>(join(dir, "verdict.json")),
     readJson<Provenance>(join(dir, "provenance.json")),
@@ -208,7 +210,6 @@ export async function revisionData(
         : document,
     map,
     changes: changes ?? [],
-    coverage,
     meta,
     /** the review's verdict, when it was published with its pass; null otherwise */
     verdict: verdict ?? null,
@@ -372,7 +373,7 @@ export async function startServer(
       const scopeNow = await scopeOf(review);
       const data = review.revision
         ? await revisionData(review, n)
-        : { document: null, map: null, changes: [], coverage: null, meta: null };
+        : { document: null, map: null, changes: [], meta: null };
       // Keyed on "a revision was published", not on "meta.json is there": that
       // file is written last, so a revision left half-written by an interrupted
       // publish has a document.json and no stamp, and a guard hung on the stamp

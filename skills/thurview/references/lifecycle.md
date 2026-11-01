@@ -29,7 +29,7 @@ warns when the branch moved past them.
 
 Asking the agent a question does not change the status. "Submit review" with "Request changes"
 sets `awaiting-agent-updates`; with "Approve" sets `accepted`; with "Close the review"
-("Drop the design", "Stop reading" on the other kinds) sets `closed`.
+sets `closed`.
 
 Dismissal is separate: the reader removes the review from the active list and
 `wait` returns `review-dismissed`. A new publication restores it.

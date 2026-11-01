@@ -15,8 +15,6 @@ let browser: Browser;
 let server: { port: number; close(): Promise<void> };
 let url: string;
 let snapshot: string;
-let explainerUrl: string;
-let explainerSnapshot: string;
 
 async function page(address = url, width = 1440, theme = "light") {
   const target = (await (
@@ -67,7 +65,7 @@ async function page(address = url, width = 1440, theme = "light") {
   await call("Page.navigate", { url: address });
   await evaluate(`new Promise((ok, no) => {
     const start = Date.now(); (function wait() {
-      if (window.__treeReset && document.querySelector(${JSON.stringify(address.includes("/coverage") ? ".cov-intro" : ".file-view .code")})) return ok(true);
+      if (window.__treeReset && document.querySelector(".file-view .code")) return ok(true);
       if (Date.now() - start > 15000) return no(new Error('no diff'));
       setTimeout(wait, 50);
     })();
@@ -179,19 +177,6 @@ describe.skipIf(!browserBin)("file explorer in the reader", { timeout: 30_000 },
     snapshot = join(scratch, "snapshot.html");
     await cli(["export", "--review", review.uuid, "--out", snapshot]);
     url = `http://127.0.0.1:${server.port}/review/${review.uuid}#/files?path=src/kernel/host/main.ts`;
-    const { explainer } = await cli(["explain"]);
-    await writeFile(
-      join(explainer.dir, "review.md"),
-      "# Host code\n\n[Main](anchor:main) is the entry.\n",
-    );
-    await writeFile(
-      join(explainer.dir, "data.yaml"),
-      "anchors:\n  main: { title: Main, peek: { file: src/kernel/host/main.ts, from: 1, to: 2 } }\n",
-    );
-    await cli(["publish", "--review", explainer.id]);
-    explainerUrl = `http://127.0.0.1:${server.port}/review/${explainer.id}#/coverage`;
-    explainerSnapshot = join(scratch, "explainer.html");
-    await cli(["export", "--review", explainer.id, "--out", explainerSnapshot]);
     browser = await launchBrowser(join(scratch, "profile"));
     // Cold navigation can outlast a test's default readiness budget.
     const ready = await page();
@@ -372,21 +357,6 @@ describe.skipIf(!browserBin)("file explorer in the reader", { timeout: 30_000 },
       ),
     ).toBe(true);
     await p.close();
-  });
-  it("browses coverage files in live and offline explainers", async () => {
-    for (const address of [explainerUrl, `${pathToFileURL(explainerSnapshot).href}#/coverage`]) {
-      const p = await page(address);
-      expect(await p.evaluate(`document.querySelector('[role="tree"]') !== null`)).toBe(true);
-      await p.evaluate(click('[data-file="src/kernel/host/new.ts"]'));
-      expect(
-        await p.evaluate(
-          `(async () => { ${wait} return document.querySelector('.file-view [data-path="src/kernel/host/new.ts"] .code')?.textContent; })()`,
-        ),
-      ).toContain("export const added = true;");
-      if (address.startsWith("file:"))
-        expect(p.requests.filter((r) => /^https?:/.test(r))).toEqual([]);
-      await p.close();
-    }
   });
   it("keeps the reader's position when the files view rerenders", async () => {
     const p = await page();

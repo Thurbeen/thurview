@@ -1,6 +1,5 @@
 import type { ReviewState, Thread, Decision, ThreadTarget } from "../store.js";
 import type { CompiledDocument, CompiledMap } from "../document/compile.js";
-import type { Coverage } from "../coverage.js";
 import type { FileDiff } from "../diff.js";
 import type { ChangedFile, Commit } from "../git.js";
 import type { SymbolDef } from "../symbols.js";
@@ -33,8 +32,6 @@ export interface Payload {
     exclude: string[];
     withheld: number | null;
   };
-  /** explainers only: what the document examined at the pinned commit, and what it did not */
-  coverage: Coverage | null;
   meta: { revision: number; at: string; title: string; hasMap: boolean } | null;
   /** the review's verdict - confidence, findings, risks - when published with its pass */
   verdict: Verdict | null;

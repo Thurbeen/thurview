@@ -384,11 +384,11 @@ fs.appendFileSync(${JSON.stringify(join(tmp, "deploy-called"))}, "deploy\\n");
   });
 
   it("refuses a review that was never published", async () => {
-    const { explainer } = await cli(["explain", "--new"]);
+    const { review } = await cli(["scaffold", "--new"]);
     const refused = await cli([
       "export",
       "--review",
-      explainer.uuid,
+      review.uuid,
       "--out",
       join(tmp, "x.html"),
     ]).catch((e: { stdout: string }) => e);

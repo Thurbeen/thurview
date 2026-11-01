@@ -1,14 +1,8 @@
 import { h } from "./dom.js";
 import { state, isNarrow } from "./state.js";
-import type { Coverage } from "../coverage.js";
 import type { ChangedFile } from "../git.js";
 
 export type TreeFile = { path: string } & Partial<Omit<ChangedFile, "path">>;
-export function coverageFiles(coverage: Coverage | null | undefined): TreeFile[] {
-  return (coverage?.clusters ?? [])
-    .flatMap((c) => [...c.explained, ...c.placed, ...c.searched, ...c.uncovered])
-    .map((path) => ({ path }));
-}
 
 interface Folder {
   path: string;

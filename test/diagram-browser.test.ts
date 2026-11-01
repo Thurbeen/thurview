@@ -1,8 +1,8 @@
 // The review page, rendered by a real browser and measured, for what a
 // geometry check without one cannot see: text that runs out of its box, off
-// the drawing, or down to a size nobody can read. Then a design driven as a
-// reader drives it - a table wider than a phone, a flow whose steps are
-// sentences, proposals to open and a decision to make - by keyboard as well as
+// the drawing, or down to a size nobody can read. Then a long review driven as
+// a reader drives it - a table wider than a phone, a flow whose steps are
+// sentences, interfaces to open and a decision to make - by keyboard as well as
 // by mouse, at a desktop and at a phone width. One browser and one server for
 // all of it: a cold browser per suite was more than a CI runner would start.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -22,7 +22,7 @@ let server: { port: number; close(): Promise<void> };
 let browser: Browser;
 let devtools: number;
 let reviewId: string;
-let designId: string;
+let longId: string;
 
 async function cli(repo: string, home: string, args: string[]) {
   const tsx = join(ROOT, "node_modules", "tsx", "dist", "cli.mjs");
@@ -60,7 +60,7 @@ anchors:
   plan: { title: plan(), peek: { file: src/plan.ts, from: 1, to: 3 } }
 `;
 
-// Steps worded the way a real design words them: whole sentences, longer than
+// Steps worded the way a real long review words them: whole sentences, longer than
 // one line of a box. `failed` runs straight down, where a label
 // centred on its edge sits on the line it names.
 const FLOW_LABELS = {
@@ -83,7 +83,11 @@ const filler = (n: number) =>
       `Paragraph ${i + 1} explains one more part of the plan in enough words to wrap across the column and take up some room on the page.`,
   ).join("\n\n");
 
-const DESIGN = (rev: number) => `# A scheduler for recurring reviews
+// A review leads with its parts - architecture, security, evidence - so the
+// summary is long enough to hold the top of the view on its own.
+const LONG = (rev: number) => `# A scheduler for recurring reviews
+
+${filler(30)}
 
 ## Summary
 
@@ -144,10 +148,13 @@ ${filler(1)}
 ${filler(2)}
 `;
 
-const DESIGN_DATA = `actors:
+const LONG_DATA = `architecture: { view: Fits. }
+security: none
+actors:
   daemon: { label: scheduler daemon }
 anchors:
-  loop: { title: the loop today, peek: { file: src/plan.ts, from: 1, to: 3 } }
+  loop: { title: the loop, peek: { file: src/plan.ts, from: 1, to: 3 } }
+  loopBefore: { title: the loop before, peek: { file: src/plan.ts, from: 1, to: 3, graph: base } }
 interfaces:
   repoAdd:
     name: scheduler repo add <forge-url> [--runner <id>]
@@ -158,7 +165,7 @@ interfaces:
     name: the hand-run review loop
     change: removed
     capability: No session is started by hand to review a repository.
-    anchor: loop
+    anchor: loopBefore
 `;
 
 const MOUSE = [
@@ -254,17 +261,16 @@ async function page(
   return { evaluate, press, click, reload: open, close };
 }
 
-/** The design, which the reader-facing checks below drive. */
-/** The design as `thurview export` writes it: one file, opened from disk, no server. */
+/** The long review as `thurview export` writes it: one file, opened from disk, no server. */
 const publishedCopy = (width: number, height: number) =>
   page(width, height, "light", {
-    id: designId,
+    id: longId,
     ready: "article.doc svg.flow",
-    url: `file://${join(tmp, "design.html")}`,
+    url: `file://${join(tmp, "long.html")}`,
   });
 
 const reader = (width: number, height: number) =>
-  page(width, height, "light", { id: designId, ready: "article.doc svg.flow" });
+  page(width, height, "light", { id: longId, ready: "article.doc svg.flow" });
 
 interface Measured {
   fontPx: number[];
@@ -355,15 +361,15 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
     await writeFile(join(review.dir, "review.md"), REVIEW);
     await writeFile(join(review.dir, "data.yaml"), DATA);
     await cli(repo, home, ["publish", "--review", reviewId]);
-    // A design beside it, published twice so the page offers the revision picker.
-    const { design } = await cli(repo, home, ["design", "src"]);
-    designId = design.id;
+    // A long review beside it, published twice so the page offers the revision picker.
+    const long = (await cli(repo, home, ["scaffold", "--new"]))["review"];
+    longId = long.uuid;
     for (const rev of [1, 2]) {
-      await writeFile(join(design.dir, "review.md"), DESIGN(rev));
-      await writeFile(join(design.dir, "data.yaml"), DESIGN_DATA);
-      await cli(repo, home, ["publish", "--review", designId]);
+      await writeFile(join(long.dir, "review.md"), LONG(rev));
+      await writeFile(join(long.dir, "data.yaml"), LONG_DATA);
+      await cli(repo, home, ["publish", "--review", longId]);
     }
-    await cli(repo, home, ["export", designId, "--out", join(tmp, "design.html")]);
+    await cli(repo, home, ["export", longId, "--out", join(tmp, "long.html")]);
 
     process.env["THURVIEW_HOME"] = home;
     const { startServer } = await import(join(ROOT, "dist", "server", "server.js"));
@@ -601,7 +607,7 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
     }
   }, 30_000);
 
-  it("opens a proposal's code from the keyboard", async () => {
+  it("opens an interface's code from the keyboard", async () => {
     const p = await reader(1440, 900);
     try {
       const focused = await p.evaluate<boolean>(`(() => {
@@ -611,10 +617,8 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
       })()`);
       expect(focused).toBe(true);
       await p.press("Enter");
-      const peek = await p.evaluate<string>(
-        `document.querySelector(".side:not(.hidden) .side-head .path")?.textContent ?? ""`,
-      );
-      expect(peek).toContain("src/plan.ts");
+      const hash = await p.evaluate<string>(`location.hash`);
+      expect(hash).toMatch(/^#\/files\?.*path=src%2Fplan\.ts/);
     } finally {
       await p.close();
     }
@@ -670,10 +674,8 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
       })()`);
       expect.soft(d.role).toBe("dialog");
       expect.soft(d.inside).toBe(true);
-      // "Close" beside "Cancel" read as a second way out, and it ended the design.
-      expect
-        .soft(d.buttons)
-        .toEqual(["Cancel", "Drop the design", "Send it back", "Approve the design"]);
+      // "Close" beside "Cancel" read as a second way out, and it ended the review.
+      expect.soft(d.buttons).toEqual(["Cancel", "Close the review", "Request changes", "Approve"]);
       await p.press("Escape");
       expect(await p.evaluate<boolean>(`!!document.querySelector(".overlay")`)).toBe(false);
     } finally {
@@ -709,7 +711,7 @@ describe.skipIf(!browserBin)("review page in a browser", () => {
   // After every test that reads the comment buttons: the thread it leaves
   // makes its block's button show for good.
   it("opens a thread from its pin by keyboard", async () => {
-    await fetch(`http://127.0.0.1:${server.port}/api/reviews/${designId}/threads`, {
+    await fetch(`http://127.0.0.1:${server.port}/api/reviews/${longId}/threads`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({

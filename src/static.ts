@@ -183,7 +183,8 @@ export async function publishStatic(
         throw new Error(
           "static archive is missing; restore it, or use --initialize-archive only for a Worker with no existing snapshots",
         );
-      const prior = (await listReviews()).some(
+      // A record of a removed kind still owns its public URL, so it counts too.
+      const prior = (await listReviews({ removed: true })).some(
         (r) =>
           r.staticSnapshot &&
           (r.staticSnapshot.target === config.name ||

@@ -27,17 +27,13 @@ diagram source as code, fence it as `text`.
 
 Reach for a diagram of a design and what you draw is the design you picked: the
 happy path, the way it works. That tells the reader what was built and nothing
-about what was rejected or why — which is the question a design document, and a
-review that made a non-obvious call, is there to answer.
+about what was rejected or why — which is the question a review that made a
+non-obvious call is there to answer.
 
 The vocabulary compares along two axes and no others:
 
 - **One call path, base against head.** `callstack`, in a review. Every frame
-  it reports as added or removed is checked against the pinned diff, and an
-  explainer and a design have no diff, so there both lists must be the same
-  frames in the same order. `publish` refuses most of what differs; the rest it
-  renders as unchanged, the diff being over the callee anchor alone. Either way
-  only the head list reaches the reader, and nothing contrasts.
+  it reports as added or removed is checked against the pinned diff.
 - **Structure, before against after.** `map.yaml`'s `base` beside `nodes` —
   the system as it stands against the system the change or the design would
   leave. See [Software map](software-map.md).

@@ -470,37 +470,6 @@ describe("every reading route applies the rules, over HTTP", () => {
   });
 });
 
-describe("an explainer accounts for what the rules withheld", () => {
-  it("counts withheld files apart from the ones it simply never examined", async () => {
-    const ev = await cli(["explain"]);
-    const id = ev["explainer"].uuid as string;
-    const dir = ev["explainer"].dir as string;
-    await writeFile(
-      join(dir, "review.md"),
-      `# The repository\n\n**Summary**\n\n- One file, anchored: [login](anchor:login).\n`,
-    );
-    await writeFile(
-      join(dir, "data.yaml"),
-      `anchors:\n  login:\n    title: login\n    peek: { file: src/app.ts, from: 1, to: 2 }\n`,
-    );
-    const out = await cli(["publish", "--review", id]);
-    const cov = JSON.parse(
-      await readFile(join(dir, "revisions", "1", "coverage.json"), "utf8"),
-    ) as import("../src/coverage.ts").Coverage;
-    // secrets/keystore.properties, secrets/brand.css, src/generated/model.ts and
-    // notes.txt are withheld; they are counted here and listed nowhere
-    expect(cov.files.excludedByScope).toBe(4);
-    expect(cov.uncovered).not.toContain("secrets/keystore.properties");
-    expect(cov.uncovered).not.toContain("notes.txt");
-    // ten files at the commit: six in scope, four withheld
-    expect(cov.files.total).toBe(6);
-    expect(cov.files.total + cov.files.excludedByScope).toBe(10);
-    expect(cov.verdict).toContain("withheld by the review scope");
-    expect(String(out["published"].coverage)).toContain("withheld by the review scope");
-    await cli(["delete", "--review", id]);
-  }, 60_000);
-});
-
 describe("HTML export applies the same file rules", () => {
   it("omits excluded commit files and does not read an excluded thread target", async () => {
     const response = await fetch(

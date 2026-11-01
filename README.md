@@ -65,8 +65,6 @@ decision, and the queue on the home page) is in [docs/READER.md](docs/READER.md)
 | Skill                                                      | For                                                                                                         |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | [`thurview`](skills/thurview/SKILL.md)                     | A local change already written: a branch or commit range. Approve or send back.                             |
-| [`thurview-explain`](skills/thurview-explain/SKILL.md)     | A codebase or subsystem at one commit, with what it did not examine.                                        |
-| [`thurview-design`](skills/thurview-design/SKILL.md)       | A change not written yet, its proposals anchored to the code they land in.                                  |
 | [`thurview-fix`](skills/thurview-fix/SKILL.md)             | Review, commit the fixes that pass your tests and lint, report the rest. No browser.                        |
 | [`thurview-pr-review`](skills/thurview-pr-review/SKILL.md) | An opened PR or MR: a review page, a public snapshot and one summary on the forge, followed until merge.    |
 | [`thurview-publish`](skills/thurview-publish/SKILL.md)     | Put a document in your own Azure, S3, Cloud Storage or Cloudflare Pages account behind a link that expires. |
@@ -124,8 +122,8 @@ A path is readable when its extension or its whole name is listed **and** no
 
 The rules apply in both places a document is read from, because they are fed
 from different places. At `publish`: a peek at an excluded file is an error, and
-the sealed revision's file list, its map's file lists and an explainer's
-coverage listing hold nothing excluded. At
+the sealed revision's file list and its map's file lists hold nothing
+excluded. At
 serving: the diff, the file, the symbol index and each commit's
 path list are read from git per request, and each refuses an excluded path with
 **"excluded by scope"** - not a 404, which would claim the file is not there.
@@ -140,15 +138,11 @@ nothing: a revision holds only what the rules in force when it was sealed let in
 so if all of that is still allowed it stays readable. Narrowing them is what the
 record is for - the older revisions are refused with the same words until
 `thurview publish` seals one under the rules in force, and that is the deliberate
-price of not serving what the rules now withhold. `scaffold`, `explain`, `design`
-and `publish` print the rules and how many changed files they withheld, and the
+price of not serving what the rules now withhold. `scaffold` and `publish`
+print the rules and how many changed files they withheld, and the
 Files tab says so above the list; the count a reader sees is the one the revision
 they are reading was sealed with, so it describes that file list and not whatever
 the pins have moved on to.
-
-An explainer's recorded search lists omit excluded files. Search patterns,
-pathspecs and reasons are author-written text; the search's hit count still
-counts all matches, as it does for a search outside the explainer's path scope.
 
 Two things the scope does **not** decide, and neither should be read into it:
 
@@ -172,8 +166,6 @@ not want it to.
 | Command                                                     | Purpose                                                           |
 | ----------------------------------------------------------- | ----------------------------------------------------------------- |
 | `thurview scaffold [--pr N \| --base R --head R]`           | Create a review pinned to exact commits (`--update` re-pins)      |
-| `thurview explain [<path>] [--commit R]`                    | Create an explainer of a codebase or subsystem at one commit      |
-| `thurview design [<path>] [--commit R]`                     | Create a design, pinned to the commit it argues from              |
 | `thurview info [--all]`                                     | Documents bound to this worktree                                  |
 | `thurview publish [--review ID] [--pass F] [--open]`        | Validate the document and map, seal a revision and its verdict    |
 | `thurview open [--review ID] [--view T]`                    | Start the server if needed and open the browser                   |

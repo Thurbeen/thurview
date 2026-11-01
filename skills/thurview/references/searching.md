@@ -39,8 +39,7 @@ trust the count.
 | the files in a scope        | `git ls-tree -r --name-only <commit> -- <scope>`                           |
 
 Every recipe is one `-E` pattern, with `\b` for a word boundary rather than
-`-w`, so an explainer can record it under `searches` exactly as you ran it -
-publish re-runs it with `-E` and nothing else. `\b` is a GNU extension: check
+`-w`, so the reader can rerun the line you quote exactly as you ran it. `\b` is a GNU extension: check
 it on the platform once (`git grep -c -E -e '\bname\b' <commit> --` must match
 what `-w -e name` matches) and use `[[:<:]]name[[:>:]]` where git's regex
 library reads that instead.
@@ -66,10 +65,6 @@ comment or a different symbol with the same name. So:
 
 How it is recorded depends on the document:
 
-- **An explainer** lists its searches under `searches` in `data.yaml`. Publish
-  re-runs each one with `git grep -E` at the pinned commit and the Coverage tab
-  counts the files it matched; see [Components](components.md). Record the ones
-  that shaped what you wrote, a zero-hit one included.
-- **A review or a design** has no Coverage tab. Put the search in the prose
-  beside the claim it supports, as inline code.
+- **A review** puts the search in the prose beside the claim it supports, as
+  inline code.
 - **A fix pass** puts it in the evidence column of its report.

@@ -52,12 +52,6 @@ architecture:                             # a review only; required once it anch
 security:                                 # a review only; omit until you have looked
   - boundary: The --shell flag reaches execFile's argv unquoted.
     anchor: spawn                         # a head anchor, with a peek
-
-searches:                                 # an explainer only
-  spawnCallers:
-    pattern: '\bspawnPty *\('            # git grep -E, re-run at the pinned commit
-    paths: ["src/"]                       # optional git pathspecs; the whole commit when left out
-    why: who opens a PTY                  # optional; the question it answered
 ```
 
 An anchor without `peek` can label a map node but cannot open code.
@@ -108,8 +102,7 @@ assessed" on the stub and never after.
 
 `publish` refuses a defect with an unknown anchor, an anchor with no `peek` or
 a `graph: base` anchor, and one missing any of its four fields. Resolving a
-defect marks its anchor used. An explainer surfaces structure without grading
-it and a design proposes it, so `publish` refuses the key on either.
+defect marks its anchor used.
 
 ## security
 
@@ -142,29 +135,7 @@ so an anchor that only a crossing names raises no "defined but never used".
 
 There is no severity here. A crossing is a place for the reader to look; the
 severity that exists belongs to the findings in `thurview-fix`, not to this
-document. An explainer and a design are pinned to one commit and have no change,
-so `publish` refuses the key on either.
-
-## searches
-
-An explainer's record of what it searched: the callers, tests and importers
-it looked for while reading the code. `publish` re-runs each one with
-`git grep -I -E` at the pinned commit, so what it matched is the commit's and
-not the worktree's, and the Coverage tab counts every file in scope it matched
-and nothing anchored or placed as _matched by a search_. A search that matched
-nothing is listed too, since that zero is what a claim of absence rests on.
-
-- **`pattern`** is a POSIX extended regular expression, as `git grep -E` reads
-  it. One git refuses fails the publish with git's own message.
-- **`paths`** are git pathspecs to search under, read exactly as your own
-  `git grep` reads them, so `*test*` reaches into every directory; the whole
-  commit when left out.
-  Coverage counts only the files inside the explainer's scope either way.
-- **`why`** is the question the search answered, in a sentence.
-
-A review or a design has no Coverage tab, so `publish` refuses `searches` there:
-put the search beside the claim it supports, in the prose. The recipes are in
-[Searching the code](searching.md).
+document.
 
 ## Anchor link
 

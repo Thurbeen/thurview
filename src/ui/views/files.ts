@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { h } from "../dom.js";
 import { state, isNarrow, canWrite } from "../state.js";
 import { attachDefinitions, startLineComment, lineClick, codeSelectionHandler } from "../code.js";
-import { fileLayout, coverageFiles, type TreeFile } from "../file-tree.js";
+import { fileLayout, type TreeFile } from "../file-tree.js";
 import { threadPinRow } from "../threads.js";
 import type { FileDiff, DiffRow } from "../../diff.js";
 import type { Thread } from "../../store.js";
@@ -11,10 +11,7 @@ export function renderFiles(
   root: HTMLElement,
   position?: { path: string; offset: number },
 ): () => void {
-  const files: TreeFile[] = [
-    ...(state.data?.changes ?? []),
-    ...coverageFiles(state.data?.coverage),
-  ];
+  const files: TreeFile[] = [...(state.data?.changes ?? [])];
   for (const anchor of Object.values(state.data?.document?.anchors ?? {})) {
     if (anchor.peek && !files.some((f) => f.path === anchor.peek!.file))
       files.push({ path: anchor.peek.file });
