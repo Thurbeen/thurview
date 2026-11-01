@@ -17,6 +17,7 @@ const REVIEW_SKILLS = ["thurview", "thurview-fix", "thurview-pr-review", "thurvi
 
 let repo: string;
 let home: string;
+let bin: string;
 
 type Out = Record<string, any>;
 async function cli(args: string[], expectCode = 0): Promise<Out> {
@@ -24,7 +25,11 @@ async function cli(args: string[], expectCode = 0): Promise<Out> {
     const p = spawn(
       process.execPath,
       [join(ROOT, "node_modules", "tsx", "dist", "cli.mjs"), join(ROOT, "src", "main.ts"), ...args],
-      { cwd: repo, env: { ...process.env, THURVIEW_HOME: home } },
+      {
+        cwd: repo,
+        // A stub wrangler that always fails comes first, so no test can deploy for real.
+        env: { ...process.env, THURVIEW_HOME: home, PATH: `${bin}:${process.env["PATH"]}` },
+      },
     );
     let out = "";
     p.stdout.on("data", (d) => (out += d));
@@ -78,6 +83,9 @@ async function leftover(kind: string): Promise<string> {
 
 beforeAll(async () => {
   home = await mkdtemp(join(tmpdir(), "thurview-home-"));
+  bin = join(home, "bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "wrangler"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
   repo = await mkdtemp(join(tmpdir(), "thurview-repo-"));
   await git("init", "-q", "-b", "main");
   await writeFile(
@@ -138,6 +146,41 @@ describe("thurview is a review tool only", () => {
       await cli(["delete", "--review", id]);
       expect(existsSync(join(home, "reviews", id))).toBe(false);
     },
+  );
+
+  it.each(["explainer", "design"])(
+    "keeps a stored %s's public snapshot from being initialized over",
+    async (kind) => {
+      const origin = `https://${kind}.example.com`;
+      const id = await leftover(kind);
+      await writeFile(
+        join(home, "reviews", id, "static.json"),
+        JSON.stringify({ url: `${origin}/r/a/b/${"0".repeat(32)}/`, revision: 1 }),
+      );
+      const fresh = (await cli(["scaffold", "--new"]))["review"].uuid as string;
+      const config = join(home, `cloudflare-${kind}.json`);
+      await writeFile(config, JSON.stringify({ name: `fixture-${kind}`, publicUrl: origin }));
+      try {
+        await cli(["publish", "--review", fresh]);
+        const out = await cli(
+          [
+            "publish-static",
+            fresh,
+            "--to",
+            "cloudflare",
+            "--config",
+            config,
+            "--initialize-archive",
+          ],
+          2,
+        );
+        expect(out["error"]).toContain("require restoring the archive");
+      } finally {
+        await cli(["delete", "--review", id]);
+        await cli(["delete", "--review", fresh]);
+      }
+    },
+    30_000,
   );
 
   it("still scaffolds, seals and exports a review end to end", async () => {
