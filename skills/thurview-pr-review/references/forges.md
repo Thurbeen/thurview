@@ -22,12 +22,12 @@ this command.
 ## Where the state lives
 
 The summary uses the same compact Markdown on both forges: a verdict, the
-public review link, a two-column findings table (blocking first), folded update
-counts and folded change/risks. GitHub links each location to its review
-comment; GitLab links to the discussion's first note. A new finding gains its
-link from the forge's posting response; a dry run has no new thread yet and
-shows the location without inventing a URL. Older threads without a reported
-URL also show an unlinked location.
+public review link when the review has a page, a two-column findings table
+(blocking first), folded update counts and folded change/risks. GitHub links
+each location to its review comment; GitLab links to the discussion's first
+note. A new finding gains its link from the forge's posting response; a dry
+run has no new thread yet and shows the location without inventing a URL.
+Older threads without a reported URL also show an unlinked location.
 
 The summary carries
 `<!-- thurview-pr-review {"head":"<sha>","state":"active","seen":"<note id>"} -->`
@@ -46,9 +46,10 @@ and title, which is how the same finding found on the next push is recognised.
 Every `sync` sets a commit status named `thurview/review` on the head it
 reviewed. It is `success` only at confidence 5 with no open finding, nits and
 agreed threads of other reviewers included, and `failure` otherwise. Its
-description is the score and the open count, and it links the public review page. A
-push leaves the new head with no status until a pass reviews it. The status
-reports a verdict; it approves and merges nothing.
+description is the score and the open count, and it links the public review
+page, or the change request when the review has no page. A push leaves the
+new head with no status until a pass reviews it. The status reports a
+verdict; it approves and merges nothing.
 
 **It records the verdict; it is not an access control.** `thurview` sets the
 status with the reviewer's own login, a user, and any account that can push
@@ -93,6 +94,7 @@ command never does:
   still a finding, never only a risk bullet.
 - GitLab reports no per-thread staleness, and its adapter is driven by stub
   tests but has not been run against a live instance.
-- The CLI sync accepts `reviewUrl` without publishing it.
-  The `thurview-pr-review` workflow performs the preflight, publish and link
-  checks before calling sync, on either forge.
+- The CLI sync accepts `reviewUrl` without publishing it, and a pass without
+  one posts the same summary with no link line. The `thurview-pr-review`
+  workflow performs the preflight, publish and link checks before calling
+  sync, on either forge, unless the user asked for no page.

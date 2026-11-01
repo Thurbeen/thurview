@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { listFiles } from "./git.js";
 import { languageFor } from "./highlight.js";
+import { OPEN_SCOPE, type ReviewScope } from "./scope.js";
 
 export interface SymbolDef {
   name: string;
@@ -152,12 +153,17 @@ export class SymbolIndex {
   constructor(
     private cwd: string,
     private commit: string,
+    /** the declared review scope: a path it excludes is never read, so no name it defines can be looked up */
+    private scope: ReviewScope = OPEN_SCOPE,
   ) {}
 
   private async build(): Promise<void> {
     const files = (await listFiles(this.cwd, this.commit))
       .filter(
-        (p) => FAMILY[languageFor(p)] && !/(^|\/)(node_modules|dist|build|vendor|\.git)\//.test(p),
+        (p) =>
+          FAMILY[languageFor(p)] &&
+          !/(^|\/)(node_modules|dist|build|vendor|\.git)\//.test(p) &&
+          this.scope.inScope(p),
       )
       .slice(0, 4000);
     for (let i = 0; i < files.length; i += 200) {
@@ -196,11 +202,20 @@ export class SymbolIndex {
 
 const indexes = new Map<string, SymbolIndex>();
 
-export function symbolIndex(cwd: string, commit: string): SymbolIndex {
-  const key = `${cwd}@${commit}`;
+/**
+ * The symbol index at a commit under a review scope. The scope digest is part of
+ * the cache key: an index built before the rules narrowed would keep answering
+ * with names defined in files the rules now withhold.
+ */
+export function symbolIndex(
+  cwd: string,
+  commit: string,
+  scope: ReviewScope = OPEN_SCOPE,
+): SymbolIndex {
+  const key = `${cwd}@${commit}@${scope.digest}`;
   let idx = indexes.get(key);
   if (!idx) {
-    idx = new SymbolIndex(cwd, commit);
+    idx = new SymbolIndex(cwd, commit, scope);
     indexes.set(key, idx);
   }
   return idx;

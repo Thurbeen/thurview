@@ -71,6 +71,11 @@ locally.
 - `test/forge.test.ts`: the same, with a fake `gh` and `glab` on PATH, so both
   forge adapters are driven rather than asserted.
 
+For queue scrolling changes, also run `pnpm build` followed by
+`node scripts/list-scroll-check.mjs`. This drives Chromium against the built UI
+with synthetic rows and checks wheel and keyboard scrolling at desktop and
+mobile viewport sizes. Set `CHROMIUM` to use a different Chromium executable.
+
 ## Demo media
 
 `scripts/demo/record.sh` re-records `media/thurview-demo.{mp4,gif}` and the

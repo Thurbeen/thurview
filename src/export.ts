@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { log, showFile } from "./git.js";
 import { readThreads, type ReviewState } from "./store.js";
 import { NOBODY } from "./presence.js";
-import { revisionData, fileDiff, fileLines } from "./server/server.js";
+import { revisionData, fileDiff, fileLines, scopeOf } from "./server/server.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = existsSync(join(HERE, "ui", "app.js"))
@@ -40,6 +40,7 @@ export function localTarget(out: string): ExportTarget {
  * expanding context still works with no server. Symbol lookup is left out.
  */
 async function snapshot(review: ReviewState, withThreads: boolean) {
+  const scope = await scopeOf(review);
   const data = await revisionData(review, review.revision);
   const t = await readThreads(review.id);
   const changes = data.changes;
@@ -48,7 +49,10 @@ async function snapshot(review: ReviewState, withThreads: boolean) {
   const want = new Set<string>();
   // Drafts the reader never sent stay theirs; only what was said is shown.
   const threads = withThreads ? t.threads.filter((x) => x.submitted || x.mode === "ask") : [];
-  const commits = await log(review.worktree, review.pins.base, review.pins.head);
+  const commits = (await log(review.worktree, review.pins.base, review.pins.head)).map((c) => ({
+    ...c,
+    files: c.files.filter(scope.inScope),
+  }));
   for (const c of changes) {
     const d = await fileDiff(review, c.path);
     diffs[c.path] = d;
@@ -70,6 +74,7 @@ async function snapshot(review: ReviewState, withThreads: boolean) {
   for (const key of [...want].sort()) {
     const [graph, ...rest] = key.split(":");
     const path = rest.join(":");
+    if (!scope.inScope(path)) continue;
     const g = side(graph!);
     const raw = await showFile(
       review.worktree,
@@ -89,6 +94,14 @@ async function snapshot(review: ReviewState, withThreads: boolean) {
       revision: review.revision,
       ...data,
       changes,
+      scope: {
+        declared: scope.declared,
+        verdict: scope.verdict,
+        extensions: scope.extensions,
+        filenames: scope.filenames,
+        exclude: scope.exclude,
+        withheld: (data.meta as { scope?: { withheld?: number } } | null)?.scope?.withheld ?? null,
+      },
       threads,
       decisions: withThreads ? t.decisions : [],
       agent: NOBODY,

@@ -55,6 +55,11 @@ $ARGUMENTS
 Empty: a review of the current branch against its up-to-date trunk. A PR
 number or URL: that pull request. `--base`/`--head`: that range.
 
+When `scaffold` prints `scopeRules`, the repository declares enforced file rules
+in `thurview-scope.yaml` at the pinned head. Read them before choosing anchors:
+a withheld peek fails publish, and HTTP and HTML export omit excluded files.
+The [README](../../README.md#declaring-what-is-in-scope) owns the configuration.
+
 ## Before authoring
 
 Read the guidance files that exist, in this order. The second wins on
