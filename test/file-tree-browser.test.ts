@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFile } from "node:child_process";
-import { mkdtemp, writeFile, mkdir, rm, copyFile, cp, symlink } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, rm, copyFile, cp, symlink, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -16,7 +16,7 @@ let server: { port: number; close(): Promise<void> };
 let url: string;
 let snapshot: string;
 
-async function page(address = url, width = 1440, theme = "light") {
+async function page(address = url, width = 1440, theme = "light", ready = ".file-view .code") {
   const target = (await (
     await fetch(`http://127.0.0.1:${browser.devtools}/json/new?about:blank`, { method: "PUT" })
   ).json()) as { webSocketDebuggerUrl: string; id: string };
@@ -63,16 +63,19 @@ async function page(address = url, width = 1440, theme = "light") {
     source: `window.__treeReset = true; try { for (const key of Object.keys(localStorage)) if (key.startsWith("thurview.tree.")) localStorage.removeItem(key); } catch {}`,
   });
   await call("Page.navigate", { url: address });
-  await evaluate(`new Promise((ok, no) => {
-    const start = Date.now(); (function wait() {
-      if (window.__treeReset && document.querySelector(".file-view .code")) return ok(true);
-      if (Date.now() - start > 15000) return no(new Error('no diff'));
-      setTimeout(wait, 50);
-    })();
-  })`);
+  const until = (condition: string) =>
+    evaluate(`new Promise((ok, no) => {
+      const start = Date.now(); (function wait() {
+        if (${condition}) return ok(true);
+        if (Date.now() - start > 15000) return no(new Error('page not ready: ' + ${JSON.stringify(condition)}));
+        setTimeout(wait, 50);
+      })();
+    })`);
+  await until(`window.__treeReset && document.querySelector(${JSON.stringify(ready)})`);
   await call("Page.removeScriptToEvaluateOnNewDocument", { identifier: reset.identifier });
   return {
     evaluate,
+    until,
     call,
     requests,
     close: async () => {
@@ -434,5 +437,68 @@ describe.skipIf(!browserBin)("file explorer in the reader", { timeout: 30_000 },
     await mobile.evaluate(click('[aria-label="Hide file tree"]'));
     expect(await mobile.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
     await mobile.close();
+  });
+  it("shows unavailable coverage and file content when the Git source disappears", async () => {
+    const healthy = await page(
+      url.replace(/#.*$/, "#/review"),
+      1440,
+      "light",
+      ".cov:not([hidden])",
+    );
+    expect(await healthy.evaluate(`document.querySelector('.scope-cols').innerText`)).toContain(
+      "99 added lines",
+    );
+    await healthy.close();
+    const repo = join(scratch, "repo");
+    await rename(repo, `${repo}-away`);
+    let sourceMissing = true;
+    try {
+      for (const [width, theme] of [
+        [1440, "light"],
+        [390, "dark"],
+      ] as const) {
+        const p = await page(url, width, theme, ".file-section .empty-state");
+        try {
+          expect(await p.evaluate(`document.querySelector('.file-view').innerText`)).toContain(
+            "Git source unavailable",
+          );
+          await p.evaluate(`location.hash = '#/review'`);
+          await p.until(
+            `document.querySelector('.scope-cols')?.innerText.includes('Added-line coverage unavailable')`,
+          );
+          const scope = await p.evaluate<string>(`document.querySelector('.scope-cols').innerText`);
+          expect(scope).toContain("Git source unavailable");
+          expect(scope).not.toContain("Nothing the review recorded");
+          expect(scope).not.toMatch(/\d+ added lines/);
+          expect(await p.evaluate(`document.querySelector('.cov').hidden`)).toBe(true);
+          expect(await p.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+          const evidence = process.env["THURVIEW_SOURCE_EVIDENCE"];
+          if (evidence) {
+            await mkdir(evidence, { recursive: true });
+            await p.evaluate(`document.querySelector('.scope-cols').scrollIntoView()`);
+            const { data } = await p.call("Page.captureScreenshot", { format: "png" });
+            await writeFile(
+              join(evidence, `source-unavailable-${theme}.png`),
+              Buffer.from(data, "base64"),
+            );
+          }
+          if (theme === "dark") {
+            await rename(`${repo}-away`, repo);
+            sourceMissing = false;
+            await p.evaluate(`location.hash = '#/files'`);
+            await p.until(`document.querySelector('.file-view .code')`);
+            await p.evaluate(`location.hash = '#/review'`);
+            await p.until(`document.querySelector('.cov:not([hidden])')`);
+            expect(await p.evaluate(`document.querySelector('.scope-cols').innerText`)).toContain(
+              "99 added lines",
+            );
+          }
+        } finally {
+          await p.close();
+        }
+      }
+    } finally {
+      if (sourceMissing) await rename(`${repo}-away`, repo);
+    }
   });
 });

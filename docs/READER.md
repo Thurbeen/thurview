@@ -67,6 +67,11 @@ carries those columns empty.
 - **Revisions**: every publish is sealed; switch back to earlier ones.
 - **Theme**: light or dark, following the system until you pick one in the ⋯ menu.
 
+If the Git source is unavailable, Files explains that access to the repository
+or worktree must be restored. Added-line coverage in Evidence is marked
+unavailable rather than counted as no uncovered lines. Published revisions and
+comments remain available; reload after restoring the source.
+
 Prose with every claim anchored to code, opened beside the text:
 
 ![The review document, with a call stack diff, a storage view and an anchored

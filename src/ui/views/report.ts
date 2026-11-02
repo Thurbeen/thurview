@@ -255,7 +255,10 @@ export function diffOf(path: string): Promise<FileDiff> {
   const key = `${state.id}:${state.data?.review.pins.head}:${path}`;
   let p = diffs.get(key);
   if (!p) {
-    p = api.diff(state.id, path);
+    p = api.diff(state.id, path).catch((error) => {
+      diffs.delete(key);
+      throw error;
+    });
     diffs.set(key, p);
   }
   return p;
@@ -486,8 +489,7 @@ async function unexplained(): Promise<
   const out = [];
   for (const c of d.changes) {
     if (c.status === "D" || c.binary) continue;
-    const diff = await diffOf(c.path).catch(() => null);
-    if (!diff) continue;
+    const diff = await diffOf(c.path);
     const added = diff.hunks.flatMap((x) => x.rows).filter((r) => r.type === "add");
     const lines = added
       .filter(
@@ -518,18 +520,24 @@ export function scopeColumns(v: Verdict | null): HTMLElement {
   if (doc?.architecture?.state === "pending") gaps.push("Architecture: not assessed.");
   if (doc?.security?.state === "pending") gaps.push("Trust boundaries: not assessed.");
   if (v && !v.ran.some((r) => r.kind === "test")) gaps.push("No test run was recorded.");
-  const unexp = h("li", { hidden: true });
+  const unexp = h("li", { role: "status" }, "Calculating added-line coverage…");
   // per file, on demand: the columns above already say what was not covered
   const table = h(
     "details",
     { class: "cov", hidden: true },
     h("summary", null, "Added lines discussed, per file"),
   );
-  unexplained().then((files) => {
+  const calculation = unexplained().catch((error: Error) => {
+    unexp.textContent = `Added-line coverage unavailable. ${error.message}`;
+    return null;
+  });
+  calculation.then((files) => {
+    if (files === null) return;
+    unexp.replaceChildren();
+    unexp.hidden = true;
     const n = files.reduce((a, f) => a + f.lines.length, 0);
     if (n) {
       unexp.hidden = false;
-      unexp.parentElement?.querySelector(".nothing")?.remove();
       const listing = h(
         "div",
         { class: "ev unexplained-lines", hidden: true },
@@ -574,6 +582,10 @@ export function scopeColumns(v: Verdict | null): HTMLElement {
         `${n} added line${n === 1 ? "" : "s"}`,
       );
       unexp.append(toggle, " the document does not discuss.", listing);
+    }
+    if (!n && !gaps.length) {
+      unexp.hidden = false;
+      unexp.textContent = "No added lines outside document anchors were found.";
     }
     if (files.length) {
       table.hidden = false;
@@ -638,7 +650,6 @@ export function scopeColumns(v: Verdict | null): HTMLElement {
           "ul",
           null,
           gaps.map((x) => h("li", null, x)),
-          gaps.length ? null : h("li", { class: "muted nothing" }, "Nothing the review recorded."),
           unexp,
         ),
       ),

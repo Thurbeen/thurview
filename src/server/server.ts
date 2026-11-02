@@ -6,7 +6,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFileDiff, type FileDiff } from "../diff.js";
 import { highlightLines, languageFor } from "../highlight.js";
-import { changedFiles, log, showFile, type ChangedFile } from "../git.js";
+import { changedFiles, log, showFile, git, type ChangedFile } from "../git.js";
 import { symbolIndex } from "../symbols.js";
 import type { Verdict } from "../pr-review/format.js";
 import type { Provenance } from "../forge/types.js";
@@ -218,8 +218,21 @@ export async function revisionData(
   };
 }
 
+/** Live file reads need the Git source; sealed revisions and threads do not. */
+async function requireGitSource(review: { worktree: string }): Promise<void> {
+  try {
+    await git(review.worktree, ["rev-parse", "--git-dir"]);
+  } catch {
+    throw new HttpError(
+      503,
+      "Git source unavailable: the review's repository or worktree cannot be read. Restore access to the source and reload. Published revisions and comments are still available.",
+    );
+  }
+}
+
 /** One changed file's diff between the review's pins, highlighted. */
 export async function fileDiff(review: ReviewState, path: string): Promise<FileDiff> {
+  await requireGitSource(review);
   const scope = await scopeOf(review);
   requireInScope(scope, path);
   const changes = await changedFiles(review.worktree, review.pins.base, review.pins.head);
@@ -255,6 +268,7 @@ export async function fileLines(
   total: number;
   lines: string[];
 } | null> {
+  await requireGitSource(review);
   requireInScope(await scopeOf(review), path);
   const commit = graph === "base" ? review.pins.base : review.pins.head;
   const text = await showFile(review.worktree, commit, path);
