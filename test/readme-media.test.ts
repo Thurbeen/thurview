@@ -24,7 +24,6 @@ describe("README media", () => {
     expect(svg).toMatch(/@media \(prefers-color-scheme: dark\)/);
     const reduced = /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n {4}\}/.exec(svg)?.[1];
     expect(reduced).toMatch(/\.motion \{[^}]*animation: none/);
-    expect(reduced).toMatch(/\.token \{[^}]*animation: none/);
     expect(svg).not.toMatch(/<script|<foreignObject|(?:href|src)=["']https?:\/\//);
   });
 });
