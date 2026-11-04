@@ -429,20 +429,6 @@ evidence for every own finding returned by `reassess`:
   `risk` is one to five bullets naming what could break, the blast radius, and
   anything touching security, data, infra or a public API; `change` is two or
   three sentences.
-- The compact summary opens with the next action and confidence on one line,
-  followed by the public review link. Stop, resume, merge and
-  close replace the action while keeping the reviewed confidence score. Its
-  two-column findings
-  table lists severity, category and title beside a `file:line` thread link,
-  blocking first. With zero findings it says `No open findings.` and omits
-  the table. Full finding detail stays in the inline thread and review page.
-- A first pass says `First review`. An edited pass folds `Since this review`
-  with resolved, new and still-open counts from that pass. The CLI returns
-  them as `sinceLastReview` (`resolved`, `new`, `stillOpen`), not lifetime
-  totals. Change and risks
-  are folded separately; the reviewed head and UTC sync timestamp stay small
-  below them. The sign-off is last. Both forges use ordinary Markdown tables
-  and HTML `details`/`summary`, with blank lines around their Markdown.
 - The 120-word budget applies to authored `reason`, `architecture`, `security`, `change`, all `risk`
   bullets and `signoff` together, including folded text. Generated verdicts,
   finding rows, links, update counts, labels and head/time metadata are
@@ -518,5 +504,5 @@ review resumes with `thurview pr-review start --change <ref>` once the label
 is gone. Report what you posted, the summary comment URL and the public page,
 if any, when the loop ends.
 
-How GitHub and GitLab differ, and what each supports, is in
-[Forges](references/forges.md).
+How GitHub and GitLab differ, what each supports, and how the summary
+renders on them, is in [Forges](references/forges.md).

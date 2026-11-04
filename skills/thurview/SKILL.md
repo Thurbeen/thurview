@@ -73,9 +73,10 @@ conflict.
 Read [Architecture](references/architecture.md) before you study the change:
 it is the review's first lens. Read [Document authoring](references/document-authoring.md) before you write.
 Read [Components](references/components.md) before you edit `data.yaml`, and
-[Diagrams](references/diagrams.md) before you add a fenced diagram. Read [Lifecycle](references/lifecycle.md) for statuses,
-storage and thread rules. Read [Software map](references/software-map.md)
-before you author `map.yaml`.
+[Diagrams](references/diagrams.md) before you add a fenced diagram. Read [Software map](references/software-map.md)
+before you author `map.yaml`. [Lifecycle](references/lifecycle.md) holds the
+status table, the store's layout, the forge pass and snapshot retention: open
+it when a step below points there, not before.
 
 ## Workflow
 
@@ -300,6 +301,10 @@ worktree.
 - `review-dismissed` or `review-deleted`: stop.
 - `timeout`: nothing happened. Wait again, or tell the user the reader has not
   responded and stop.
+
+When the review is bound to a change request, [Lifecycle](references/lifecycle.md)
+says what `thurview forge pass` carries of the reader's decision to the forge,
+and what it never posts.
 
 ### 9. Address requested changes
 
