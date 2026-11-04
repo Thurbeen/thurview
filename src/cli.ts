@@ -1,4 +1,3 @@
-import { renderStatic, publishStatic, checkStaticTarget } from "./static.js";
 import {
   runAxiCli,
   AxiError,
@@ -14,7 +13,6 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import open from "open";
 import * as g from "./git.js";
 import {
   SCHEMA,
@@ -37,24 +35,16 @@ import {
   serverStateFile,
   deleteReview,
   removedKind,
+  SCOPE_FILE,
   type ReviewState,
   type Binding,
   type Thread,
 } from "./store.js";
-import { compileDocument, compileMap, type Diagnostic } from "./document/compile.js";
-import {
-  changeInScope,
-  excludeMatcher,
-  scopeAt,
-  ScopeError,
-  SCOPE_FILE,
-  type ReviewScope,
-} from "./scope.js";
+import type { Diagnostic } from "./document/compile.js";
+import type { ReviewScope } from "./scope.js";
 import { replyThread, setThreadStatus, needsAgent } from "./threads.js";
 import { targetLabel, truncate } from "./thread-state.js";
 import { attach } from "./presence.js";
-import { startServer } from "./server/server.js";
-import { exportReview, localTarget } from "./export.js";
 import { parseFlags, helpFor, str, bool, type FlagSpec, type Parsed } from "./flags.js";
 import {
   forgeFor,
@@ -64,18 +54,9 @@ import {
   type Forge,
   type RepoId,
 } from "./forge/index.js";
-import { parseSubmission, longComments, buildPass } from "./forge/submission.js";
 import { recordForgeFacts, ciFacts, type ForgeFacts } from "./queue.js";
-import { parsePass, verdictOf, type Verdict } from "./pr-review/format.js";
+import type { Verdict } from "./pr-review/format.js";
 import { CATEGORIES, CONFIDENCE } from "./pr-review/categories.js";
-import {
-  readState,
-  startReview,
-  stopReview,
-  sync,
-  waitForEvent,
-  STOP_LABEL,
-} from "./pr-review/follow.js";
 import { VERSION } from "./version.js";
 
 const execFileP = promisify(execFile);
@@ -301,7 +282,14 @@ function reviewUrl(base: string, id: string, view?: string): string {
  * parse. Failing loudly is the point: rules that are declared and quietly not
  * applied are worse than none, because they read as an assurance.
  */
+/** The browser is opened on request only, so the package that finds it is loaded then. */
+async function openInBrowser(url: string): Promise<void> {
+  const { default: open } = await import("open");
+  await open(url).catch(() => {});
+}
+
 async function scopeOrFail(worktree: string, commit: string): Promise<ReviewScope> {
+  const { scopeAt, ScopeError } = await import("./scope.js");
   try {
     return await scopeAt(worktree, commit);
   } catch (e) {
@@ -852,6 +840,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     // out-of-scope peek is a publish error, and finding that out at publish is
     // finding it out after the writing.
     const rules = await scopeOrFail(worktree, head);
+    const { changeInScope } = await import("./scope.js");
     const withheld = (await g.changedFiles(worktree, base, head)).filter(
       (c) => !changeInScope(rules, c),
     ).length;
@@ -955,6 +944,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         throw new AxiError(`${passArg} does not exist`, "VALIDATION_ERROR", [
           "Write the pass file first; `thurview pr-review --help` shows its shape",
         ]);
+      const { parsePass, verdictOf } = await import("./pr-review/format.js");
       verdict = verdictOf(parsePass(text, passArg));
       if (!review.pins.head.startsWith(verdict.head) && !verdict.head.startsWith(review.pins.head))
         throw new AxiError(
@@ -985,6 +975,10 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         );
       }
     }
+    const [{ compileDocument, compileMap }, { changeInScope, excludeMatcher }] = await Promise.all([
+      import("./document/compile.js"),
+      import("./scope.js"),
+    ]);
     const diags: Diagnostic[] = [];
     // an older scaffold wrote a comments-only template; only a theme someone wrote is worth a warning
     if (themeYaml?.replace(/^\s*#.*$/gm, "").trim())
@@ -1110,7 +1104,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         review.id,
         str(p, "view"),
       );
-    if (bool(p, "open") && url) await open(url).catch(() => {});
+    if (bool(p, "open") && url) await openInBrowser(url);
     const out: Out = {
       published: {
         id: short(review.id),
@@ -1165,7 +1159,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       str(p, "view"),
     );
     const launch = p.flags["browser"] !== false;
-    if (launch) await open(url).catch(() => {});
+    if (launch) await openInBrowser(url);
     return {
       opened: {
         id: short(review.id),
@@ -1194,6 +1188,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           "VALIDATION_ERROR",
           ["thurview publish-static --check --to cloudflare"],
         );
+      const { checkStaticTarget } = await import("./static.js");
       try {
         return {
           preflight: await checkStaticTarget(str(p, "config") ?? join(home(), "cloudflare.json")),
@@ -1219,6 +1214,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         "thurview publish-static <id> --out snapshot",
         "thurview publish-static <id> --to cloudflare",
       ]);
+    const { renderStatic, publishStatic } = await import("./static.js");
     try {
       return {
         snapshot: out
@@ -1249,6 +1245,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         `Run \`thurview publish --review ${short(review.id)}\` first`,
       ]);
     const threads = p.flags["threads"] !== false;
+    const { exportReview, localTarget } = await import("./export.js");
     const html = await exportReview(review, { threads });
     const file = await localTarget(out).write(html);
     return {
@@ -1269,6 +1266,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
   async serve(args) {
     const p = parseFlags("serve", args, spec("serve").flags);
     const port = str(p, "port");
+    const { startServer } = await import("./server/server.js");
     const s = await startServer(port ? { port: Number(port) } : {});
     note(`thurview server on ${s.hosts.map((h) => `http://${h}:${s.port}`).join("  ")}`);
     await new Promise(() => {});
@@ -1674,6 +1672,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
           "The reader decides in the browser; nothing is posted before they submit",
           `Run \`thurview wait --review ${id}\` to block until they do`,
         ]);
+      const { buildPass, parseSubmission } = await import("./forge/submission.js");
       const plan = buildPass(t.threads, decision);
       const out = resolve(process.cwd(), str(p, "out") ?? passFile(review.id));
       const text = JSON.stringify(plan.submission, null, 2) + "\n";
@@ -1739,6 +1738,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         throw new AxiError(`${file} not found`, "NOT_FOUND", [
           'Write the pass as JSON: {"verdict": "comment", "body": "<summary>", "comments": []}',
         ]);
+      const { parseSubmission, longComments } = await import("./forge/submission.js");
       const submission = parseSubmission(text, file);
       const max = Number(str(p, "max-lines"));
       const warnings = longComments(submission, Number.isFinite(max) && max > 0 ? max : 5);
@@ -1984,6 +1984,8 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const s = spec("pr-review").flags;
     const p = parseFlags(`pr-review ${sub}`, args.slice(1), s);
     const ctx = await forgeContext(p);
+    const { readState, startReview, stopReview, sync, waitForEvent, STOP_LABEL } =
+      await import("./pr-review/follow.js");
     const where = `${ctx.repo.path}#${ctx.cr.number}`;
     const again = `thurview pr-review wait --change ${ctx.cr.number}`;
 
@@ -2076,6 +2078,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       const text = await readText(resolve(process.cwd(), file));
       if (text === null) throw new AxiError(`${file} not found`, "NOT_FOUND", []);
       const dry = bool(p, "dry-run");
+      const { parsePass } = await import("./pr-review/format.js");
       const r = await sync(ctx, parsePass(text, file), { dryRun: dry });
       return {
         pass: {

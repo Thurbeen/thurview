@@ -39,9 +39,9 @@ import { createHash } from "node:crypto";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { listFiles, showFile } from "./git.js";
+import { SCOPE_FILE } from "./store.js";
 
-/** Where the rules live, at the root of the repository under review. */
-export const SCOPE_FILE = "thurview-scope.yaml";
+export { SCOPE_FILE };
 
 export class ScopeError extends Error {}
 
