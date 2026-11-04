@@ -120,6 +120,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await server?.close();
+  await rm(repo, { recursive: true, force: true });
+  await rm(home, { recursive: true, force: true });
 });
 
 describe("thurview end to end", () => {
@@ -183,6 +185,43 @@ describe("thurview end to end", () => {
     expect(p.document.title).toBe("feature");
     expect(Object.keys(p.document.anchors)).toEqual([]);
     expect(p.document.blocks.length).toBeGreaterThan(0);
+    await cli(["delete", "--review", id]);
+  }, 20_000);
+
+  it("reports an unavailable Git source without losing sealed revisions or comments", async () => {
+    const { review } = await cli(["scaffold", "--new"]);
+    const id = review.uuid;
+    await cli(["publish", "--review", id]);
+    await cli(["publish", "--review", id]);
+    const thread = await post(`/api/reviews/${id}/threads`, {
+      body: "Keep this comment",
+      target: { type: "review" },
+    });
+    const before = await api<Out>(`/api/reviews/${id}`);
+    const revisions = await api<Out[]>(`/api/reviews/${id}/revisions`);
+    await rename(repo, `${repo}-away`);
+    try {
+      const after = await api<Out>(`/api/reviews/${id}?revision=1`);
+      expect(after.revision).toBe(1);
+      expect(after.document.title).toBe(before.document.title);
+      expect(after.changes).toEqual(before.changes);
+      expect(after.threads).toContainEqual(thread);
+      expect(after.review.pins).toEqual(before.review.pins);
+      expect(await api(`/api/reviews/${id}/revisions`)).toEqual(revisions);
+      for (const endpoint of ["diff", "file"]) {
+        const response = await fetch(
+          `http://127.0.0.1:${server.port}/api/reviews/${id}/${endpoint}?path=src/auth.ts`,
+        );
+        expect(response.status).toBe(503);
+        expect((await response.json()).error).toContain("Git source unavailable");
+      }
+    } finally {
+      await rename(`${repo}-away`, repo);
+    }
+    const restored = await fetch(
+      `http://127.0.0.1:${server.port}/api/reviews/${id}/diff?path=src/auth.ts`,
+    );
+    expect(restored.status).toBe(200);
     await cli(["delete", "--review", id]);
   }, 20_000);
 
