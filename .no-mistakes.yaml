@@ -43,7 +43,8 @@ document:
     skills/thurview-fix/SKILL.md owns the workflow for reviewing a change and
     fixing what it finds, with references/forges.md owning the forge commands
     and the two forges' differences; skills/thurview-publish/SKILL.md owns uploading an exported
-    document to a cloud, its signed links and the per-provider permissions;
+    document to a cloud and its signed links, with one references/<provider>.md
+    owning that provider's commands and permissions;
     and the thurview references own
     the contracts: references/document-authoring.md the document rules,
     references/components.md every data.yaml shape and the two ways prose
