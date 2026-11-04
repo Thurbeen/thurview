@@ -26,10 +26,9 @@ scopes are listed there. Pull requests squash-merge into `main`, so the PR
 title is the commit that lands and the `PR Title` check validates it. History
 on `main` is linear; merge commits and rebase merges are disabled.
 
-Before pushing, gate the change with no-mistakes; `.no-mistakes.yaml` holds
-the lint, format and test commands it runs and the review instructions per
-path. `pnpm check` runs the same type-check, format check and end-to-end suite
-locally.
+Before pushing, run `pnpm check`: the type-check, format check and end-to-end
+suite CI runs, plus `rumdl check .`, `shellcheck` on the scripts and
+`bats scripts/ci/*.bats`.
 
 ## Layout
 
