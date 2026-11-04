@@ -19,15 +19,30 @@ this command.
 | Merged or closed  | `merged`, or `state: closed`               | `state: merged` or `closed`                         |
 | The review status | commit status `thurview/review`, `POST`ed  | commit status `thurview/review`, `failed` below 5   |
 
-## Where the state lives
+## What the summary looks like
 
-The summary uses the same compact Markdown on both forges: a verdict, the
-public review link when the review has a page, a two-column findings table
-(blocking first), folded update counts and folded change/risks. GitHub links
-each location to its review comment; GitLab links to the discussion's first
-note. A new finding gains its link from the forge's posting response; a dry
-run has no new thread yet and shows the location without inventing a URL.
-Older threads without a reported URL also show an unlinked location.
+The summary uses the same compact Markdown on both forges. It opens with the
+next action and confidence on one line, followed by the public review link. Stop, resume, merge and close replace the
+action while keeping the reviewed confidence score. Its two-column findings
+table lists severity, category and title beside a `file:line` thread link,
+blocking first. With zero findings it says `No open findings.` and omits the
+table. Full finding detail stays in the inline thread and review page.
+
+A first pass says `First review`. An edited pass folds `Since this review`
+with resolved, new and still-open counts from that pass; the CLI returns them
+as `sinceLastReview` (`resolved`, `new`, `stillOpen`), not lifetime totals.
+Change and risks are folded separately; the reviewed head and UTC sync
+timestamp stay small below them. The sign-off is last. Both forges use
+ordinary Markdown tables and HTML `details`/`summary`, with blank lines
+around their Markdown.
+
+GitHub links each location to its review comment; GitLab links to the
+discussion's first note. A new finding gains its link from the forge's posting
+response; a dry run has no new thread yet and shows the location without
+inventing a URL. Older threads without a reported URL also show an unlinked
+location.
+
+## Where the state lives
 
 The summary carries
 `<!-- thurview-pr-review {"head":"<sha>","state":"active","seen":"<note id>"} -->`
