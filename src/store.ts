@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, readdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
@@ -242,14 +242,6 @@ export async function readText(path: string): Promise<string | null> {
 
 export async function writeText(path: string, text: string): Promise<void> {
   await writeAtomic(path, text);
-}
-
-export async function mtime(path: string): Promise<number> {
-  try {
-    return (await stat(path)).mtimeMs;
-  } catch {
-    return 0;
-  }
 }
 
 /** Reviews bound to a worktree, newest first. */

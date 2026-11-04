@@ -110,16 +110,3 @@ export async function submitReview(
   await writeReview(review);
   return t;
 }
-
-export function threadSummary(th: Thread) {
-  return {
-    id: th.id,
-    kind: th.kind,
-    mode: th.mode,
-    status: th.status,
-    submitted: th.submitted,
-    target: th.target,
-    revision: th.revision,
-    messages: th.messages,
-  };
-}
