@@ -4,6 +4,9 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
+/** Where a repository declares its review scope: at its root, read at the pinned commit. */
+export const SCOPE_FILE = "thurview-scope.yaml";
+
 export const SCHEMA = 1;
 
 export type ReviewStatus =
