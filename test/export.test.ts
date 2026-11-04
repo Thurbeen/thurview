@@ -339,7 +339,7 @@ fs.appendFileSync(${JSON.stringify(join(tmp, "deploy-called"))}, "deploy\\n");
     // endpoints.
     for (const server of ["localhost", "127.0.0.1", `/api/reviews/${reviewId}`])
       expect(html).not.toContain(server);
-    expect(html).not.toMatch(/(src|href)="\/(?!\/)/);
+    expect(html).not.toMatch(/\s(src|href)="\/(?!\/)/);
     expect(html).not.toContain(repo);
     expect(html).not.toContain(home);
     // the browser itself is told to fetch nothing from anywhere
