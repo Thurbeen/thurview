@@ -34,7 +34,7 @@ suite CI runs, plus `rumdl check .`, `shellcheck` on the scripts and
 
 - `README.md`: the introduction, install, skills and CLI table; `docs/` the
   detail behind them - `INSTALL.md` the other install routes, `READER.md` what
-  the reader sees.
+  the reader sees, `SCOPE.md` the `thurview-scope.yaml` rules in full.
 - `src/cli.ts`: the AXI command surface; `src/flags.ts` the flag parser.
 - `src/document/`: schema, parser and compiler for `review.md` and
   `data.yaml`.
