@@ -124,7 +124,7 @@ async function bootScript(): Promise<string> {
 
 async function appCss(): Promise<string> {
   let css = await readFile(join(UI_DIR, "app.css"), "utf8");
-  for (const m of [...css.matchAll(/url\("\/(assets\/[^"]+\.woff2)"\)/g)])
+  for (const m of [...css.matchAll(/url\("?\/(assets\/[^")]+\.woff2)"?\)/g)])
     css = css.replace(m[0], `url("${dataUri("font/woff2", await readFile(join(UI_DIR, m[1]!)))}")`);
   return css;
 }
