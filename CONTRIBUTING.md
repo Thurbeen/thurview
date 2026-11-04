@@ -62,11 +62,12 @@ locally.
   one-time setup procedure.
 - `skills/thurview-publish/`: the skill that uploads `thurview export`'s page
   to the user's own Azure, S3, Cloud Storage or Cloudflare Pages account with
-  the user's own CLI login, and signs an expiring link. It is commands, plus
-  one dependency-free script, `scripts/check-scope.mjs`, that holds a
-  repository's remotes to a target's allow and deny globs;
-  `test/publish-skill.test.ts` and `test/publish-scope.test.ts` hold them to
-  that contract.
+  the user's own CLI login, and signs an expiring link. `SKILL.md` is the
+  workflow and one `references/<provider>.md` each provider's commands, so a
+  publish reads one provider; plus one dependency-free script,
+  `scripts/check-scope.mjs`, that holds a repository's remotes to a target's
+  allow and deny globs. `test/publish-skill.test.ts` and
+  `test/publish-scope.test.ts` hold them to that contract.
 - `test/e2e.test.ts`: the suite, driving the CLI and the server end to end.
 - `test/forge.test.ts`: the same, with a fake `gh` and `glab` on PATH, so both
   forge adapters are driven rather than asserted.

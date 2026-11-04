@@ -5,14 +5,26 @@
 // that links expire within each provider's limit, and that whatever makes a
 // copy public sits behind the confirmation step.
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 
 const ROOT = join(import.meta.dirname, "..");
-const SKILL = join(ROOT, "skills", "thurview-publish", "SKILL.md");
-const source = existsSync(SKILL) ? readFileSync(SKILL, "utf8") : "";
+const DIR = join(ROOT, "skills", "thurview-publish");
+const SKILL = join(DIR, "SKILL.md");
+const REFS = join(DIR, "references");
+const read = (f: string) => (existsSync(f) ? readFileSync(f, "utf8") : "");
+const skill = read(SKILL);
+/** One provider per reference; an agent reads the one its target names. */
+const references = existsSync(REFS)
+  ? readdirSync(REFS)
+      .filter((f) => f.endsWith(".md"))
+      .sort()
+      .map((f) => read(join(REFS, f)))
+  : [];
+// The contract is the workflow and every provider's commands together.
+const source = [skill, ...references].join("\n");
 
 interface Block {
   lang: string;
@@ -82,6 +94,19 @@ describe("thurview-publish skill", () => {
     expect(existsSync(SKILL)).toBe(true);
     for (const provider of ["Azure", "S3", "Cloud Storage", "Cloudflare Pages"])
       expect(source).toContain(provider);
+  });
+
+  // A publish touches one cloud, so the workflow an agent reads up front
+  // carries no provider's commands: those sit in the reference it is sent to.
+  it("keeps every provider's commands in that provider's reference", () => {
+    expect(references).toHaveLength(4);
+    const provider = /^(az |aws |gcloud |npx --yes wrangler@)/;
+    for (const line of skill.split("\n")) expect(line.trim(), line).not.toMatch(provider);
+    for (const cli of [/^az /, /^aws /, /^gcloud /, /^npx --yes wrangler@/])
+      expect(
+        references.some((r) => r.split("\n").some((l) => cli.test(l.trim()))),
+        String(cli),
+      ).toBe(true);
   });
 
   it("is reached from the review skill's section on sharing a copy", () => {
