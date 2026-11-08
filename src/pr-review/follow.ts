@@ -45,6 +45,7 @@ export type ReviewForge = Pick<
   | "comment"
   | "heads"
   | "setStatus"
+  | "eyes"
 >;
 
 export interface Ctx {
@@ -200,6 +201,22 @@ export async function readState(ctx: Ctx): Promise<ReviewState> {
       ? `a /thurview stop comment by @${command.author}`
       : null;
   return { summary, findings, others, stop, newest: maxId(...notes.map((n) => n.id)) };
+}
+
+/**
+ * The eyes reaction, before anything else a review posts: what tells a reader
+ * a review is in progress. Only on an open change request whose review is
+ * not stopped, once per account, and never fatal: the review goes on without
+ * it, and the answer says what happened.
+ */
+export async function lookAt(ctx: Ctx, st: ReviewState): Promise<string> {
+  if (ctx.cr.state !== "open") return `skipped: the change request is ${ctx.cr.state}`;
+  if (st.stop || st.summary?.marker.state === "stopped") return "skipped: the review is stopped";
+  try {
+    return (await ctx.forge.eyes(ctx.repo, ctx.cr)) === "added" ? "added" : "already there";
+  } catch (e) {
+    return `failed: ${e instanceof Error ? e.message : String(e)}`;
+  }
 }
 
 export interface SyncResult {

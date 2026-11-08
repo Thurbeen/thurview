@@ -29,6 +29,9 @@
  *   comment   one inline comment, which opens one resolvable thread
  *   setStatus the review's verdict as a commit status on one sha, which a
  *             branch rule can require: it reports, and merges nothing
+ *   eyes      the eyes reaction on the change request itself, by this
+ *             account, once: what tells a reader a review is in progress
+ *             before anything is posted
  *
  * WHAT IS NOT HERE, deliberately: merge, close, push. A review comments; the
  * maintainer merges. A seam with no merge method cannot be talked into one.
@@ -216,4 +219,9 @@ export interface Forge {
   /** The new thread URL, when the forge returns one. */
   comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<string | void>;
   setStatus(repo: RepoId, cr: ChangeRequest, sha: string, s: ReviewStatusCheck): Promise<void>;
+  /**
+   * Add this account's eyes reaction to the change request, unless it is
+   * already there. Other accounts' reactions are read past and never removed.
+   */
+  eyes(repo: RepoId, cr: ChangeRequest): Promise<"added" | "present">;
 }

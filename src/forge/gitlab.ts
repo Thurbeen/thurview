@@ -529,6 +529,23 @@ export class GitLabForge implements Forge {
     );
   }
 
+  /** An award emoji on the merge request; GitLab refuses a second one by the same account, so it is read first. */
+  async eyes(repo: RepoId, cr: ChangeRequest): Promise<"added" | "present"> {
+    const me = await this.whoami(repo);
+    const base = `projects/${this.project(repo)}/merge_requests/${cr.number}/award_emoji`;
+    const out = await run(
+      "glab",
+      this.api(repo, `${base}?per_page=100`, ["--paginate", "--output", "ndjson"]),
+    );
+    const awards = ndjson<{ name: string; user: { username: string } | null }>(out);
+    if (awards.some((a) => a.name === "eyes" && a.user?.username === me)) return "present";
+    await runJson<unknown>(
+      "glab",
+      this.api(repo, base, ["--method", "POST", "--raw-field", "name=eyes"]),
+    );
+    return "added";
+  }
+
   async editNote(repo: RepoId, cr: ChangeRequest, id: string, body: string): Promise<void> {
     await runJson<unknown>(
       "glab",

@@ -125,6 +125,13 @@ running interactive page.
 thurview pr-review status --change <ref>
 ```
 
+Its first act on the change request is the eyes reaction - on the pull request
+on GitHub, an award emoji on the merge request on GitLab - so readers see a
+review is in progress before anything is posted. It is added once per account
+and never removed; `eyes` in the answer says `added`, `already there`,
+`skipped` or `failed: <why>`, and a failure does not stop the review.
+`--no-eyes` leaves it off.
+
 It prints the change request's head and base, the head the last pass reviewed
 (`review.reviewedHead`), every open finding with its `id` under `open`, the
 resolved ones under `resolved`, and `reassess`: the id and thread of every one

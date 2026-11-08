@@ -513,6 +513,32 @@ export class GitHubForge implements Forge {
     );
   }
 
+  /** A pull request is an issue to the reactions API, so this is the issue reactions endpoint. */
+  async eyes(repo: RepoId, cr: ChangeRequest): Promise<"added" | "present"> {
+    const me = await this.whoami(repo);
+    const pages = await runJson<{ content: string; user: { login: string } | null }[][]>(
+      "gh",
+      this.api(repo, [
+        `repos/${repo.path}/issues/${cr.number}/reactions?content=eyes&per_page=100`,
+        "--paginate",
+        "--slurp",
+      ]),
+    );
+    if (pages.flat().some((r) => r.content === "eyes" && r.user?.login === me)) return "present";
+    await runJson<unknown>(
+      "gh",
+      this.api(repo, [
+        `repos/${repo.path}/issues/${cr.number}/reactions`,
+        "--method",
+        "POST",
+        "--input",
+        "-",
+      ]),
+      { input: JSON.stringify({ content: "eyes" }) },
+    );
+    return "added";
+  }
+
   async comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<string | void> {
     const posted = await runJson<{ html_url?: string }>(
       "gh",

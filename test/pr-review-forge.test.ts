@@ -62,8 +62,20 @@ const STATUSES = [
   { cli: "glab", match: ["/statuses/", "POST"], body: {} },
 ];
 
-async function fixtures(table: unknown[]): Promise<void> {
-  await writeFile(responses, JSON.stringify([...STATUSES, ...table]));
+/**
+ * `status` adds the eyes reaction before anything else; the tests that care
+ * pass their own fixtures in place of these, which say it is absent and
+ * accept it.
+ */
+const EYES = [
+  { cli: "gh", match: ["issues/7/reactions", "--paginate"], body: [[]] },
+  { cli: "gh", match: ["issues/7/reactions", "POST"], body: { id: 1, content: "eyes" } },
+  { cli: "glab", match: ["merge_requests/7/award_emoji", "--paginate"], body: "" },
+  { cli: "glab", match: ["merge_requests/7/award_emoji", "POST"], body: { id: 1 } },
+];
+
+async function fixtures(table: unknown[], eyes: unknown[] = EYES): Promise<void> {
+  await writeFile(responses, JSON.stringify([...STATUSES, ...eyes, ...table]));
 }
 
 async function logged(): Promise<{ cli: string; args: string[]; body: string }[]> {
@@ -75,10 +87,16 @@ async function logged(): Promise<{ cli: string; args: string[]; body: string }[]
 }
 
 const isStatus = (c: { args: string[] }) => c.args.some((a) => a.includes("/statuses/"));
+const isEyes = (c: { args: string[] }) =>
+  c.args.some((a) => a.includes("/reactions") || a.includes("/award_emoji"));
 
-/** Every call but the status, which the tests below assert on their own. */
+/** Every call but the status and the eyes reaction, which the tests below assert on their own. */
 async function calls(): Promise<{ cli: string; args: string[]; body: string }[]> {
-  return (await logged()).filter((c) => !isStatus(c));
+  return (await logged()).filter((c) => !isStatus(c) && !isEyes(c));
+}
+
+async function eyesCalls(): Promise<{ cli: string; args: string[]; body: string }[]> {
+  return (await logged()).filter(isEyes);
 }
 
 async function statusCalls(): Promise<{ cli: string; args: string[]; body: string }[]> {
@@ -844,6 +862,185 @@ describe("GitLab notes and threads", { timeout: 30_000 }, () => {
     const out = await cli(["pr-review", "status", "--change", "7"], gitlab);
     expect(out["review"].reviewedHead).toBe(OLD);
     expect(out["open"][0]).toMatchObject({ id: "loop" });
+  });
+});
+
+/**
+ * The eyes reaction: `status` is the first command a review runs on a change
+ * request, so it is where readers learn a review is in progress. Once per
+ * account, never removed, and never in the way of the review.
+ */
+describe("the eyes reaction when a review starts", { timeout: 30_000 }, () => {
+  const github7 = [
+    { cli: "gh", match: ["issues/7/comments", "--paginate", "--slurp"], body: [[]] },
+    { cli: "gh", match: ["graphql"], body: NO_THREADS },
+    { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+  ];
+  const reaction = (login: string, content = "eyes") => ({ id: 1, content, user: { login } });
+
+  it("adds eyes to the pull request before anything else is posted", async () => {
+    await fixtures(
+      [
+        { cli: "gh", match: ["issues/7/reactions", "--paginate"], body: [[]] },
+        { cli: "gh", match: ["issues/7/reactions", "POST"], body: reaction("bot") },
+        ...github7,
+        { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      ],
+      [],
+    );
+    const out = await cli(["pr-review", "status", "--change", "7"], github);
+    expect(out["eyes"]).toBe("added");
+    const posted = (await eyesCalls()).find((c) => c.args.includes("POST"))!;
+    expect(posted.args.join(" ")).toContain("repos/acme/web/issues/7/reactions --method POST");
+    expect(JSON.parse(posted.body)).toEqual({ content: "eyes" });
+    // Nothing else of the change request was written to.
+    expect((await calls()).some((c) => c.args.includes("POST"))).toBe(false);
+  });
+
+  it("adds nothing when this account's eyes are already there, and removes nobody's", async () => {
+    await fixtures(
+      [
+        {
+          cli: "gh",
+          match: ["issues/7/reactions", "--paginate"],
+          body: [[reaction("someone-else"), reaction("bot")]],
+        },
+        ...github7,
+        { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      ],
+      [],
+    );
+    const out = await cli(["pr-review", "status", "--change", "7"], github);
+    expect(out["eyes"]).toBe("already there");
+    const made = (await eyesCalls()).map((c) => c.args.join(" "));
+    expect(made.some((a) => a.includes("POST") || a.includes("DELETE"))).toBe(false);
+  });
+
+  it("adds its own eyes beside another account's, and only looks at eyes", async () => {
+    await fixtures(
+      [
+        {
+          cli: "gh",
+          match: ["issues/7/reactions", "--paginate"],
+          body: [[reaction("someone-else"), reaction("bot", "rocket")]],
+        },
+        { cli: "gh", match: ["issues/7/reactions", "POST"], body: reaction("bot") },
+        ...github7,
+        { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      ],
+      [],
+    );
+    const out = await cli(["pr-review", "status", "--change", "7"], github);
+    expect(out["eyes"]).toBe("added");
+    expect((await eyesCalls()).some((c) => c.args.includes("DELETE"))).toBe(false);
+  });
+
+  it("reports a reaction the forge refused and goes on with the status", async () => {
+    await fixtures(
+      [
+        { cli: "gh", match: ["issues/7/reactions", "--paginate"], body: [[]] },
+        {
+          cli: "gh",
+          match: ["issues/7/reactions", "POST"],
+          fail: true,
+          stderr: "HTTP 403: Resource not accessible by integration",
+        },
+        ...github7,
+        { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      ],
+      [],
+    );
+    const out = await cli(["pr-review", "status", "--change", "7"], github);
+    expect(out["eyes"]).toMatch(/^failed: .*403/);
+    expect(out["change"].head).toBe(HEAD);
+    expect(out["reassess"]).toEqual([]);
+  });
+
+  it("leaves a merged pull request alone", async () => {
+    await fixtures(
+      [...github7, { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL({ merged: true }) }],
+      [],
+    );
+    const out = await cli(["pr-review", "status", "--change", "7"], github);
+    expect(out["eyes"]).toBe("skipped: the change request is merged");
+    expect(await eyesCalls()).toEqual([]);
+  });
+
+  it("leaves a stopped review alone", async () => {
+    await fixtures(
+      [
+        ...github7,
+        {
+          cli: "gh",
+          match: ["repos/acme/web/pulls/7"],
+          body: PULL({ labels: [{ name: "thurview:stop" }] }),
+        },
+      ],
+      [],
+    );
+    const out = await cli(["pr-review", "status", "--change", "7"], github);
+    expect(out["eyes"]).toBe("skipped: the review is stopped");
+    expect(await eyesCalls()).toEqual([]);
+  });
+
+  it("is left off with --no-eyes", async () => {
+    await fixtures(
+      [...github7, { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() }],
+      [],
+    );
+    const out = await cli(["pr-review", "status", "--change", "7", "--no-eyes"], github);
+    expect(out["eyes"]).toBe("skipped: --no-eyes");
+    expect(await eyesCalls()).toEqual([]);
+  });
+
+  const gitlab7 = [
+    { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+    { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
+    { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+    { cli: "glab", match: ["merge_requests/7/notes?", "--paginate"], body: "" },
+    { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+  ];
+  const award = (username: string, name = "eyes") => ({ id: 1, name, user: { username } });
+
+  it("awards eyes on the merge request", async () => {
+    await fixtures(
+      [
+        {
+          cli: "glab",
+          match: ["merge_requests/7/award_emoji", "--paginate"],
+          body: ndjson(award("someone-else")),
+        },
+        { cli: "glab", match: ["merge_requests/7/award_emoji", "POST"], body: award("bot") },
+        ...gitlab7,
+        { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+      ],
+      [],
+    );
+    const out = await cli(["pr-review", "status", "--change", "7"], gitlab);
+    expect(out["eyes"]).toBe("added");
+    const posted = (await eyesCalls()).find((c) => c.args.includes("POST"))!;
+    expect(posted.args.join(" ")).toContain(
+      "projects/acme%2Fweb/merge_requests/7/award_emoji --method POST --raw-field name=eyes",
+    );
+  });
+
+  it("awards nothing when this account's eyes are already on the merge request", async () => {
+    await fixtures(
+      [
+        {
+          cli: "glab",
+          match: ["merge_requests/7/award_emoji", "--paginate"],
+          body: ndjson(award("bot")),
+        },
+        ...gitlab7,
+        { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+      ],
+      [],
+    );
+    const out = await cli(["pr-review", "status", "--change", "7"], gitlab);
+    expect(out["eyes"]).toBe("already there");
+    const made = (await eyesCalls()).map((c) => c.args.join(" "));
+    expect(made.some((a) => a.includes("POST") || a.includes("DELETE"))).toBe(false);
   });
 });
 
