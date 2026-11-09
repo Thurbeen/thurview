@@ -5,28 +5,27 @@ covers the rest.
 
 ## What the install command does
 
-`--skill '*'` takes all four skills; quote the star so your shell does not
-expand it against the current directory. `--skill` also takes names, one or
-several: `--skill thurview`, or `--skill thurview thurview-fix`.
+`--skill '*'` takes every skill the repository ships, which is
+`thurview-pr-review`; quote the star so your shell does not expand it against
+the current directory. `--skill thurview-pr-review` names it outright.
 
 `--global` installs for your user, so one install covers every repository.
-`universal` puts the one real copy of each skill under `~/.agents/skills/`,
+`universal` puts the one real copy of the skill under `~/.agents/skills/`,
 the directory no single agent owns, and every other agent you name gets a
-symlink to it - `~/.claude/skills/thurview` →
-`../../.agents/skills/thurview`, and the same for the other three - so an
-update lands everywhere at once. Swap `claude-code` for any agent the skills
-CLI supports, but keep `universal` and at least one more: with `--yes` and a
-single target, the CLI copies instead of linking.
+symlink to it - `~/.claude/skills/thurview-pr-review` →
+`../../.agents/skills/thurview-pr-review` - so an update lands everywhere at
+once. Swap `claude-code` for any agent the skills CLI supports, but keep
+`universal` and at least one more: with `--yes` and a single target, the CLI
+copies instead of linking.
 
-The skills reach the `thurview` command through `npx`. Nothing else needs
-installing beyond `git`: callers, tests and importers are found by the agent's
-own search at the pinned commits.
+The skill reaches the `thurview` command through `npx`. Nothing else needs
+installing beyond `git` and the forge's CLI, `gh` or `glab`.
 
 ## Pin to a release
 
 The untagged URL tracks this repository's default branch: `skills update`
 takes whatever `main` holds, which can be ahead of the released command. To
-pin the skills to a release instead, install from the tag, which the skill
+pin the skill to a release instead, install from the tag, which the skill
 lock records and later updates keep:
 
 ```sh
@@ -39,15 +38,15 @@ Releases tag without committing, so nothing moves the tag above: swap in the
 
 ## Install the command
 
-Install the command itself, rather than leaving the skills to reach it through
+Install the command itself, rather than leaving the skill to reach it through
 `npx` on every run:
 
 ```sh
 npm install -g thurview     # or: pnpm add -g thurview
 ```
 
-The npm package ships the same skills, so `thurview setup skill` links the
-copies that match the command you have installed. Use that when you want the
+The npm package ships the same skill, so `thurview setup skill` links the
+copy that matches the command you have installed. Use that when you want the
 two to move together; use it or the `skills` CLI, not both.
 
 To run from a checkout instead:
@@ -58,40 +57,28 @@ pnpm build
 npm link                    # puts `thurview` on PATH
 ```
 
-## Session hooks
-
-`thurview setup hooks` installs a SessionStart hook for Claude Code, Codex and
-OpenCode, so every session opens with the reviews of its working directory.
-
 ## Coming from an older install
 
-A skill name is an address, so nothing renames or splits one in place - the
-install command adds what is missing, and what is stale has to go.
+A skill name is an address, so nothing removes one in place - the install
+command adds what is missing, and what is stale has to go.
 
-thurview reviews changes and nothing else: `thurview-explain` and
-`thurview-design` are gone, and so are the `thurview explain` and
-`thurview design` commands, which now refuse and point at `thurview scaffold`.
-An install made before that keeps both skills from a copy that will never
-change again. Remove them:
-
-```sh
-npx skills@latest remove --global thurview-explain thurview-design
-```
-
-An explainer or a design stored under `~/.thurview` is refused by name; delete
-it with `thurview delete --review <id>`. For a `thurview setup skill` install,
-delete the stale links - `~/.agents/skills/thurview-explain`,
-`~/.agents/skills/thurview-design` and the same paths under `~/.claude` and
-`~/.cursor` - and run `thurview setup skill` again.
-
-`thurview-fix` was called `review-fix`, and an install made before the rename
-keeps answering to `/review-fix` from a copy that will never change again.
-Remove it:
+thurview is now the PR/MR review alone. The browser page and everything that
+made it are gone: the `thurview`, `thurview-fix` and `thurview-publish`
+skills, and the `scaffold`, `publish`, `publish-static`, `open`, `export`,
+`serve`, `wait`, `threads`, `forge`, `info`, `delete` and `setup hooks`
+commands, and the top-level `stop` that ended the page server. An install
+made before that keeps those skills from a copy that will never change
+again. Remove them, along with the older
+`thurview-explain`, `thurview-design` and `review-fix`:
 
 ```sh
-npx skills@latest remove --global review-fix
+npx skills@latest remove --global thurview thurview-fix thurview-publish \
+  thurview-explain thurview-design review-fix
 ```
 
-For a `thurview setup skill` install, delete the stale link -
-`~/.agents/skills/review-fix` and the same path under `~/.claude` and
-`~/.cursor` - and run `thurview setup skill` again.
+For a `thurview setup skill` install, delete the stale links under
+`~/.agents/skills`, `~/.claude/skills` and `~/.cursor/skills` and run
+`thurview setup skill` again. A SessionStart hook from `thurview setup hooks`
+stays until you remove it from your agent's settings. Reviews stored under
+`~/.thurview/reviews` from the page flow are no longer read; delete that
+directory when you no longer need them.

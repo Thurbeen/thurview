@@ -37,8 +37,6 @@ jobs:
               # edit must still run it.
               - 'skills/**/SKILL.md'
               - 'bin/**'
-              - 'scripts/build-ui.mjs'
-              - 'scripts/browser-check.mjs'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'tsconfig*.json'

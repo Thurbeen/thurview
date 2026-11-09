@@ -29,14 +29,8 @@ function loadFrontmatter(source: string): Record<string, unknown> {
 describe("SKILL.md frontmatter", () => {
   const files = skillFiles();
 
-  it("finds the skills to check", () => {
-    expect(files).toContain("skills/thurview/SKILL.md");
-  });
-
-  it("ships one review skill, the one that fixes what it finds", () => {
-    expect(files).toContain("skills/thurview-fix/SKILL.md");
-    expect(files).not.toContain("skills/forge-review/SKILL.md");
-    expect(files).not.toContain("skills/review-fix/SKILL.md");
+  it("ships one skill: the PR/MR review", () => {
+    expect(files).toEqual(["skills/thurview-pr-review/SKILL.md"]);
   });
 
   // A skill name is what the agent resolves and what the reader types, so it

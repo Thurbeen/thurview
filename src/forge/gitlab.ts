@@ -1,9 +1,6 @@
 import { AxiError } from "axi-sdk-js";
 import { run, runJson, ok } from "./run.js";
-import { parseRemote } from "./github.js";
 import type {
-  Check,
-  CheckState,
   ChangeRequest,
   Forge,
   InlineComment,
@@ -11,10 +8,7 @@ import type {
   ReviewStatusCheck,
   PriorPass,
   PriorThread,
-  Provenance,
   RepoId,
-  Submission,
-  SubmitResult,
 } from "./types.js";
 
 /**
@@ -36,25 +30,6 @@ import type {
  *     permalink.
  */
 
-/**
- * Job statuses, mapped once and here. `manual` is a job that exists and has
- * not run, which is the exact case a "no failures" reading gets wrong.
- */
-const JOB: Record<string, CheckState> = {
-  success: "passed",
-  failed: "failed",
-  canceled: "cancelled",
-  cancelled: "cancelled",
-  skipped: "skipped",
-  manual: "skipped",
-  running: "running",
-  pending: "running",
-  created: "running",
-  preparing: "running",
-  waiting_for_resource: "running",
-  scheduled: "running",
-};
-
 interface RestMr {
   iid: number;
   title: string;
@@ -71,17 +46,6 @@ interface RestMr {
   source_project_id: number;
   target_project_id: number;
   diff_refs?: { base_sha: string; head_sha: string; start_sha: string } | null;
-}
-
-interface Pipeline {
-  id: number;
-  project_id: number;
-}
-
-interface Job {
-  name: string;
-  status: string;
-  web_url?: string;
 }
 
 interface Discussion {
@@ -189,50 +153,6 @@ export class GitLabForge implements Forge {
     }
   }
 
-  async provenance(repo: RepoId, cr: ChangeRequest): Promise<Provenance> {
-    const [access, signature] = await Promise.all([
-      runJson<{ username: string; access_level: number }[]>(
-        "glab",
-        this.api(
-          repo,
-          `projects/${this.project(repo)}/members/all?query=${encodeURIComponent(cr.author)}`,
-        ),
-      ).then(
-        (members): Provenance["access"] => {
-          const m = members.find((x) => x.username === cr.author);
-          // 30 is Developer, the first level that can push.
-          return m && m.access_level >= 30 ? "write" : "read";
-        },
-        () => "unknown" as const,
-      ),
-      runJson<{ verification_status?: string }>(
-        "glab",
-        this.api(repo, `projects/${this.project(repo)}/repository/commits/${cr.head}/signature`),
-      ).then(
-        (s): Provenance["signature"] =>
-          s.verification_status === "verified"
-            ? "verified"
-            : s.verification_status
-              ? "unverified"
-              : "unknown",
-        // GitLab answers 404 for a commit with no signature at all
-        (e: Error) => (/\b404\b|not found/i.test(e.message) ? "unsigned" : "unknown"),
-      ),
-    ]);
-    return {
-      head: cr.head,
-      author: cr.author,
-      access,
-      fork: cr.fromFork,
-      signature,
-      forge: this.id,
-    };
-  }
-
-  repoFromRemote(url: string): RepoId | null {
-    return parseRemote(url);
-  }
-
   async get(repo: RepoId, ref: string): Promise<ChangeRequest> {
     const iid = iidOf(ref);
     const mr = await runJson<RestMr>(
@@ -254,44 +174,6 @@ export class GitLabForge implements Forge {
       body: mr.description ?? "",
       labels: mr.labels ?? [],
     };
-  }
-
-  fetchRef(cr: ChangeRequest): string {
-    return `refs/merge-requests/${cr.number}/head`;
-  }
-
-  async checks(repo: RepoId, cr: ChangeRequest): Promise<Check[]> {
-    const pipelines = await runJson<Pipeline[]>(
-      "glab",
-      this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/pipelines`),
-    );
-    return this.jobsOf(repo, pipelines[0]);
-  }
-
-  async baseline(repo: RepoId, branch: string): Promise<Check[]> {
-    const pipelines = await runJson<Pipeline[]>(
-      "glab",
-      this.api(
-        repo,
-        `projects/${this.project(repo)}/pipelines?ref=${encodeURIComponent(branch)}&per_page=1`,
-      ),
-    );
-    return this.jobsOf(repo, pipelines[0]);
-  }
-
-  /** Jobs live in the pipeline's own project, which for a fork is not `repo`. */
-  private async jobsOf(repo: RepoId, pipeline: Pipeline | undefined): Promise<Check[]> {
-    if (!pipeline) return [];
-    const jobs = await runJson<Job[]>(
-      "glab",
-      this.api(repo, `projects/${pipeline.project_id}/pipelines/${pipeline.id}/jobs?per_page=100`),
-    );
-    return jobs.map((j) => ({
-      name: j.name,
-      state: JOB[j.status] ?? "unknown",
-      raw: j.status,
-      ...(j.web_url ? { url: j.web_url } : {}),
-    }));
   }
 
   async prior(
@@ -357,56 +239,6 @@ export class GitLabForge implements Forge {
         body: "",
       });
     return { passes, threads };
-  }
-
-  async submit(repo: RepoId, cr: ChangeRequest, s: Submission): Promise<SubmitResult> {
-    const mr = await runJson<RestMr>(
-      "glab",
-      this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}`),
-    );
-    const refs = mr.diff_refs;
-    if (!refs && s.comments.length)
-      throw new AxiError("this merge request reports no diff refs", "FORGE_ERROR", [
-        "Post the summary alone with an empty comments array, or retry once the merge request has a diff",
-      ]);
-    const notes: string[] = [];
-    let posted = 0;
-    for (const c of s.comments) {
-      if (c.startLine && c.startLine < c.line)
-        notes.push(`${c.path}:${c.startLine}-${c.line} anchored at line ${c.line}`);
-      await this.discussion(repo, cr, refs!, c);
-      posted++;
-    }
-    if (s.verdict === "approve") {
-      await runJson<unknown>(
-        "glab",
-        this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/approve`, [
-          "--method",
-          "POST",
-        ]),
-      );
-    } else if (s.verdict === "request-changes") {
-      notes.push(
-        "GitLab has no changes-requested state; this account's approval was removed and the summary says changes are requested",
-      );
-      await runJson<unknown>(
-        "glab",
-        this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/unapprove`, [
-          "--method",
-          "POST",
-        ]),
-      ).catch(() => notes.push("no approval by this account to remove"));
-    }
-    await runJson<unknown>(
-      "glab",
-      this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/notes`, [
-        "--method",
-        "POST",
-        "--raw-field",
-        `body=${s.body}`,
-      ]),
-    );
-    return { verdict: s.verdict, posted, url: cr.url, notes };
   }
 
   /**
@@ -577,11 +409,5 @@ export class GitLabForge implements Forge {
         this.api(repo, base, ["--method", "PUT", "--raw-field", "resolved=true"]),
       );
     return { replied: body !== undefined, resolved: resolve, notes: [] };
-  }
-
-  permalink(repo: RepoId, sha: string, path: string, from?: number, to?: number): string {
-    const base = `https://${repo.host}/${repo.path}/-/blob/${sha}/${path}`;
-    if (!from) return base;
-    return to && to > from ? `${base}#L${from}-${to}` : `${base}#L${from}`;
   }
 }

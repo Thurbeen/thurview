@@ -13,7 +13,6 @@ import { CATEGORIES, SEVERITIES, CONFIDENCE } from "../src/pr-review/categories.
 import {
   parsePass,
   renderSummary,
-  verdictOf,
   summaryWords,
   SUMMARY_WORDS,
   type Pass,
@@ -267,14 +266,10 @@ describe("the summary", () => {
     });
   });
 
-  it("links the full review only when there is one", async () => {
+  it("never links a page, even from an old pass that names one", async () => {
     const forge = new MemoryForge();
-    await pass(forge, {});
-    expect(forge.summaries()[0]!.body).not.toContain("Full review");
-    await pass(forge, { reviewUrl: "https://reviews.example.com/7/" });
-    expect(forge.summaries()[0]!.body).toContain(
-      "[**Full review**](https://reviews.example.com/7/)",
-    );
+    await pass(forge, { reviewUrl: "https://reviews.example.com/7/" } as unknown as Partial<Pass>);
+    expect(forge.summaries()[0]!.body).not.toMatch(/Full review|reviews\.example\.com/);
   });
 
   it("holds the word budget", () => {
@@ -520,25 +515,15 @@ describe("another reviewer's threads", () => {
   });
 });
 
-describe("what the review ran", () => {
-  it("records a mutation as its own kind", () => {
-    const text = JSON.stringify({
-      ...base,
-      ran: [{ kind: "mutation", what: "Dropped the 4xx return", result: "retry test fails" }],
-    });
-    expect(parsePass(text, "pass.json").ran?.[0]?.kind).toBe("mutation");
-  });
-});
-
 describe("the thurview/review status", () => {
   it("passes the reviewed head only at 5 with nothing open", async () => {
     const forge = new MemoryForge();
-    await pass(forge, { confidence: 5, reviewUrl: "https://reviews.example.com/7/" });
+    await pass(forge, { confidence: 5 });
     expect(forge.statuses.get(SHA(1))).toEqual({
       context: "thurview/review",
       state: "success",
       description: "Confidence 5/5 · no open findings",
-      url: "https://reviews.example.com/7/",
+      url: "https://github.com/acme/web/pull/7",
     });
   });
 
@@ -741,10 +726,6 @@ describe("the view on security and trust", () => {
       ),
     ).toThrow(/word budget/);
   });
-
-  it("reaches the page with the verdict", () => {
-    expect(verdictOf({ ...base, security }).security).toBe(security);
-  });
 });
 
 describe("the categories", () => {
@@ -925,12 +906,11 @@ describe("following the change request", () => {
     await expect(pass(forge, {})).rejects.toThrow(/stopped/);
   });
 
-  it("keeps the links, rows, folds and review timestamp through stop and start", async () => {
+  it("keeps the rows, folds and review timestamp through stop and start", async () => {
     const forge = new MemoryForge();
     await pass(forge, {
       confidence: 2,
       findings: [UNBOUNDED],
-      reviewUrl: "https://reviews.example.com/7/",
     });
     const content = forge.summaries()[0]!.body.split("\n").slice(2);
     await stopReview(ctx(forge));

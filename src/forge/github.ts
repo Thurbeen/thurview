@@ -1,8 +1,6 @@
 import { AxiError } from "axi-sdk-js";
 import { run, runJson, ok } from "./run.js";
 import type {
-  Check,
-  CheckState,
   ChangeRequest,
   Forge,
   InlineComment,
@@ -10,10 +8,7 @@ import type {
   ReviewStatusCheck,
   PriorPass,
   PriorThread,
-  Provenance,
   RepoId,
-  Submission,
-  SubmitResult,
 } from "./types.js";
 
 const HEADS_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
@@ -46,30 +41,6 @@ interface HeadsPayload {
  * REST and GraphQL payloads are the contract this adapter is written against.
  */
 
-/**
- * Check-run conclusions, mapped once and here. `neutral` is a run that
- * reached no verdict, which is closer to skipped than to passed; `stale` is a
- * result GitHub itself no longer trusts, so it is unknown rather than either.
- */
-const CONCLUSION: Record<string, CheckState> = {
-  success: "passed",
-  failure: "failed",
-  timed_out: "failed",
-  startup_failure: "failed",
-  action_required: "failed",
-  cancelled: "cancelled",
-  skipped: "skipped",
-  neutral: "skipped",
-  stale: "unknown",
-};
-
-const STATUS_STATE: Record<string, CheckState> = {
-  success: "passed",
-  failure: "failed",
-  error: "failed",
-  pending: "running",
-};
-
 interface RestPull {
   number: number;
   title: string;
@@ -82,15 +53,6 @@ interface RestPull {
   labels?: { name: string }[];
   head: { sha: string; ref: string; repo: { full_name: string } | null };
   base: { sha: string; ref: string; repo: { full_name: string } | null };
-}
-
-interface CheckRunsPayload {
-  total_count: number;
-  check_runs: { name: string; status: string; conclusion: string | null; html_url?: string }[];
-}
-
-interface StatusesPayload {
-  statuses: { context: string; state: string; target_url?: string }[];
 }
 
 interface ThreadsPayload {
@@ -193,50 +155,6 @@ export class GitHubForge implements Forge {
     }
   }
 
-  async provenance(repo: RepoId, cr: ChangeRequest): Promise<Provenance> {
-    const [access, signature] = await Promise.all([
-      runJson<{ permission?: string }>(
-        "gh",
-        this.api(repo, [
-          `repos/${repo.path}/collaborators/${encodeURIComponent(cr.author)}/permission`,
-        ]),
-      ).then(
-        (p): Provenance["access"] =>
-          !p.permission
-            ? "unknown"
-            : ["admin", "maintain", "write"].includes(p.permission)
-              ? "write"
-              : "read",
-        () => "unknown" as const,
-      ),
-      runJson<{ commit?: { verification?: { verified?: boolean; reason?: string } } }>(
-        "gh",
-        this.api(repo, [`repos/${repo.path}/commits/${cr.head}`]),
-      ).then(
-        (c): Provenance["signature"] => {
-          const v = c.commit?.verification;
-          if (!v) return "unknown";
-          if (v.verified) return "verified";
-          return v.reason === "unsigned" ? "unsigned" : "unverified";
-        },
-        () => "unknown" as const,
-      ),
-    ]);
-    return {
-      head: cr.head,
-      author: cr.author,
-      access,
-      fork: cr.fromFork,
-      signature,
-      forge: this.id,
-    };
-  }
-
-  repoFromRemote(url: string): RepoId | null {
-    const m = parseRemote(url);
-    return m && m.path.split("/").length === 2 ? m : null;
-  }
-
   async get(repo: RepoId, ref: string): Promise<ChangeRequest> {
     const n = numberOf(ref);
     const pr = await runJson<RestPull>("gh", this.api(repo, [`repos/${repo.path}/pulls/${n}`]));
@@ -255,47 +173,6 @@ export class GitHubForge implements Forge {
       body: pr.body ?? "",
       labels: (pr.labels ?? []).map((l) => l.name),
     };
-  }
-
-  fetchRef(cr: ChangeRequest): string {
-    return `refs/pull/${cr.number}/head`;
-  }
-
-  async checks(repo: RepoId, cr: ChangeRequest): Promise<Check[]> {
-    return this.checksForSha(repo, cr.head);
-  }
-
-  async baseline(repo: RepoId, branch: string): Promise<Check[]> {
-    const tip = await runJson<{ sha: string }>(
-      "gh",
-      this.api(repo, [`repos/${repo.path}/commits/${encodeURIComponent(branch)}`]),
-    );
-    return this.checksForSha(repo, tip.sha);
-  }
-
-  private async checksForSha(repo: RepoId, sha: string): Promise<Check[]> {
-    const runs = await runJson<CheckRunsPayload>(
-      "gh",
-      this.api(repo, [`repos/${repo.path}/commits/${sha}/check-runs?per_page=100`]),
-    );
-    const checks: Check[] = runs.check_runs.map((r) => ({
-      name: r.name,
-      state: r.status !== "completed" ? "running" : (CONCLUSION[r.conclusion ?? ""] ?? "unknown"),
-      raw: r.status === "completed" ? (r.conclusion ?? "completed") : r.status,
-      ...(r.html_url ? { url: r.html_url } : {}),
-    }));
-    const statuses = await runJson<StatusesPayload>(
-      "gh",
-      this.api(repo, [`repos/${repo.path}/commits/${sha}/status?per_page=100`]),
-    );
-    for (const s of statuses.statuses)
-      checks.push({
-        name: s.context,
-        state: STATUS_STATE[s.state] ?? "unknown",
-        raw: s.state,
-        ...(s.target_url ? { url: s.target_url } : {}),
-      });
-    return checks;
   }
 
   /**
@@ -387,37 +264,6 @@ export class GitHubForge implements Forge {
       };
     });
     return { passes, threads };
-  }
-
-  async submit(repo: RepoId, cr: ChangeRequest, s: Submission): Promise<SubmitResult> {
-    const body = {
-      commit_id: cr.head,
-      body: s.body,
-      event:
-        s.verdict === "approve"
-          ? "APPROVE"
-          : s.verdict === "request-changes"
-            ? "REQUEST_CHANGES"
-            : "COMMENT",
-      comments: s.comments.map(inline),
-    };
-    const out = await runJson<{ html_url?: string }>(
-      "gh",
-      this.api(repo, [
-        `repos/${repo.path}/pulls/${cr.number}/reviews`,
-        "--method",
-        "POST",
-        "--input",
-        "-",
-      ]),
-      { input: JSON.stringify(body) },
-    );
-    return {
-      verdict: s.verdict,
-      posted: s.comments.length,
-      ...(out.html_url ? { url: out.html_url } : {}),
-      notes: [],
-    };
   }
 
   async reply(
@@ -552,12 +398,6 @@ export class GitHubForge implements Forge {
       { input: JSON.stringify({ commit_id: cr.head, ...inline(c) }) },
     );
     return posted.html_url;
-  }
-
-  permalink(repo: RepoId, sha: string, path: string, from?: number, to?: number): string {
-    const base = `https://${repo.host}/${repo.path}/blob/${sha}/${path}`;
-    if (!from) return base;
-    return to && to > from ? `${base}#L${from}-L${to}` : `${base}#L${from}`;
   }
 }
 

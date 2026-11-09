@@ -48,16 +48,16 @@ Each row is something a diff shows and a search confirms. The search is what
 turns a suspicion into a finding the reader can check: run it at `<head>`, and
 at `<base>` to tell what the change introduced from what it inherited.
 
-| Defect                     | In the diff                                                                                                 | Confirm with                                                                                  |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Symptom patch              | A new branch on one input, kind, caller or flag, or a `catch` that swallows one error, at the failure site. | The same discriminant elsewhere: `git grep -n -E -e "kind *=+ *['\"]foo" <head> --`           |
-| Scattered switch           | Another case added to a `switch`/`if` chain on a type tag that other modules also switch on.                | Every place that tests the tag: `git grep -n -E -e '\.kind *=+' <head> --`                    |
-| Misplaced responsibility   | A rule computed in a layer that does not own it: a handler doing storage, a view doing business logic.      | Where else the rule is computed; who owns the data it reads.                                  |
-| Dependency against grain   | A lower layer importing a higher one, core importing an adapter, a new import cycle.                        | The importers recipe in both directions between the two modules.                              |
-| Duplicated source of truth | A list, constant, schema or validation rule written a second time.                                          | The literal or key at head: `git grep -n -F -e '<literal>' <head> --`                         |
-| Interface bent to a caller | A parameter, option or flag added to a shared function that one caller passes.                              | Callers of the function, and which of them pass it.                                           |
-| Bypassed seam              | A caller reaching into another module's internals, or around the interface it already has.                  | Other callers of the same internals; the interface they were meant to use.                    |
-| Hidden coupling            | Module-level mutable state, a singleton, an init order the change starts to depend on.                      | Every reader and writer of that state.                                                        |
+| Defect                     | In the diff                                                                                                 | Confirm with                                                                        |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Symptom patch              | A new branch on one input, kind, caller or flag, or a `catch` that swallows one error, at the failure site. | The same discriminant elsewhere: `git grep -n -E -e "kind *=+ *['\"]foo" <head> --` |
+| Scattered switch           | Another case added to a `switch`/`if` chain on a type tag that other modules also switch on.                | Every place that tests the tag: `git grep -n -E -e '\.kind *=+' <head> --`          |
+| Misplaced responsibility   | A rule computed in a layer that does not own it: a handler doing storage, a view doing business logic.      | Where else the rule is computed; who owns the data it reads.                        |
+| Dependency against grain   | A lower layer importing a higher one, core importing an adapter, a new import cycle.                        | The importers recipe in both directions between the two modules.                    |
+| Duplicated source of truth | A list, constant, schema or validation rule written a second time.                                          | The literal or key at head: `git grep -n -F -e '<literal>' <head> --`               |
+| Interface bent to a caller | A parameter, option or flag added to a shared function that one caller passes.                              | Callers of the function, and which of them pass it.                                 |
+| Bypassed seam              | A caller reaching into another module's internals, or around the interface it already has.                  | Other callers of the same internals; the interface they were meant to use.          |
+| Hidden coupling            | Module-level mutable state, a singleton, an init order the change starts to depend on.                      | Every reader and writer of that state.                                              |
 
 A text search finds names, not meaning, so the rules in
 [Searching the code](searching.md) hold here too: open each hit, and name the
@@ -66,10 +66,10 @@ search beside the claim it supports.
 ## Writing the finding
 
 An architecture finding is guidance toward a better shape, not a complaint.
-It carries three things, anchored:
+It carries three things, each pointing at `path:line` at the head:
 
 - **The cause**: the design property, in one line, with the evidence - the
-  search and its hits, or the two anchors that hold the same fact.
+  search and its hits, or the two lines that hold the same fact.
 - **The target**: where the logic should live, which way the dependency should
   run, which single source the copies should derive from. Name the module,
   type or interface; "refactor this" is not a target.
@@ -102,10 +102,6 @@ two existing checks into it here; the other callers can follow._
 
 ## Where the view goes
 
-Every review states it, and the tools refuse one that does not:
-
-- a review document: `architecture` in `data.yaml`, a `view` and one entry
-  per defect - see [Components](components.md#architecture)
-- a change request's summary: `architecture` in `pass.json`, one line, read
-  right under the reason
-- a fix pass: architecture findings first in the report
+Every review states it, and `sync` refuses a pass that does not:
+`architecture` in `pass.json`, one line, read right under the reason in the
+summary. An architecture finding is a thread like any other, filed first.

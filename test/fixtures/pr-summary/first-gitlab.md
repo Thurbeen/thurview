@@ -1,8 +1,6 @@
 <!-- thurview-pr-review {"head":"aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111","state":"active","seen":"0"} -->
 Next: @dev — **Confidence 2/5 · do not merge; fix the 1 blocking finding.**
 
-[**Full review**](https://reviews.example.com/r/7/)
-
 One blocking bug.
 
 **Architecture:** Retry policy stays in upload(), the one module that sends.

@@ -3,12 +3,11 @@
 thurview builds no index of the code. Who calls a symbol, which tests touch a
 file and what imports a module are answered by your own search, at the pinned
 commit, and every answer you state comes with the search behind it so the
-reader can run it again. Every skill that asks one of these questions uses the
-recipes here.
+reader can run it again.
 
 ## Search the pinned commit, not the worktree
 
-`git grep` reads a commit directly, so its answer is the one your anchors are
+`git grep` reads a commit directly, so its answer is the one the review is
 pinned to however far the worktree has moved:
 
 ```sh
@@ -17,7 +16,7 @@ git grep -n -E -e '<pattern>' <commit> -- '<path glob>'
 
 `<commit>` is `head` for what the change made, `base` for what it replaced.
 Each hit prints as `<commit>:<path>:<line>:<text>`; the `<path>:<line>` part is
-what an anchor's `peek` takes. `rg` gives the same answer, faster, only when
+what a finding's `path` and `line` take. `rg` gives the same answer, faster, only when
 `git rev-parse HEAD` in the worktree is the pinned commit and the tree is
 clean; when either is not true, use `git grep`.
 
@@ -34,7 +33,7 @@ trust the count.
 | importers of a module       | `git grep -n -E -e "['\"][./]*path/to/module(\.[a-z]+)?['\"]" <commit> --` |
 | tests that touch a file     | `git grep -l -E -e '\bexportedName\b' <commit> -- '*test*' '*spec*'`       |
 | tests that name a symbol    | `git grep -n -E -e '\bname\b' <commit> -- '*test*' '*spec*'`               |
-| the same special case       | `git grep -n -E -e "kind *=+ *['\"]value" <commit> --`                    |
+| the same special case       | `git grep -n -E -e "kind *=+ *['\"]value" <commit> --`                     |
 | the directories in a scope  | `git ls-tree -d -r --name-only <commit> -- <scope>`                        |
 | the files in a scope        | `git ls-tree -r --name-only <commit> -- <scope>`                           |
 
@@ -63,8 +62,5 @@ comment or a different symbol with the same name. So:
 
 ## Record what you searched
 
-How it is recorded depends on the document:
-
-- **A review** puts the search in the prose beside the claim it supports, as
-  inline code.
-- **A fix pass** puts it in the evidence column of its report.
+Put the search beside the claim it supports, as inline code: in the finding's
+`body`, or in the risk bullet that says what was not confirmed.
