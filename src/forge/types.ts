@@ -13,16 +13,10 @@
  *   get       the change request itself - the head a review is written
  *             against, the branch it is open from, whether it comes from a
  *             fork
- *   checks    what CI did on that head, one row per job
- *   baseline  what CI does on the target branch's own tip, which is the only
- *             way to see that a fork change request ran almost nothing
  *   prior     every earlier review pass and every review thread, with who
  *             wrote it, whether it is resolved and which commit it was
  *             written against
- *   submit    one pass - a summary, inline comments, a verdict
  *   reply     answer one thread, and resolve it when its point is verified
- *   permalink a file and line range at a pinned commit, as a URL the author
- *             can open
  *   notes     the change request's top-level comments, to find the one
  *             summary a follow loop keeps and the stop command a reader posts
  *   postNote  post one top-level comment; editNote rewrites one in place
@@ -35,10 +29,6 @@
  *
  * WHAT IS NOT HERE, deliberately: merge, close, push. A review comments; the
  * maintainer merges. A seam with no merge method cannot be talked into one.
- *
- * A CHECK THAT COULD NOT BE READ IS `unknown`, NEVER `passed`. Every mapping
- * below is explicit about which forge state becomes which verdict, because a
- * cancelled job that reads as a pass is how two real bugs shipped.
  */
 
 /** One repository on one forge. The host is half of the name. */
