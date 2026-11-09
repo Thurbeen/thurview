@@ -526,7 +526,7 @@ async function setReviewStatus(ctx: Ctx, sha: string, pass: Pass, open: OpenFind
     context: REVIEW_STATUS,
     state: clean ? "success" : "failure",
     description: `Confidence ${pass.confidence}/5 · ${counts}`,
-    url: pass.reviewUrl ?? ctx.cr.url,
+    url: ctx.cr.url,
   });
 }
 

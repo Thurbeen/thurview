@@ -1,7 +1,7 @@
 {
   "name": "thurview",
   "version": "0.1.0",
-  "description": "Guided, evidence-anchored reviews of agent-written code. A coding agent authors the review; you read, ask, comment and decide in the browser.",
+  "description": "Review an opened GitHub PR or GitLab MR from your coding agent: one summary edited in place, one thread per finding, followed until merge.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -18,8 +18,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/build-ui.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.ui.json",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "fmt": "prettier --write .",
     "fmt:check": "prettier --check .",
     "lint": "pnpm typecheck && pnpm fmt:check",
@@ -31,20 +31,15 @@
   "dependencies": {
     "@toon-format/toon": "2.3.1",
     "axi-sdk-js": "0.1.11",
-    "diff": "9.0.0",
-    "markdown-it": "15.0.1",
-    "open": "11.0.2",
-    "shiki": "4.4.3",
-    "yaml": "2.9.0",
     "zod": "4.5.4"
   },
   "devDependencies": {
     "@types/node": "26.4.1",
-    "esbuild": "0.28.2",
     "prettier": "3.9.6",
     "tsx": "4.23.13",
     "typescript": "7.0.2",
-    "vitest": "5.0.0"
+    "vitest": "5.0.0",
+    "yaml": "2.9.0"
   },
   "packageManager": "pnpm@11.24.0",
   "repository": {
@@ -54,12 +49,13 @@
   "homepage": "https://github.com/Thurbeen/thurview",
   "keywords": [
     "code-review",
+    "pull-request",
+    "merge-request",
     "agent",
     "skill",
     "axi",
     "cli",
     "review",
-    "diff",
     "claude-code",
     "agent-skills"
   ],

@@ -10,11 +10,10 @@ prek install        # git hooks: commit message, format, types, tests, shell, ma
 ```
 
 Tools the hooks and the gate expect on PATH: `cog` (cocogitto), `prek`,
-`shellcheck`, `rumdl`, `bats`, `chromium` for `scripts/browser-check.mjs`.
+`shellcheck`, `rumdl`, `bats`.
 
 ```sh
-pnpm dev -- scaffold                                         # run the CLI from source
-node scripts/browser-check.mjs <url> [seconds] [shot.png]    # console errors + screenshot of a view
+pnpm dev -- pr-review status --change <n>    # run the CLI from source
 ```
 
 Set `THURVIEW_HOME` to keep state elsewhere than `~/.thurview`.
@@ -32,83 +31,34 @@ suite CI runs, plus `rumdl check .`, `shellcheck` on the scripts and
 
 ## Layout
 
-- `README.md`: the introduction, install, skills and CLI table; `docs/` the
-  detail behind them - `INSTALL.md` the other install routes, `READER.md` what
-  the reader sees, `SCOPE.md` the `thurview-scope.yaml` rules in full.
+- `README.md`: the introduction, install, use and CLI table;
+  `docs/INSTALL.md` the other install routes.
 - `src/cli.ts`: the AXI command surface; `src/flags.ts` the flag parser.
-- `src/document/`: schema, parser and compiler for `review.md` and
-  `data.yaml`.
 - `src/forge/`: the forge seam - one interface, a GitHub adapter driving `gh`
-  and a GitLab adapter driving `glab`, plus the CI reading `forge status`
-  reports.
-- `src/server/`: the HTTP API, SSE and static UI.
-- `src/export.ts`: `thurview export` - the same UI and a published revision's
-  data, answered in advance, written as one HTML file that needs no server.
-- `src/ui/`: the browser app, vanilla TypeScript bundled by esbuild.
-- `skills/thurview/`: the agent skill for a review, and the references the
-  other skills draw on - the architecture lens every review leads with, the
-  document, `data.yaml` and `map.yaml` shapes, the search recipes, and the
-  lifecycle.
-- `skills/thurview-fix/`: the skill that reviews a change by searching what it
-  reaches, commits the fixes that pass, and can post the rest through
-  `thurview forge`.
+  and a GitLab adapter driving `glab`.
 - `src/pr-review/`: `thurview pr-review` - the summary and finding markers,
   the closed category set, and the follow loop, all on the forge seam.
-- `skills/thurview-pr-review/`: the entrypoint for an opened PR/MR: publishing
-  preflight, page authoring and sealing without a local server, a durable
-  snapshot, and one forge summary linking it on every
-  update. It follows until merge, close or stop. Its `references/cloudflare-setup.md` owns the
-  one-time setup procedure.
-- `skills/thurview-publish/`: the skill that uploads `thurview export`'s page
-  to the user's own Azure, S3, Cloud Storage or Cloudflare Pages account with
-  the user's own CLI login, and signs an expiring link. `SKILL.md` is the
-  workflow and one `references/<provider>.md` each provider's commands, so a
-  publish reads one provider; plus one dependency-free script,
-  `scripts/check-scope.mjs`, that holds a repository's remotes to a target's
-  allow and deny globs. `test/publish-skill.test.ts` and
-  `test/publish-scope.test.ts` hold them to that contract.
-- `test/e2e.test.ts`: the suite, driving the CLI and the server end to end.
-- `test/forge.test.ts`: the same, with a fake `gh` and `glab` on PATH, so both
-  forge adapters are driven rather than asserted.
-
-For queue scrolling changes, also run `pnpm build` followed by
-`node scripts/list-scroll-check.mjs`. This drives Chromium against the built UI
-with synthetic rows and checks wheel and keyboard scrolling at desktop and
-mobile viewport sizes. Set `CHROMIUM` to use a different Chromium executable.
-
-## Demo media
-
-`scripts/demo/record.sh` re-records `media/thurview-demo.{mp4,gif}` and the
-stills beside them from scratch: it builds the demo repository
-(`make-repo.sh`), publishes the review under `scripts/demo/review/` and answers
-the reader's question, all off camera, then records the reader driving the
-interface as a Chromium screencast (`record-browser.mjs`), in the dark palette,
-and encodes it with ffmpeg. The demo is of the UI, so nothing of the agent's
-terminal is filmed. It needs `ffmpeg`, `chromium` (or `$CHROMIUM`) and
-`thurview` on PATH, and touches nothing outside a temporary directory. Re-record it when the UI changes.
-
-`media/process.svg`, the README's process diagram, is drawn by hand. It
-follows the light palette and switches under `prefers-color-scheme: dark`;
-its motion stops under `prefers-reduced-motion`. Redraw it when a skill's
-steps change, and keep it to what the skills do.
+- `skills/thurview-pr-review/`: the one skill. `SKILL.md` is the review flow;
+  `references/` holds the forge differences, the architecture lens every
+  review leads with, and the search recipes.
+- `test/pr-review.test.ts`: the summary, markers and follow loop against an
+  in-memory forge.
+- `test/pr-review-forge.test.ts`: the CLI end to end with a fake `gh` and
+  `glab` on PATH (`test/fake-forge.mjs`), so both forge adapters are driven
+  rather than asserted. Its summary goldens are under
+  `test/fixtures/pr-summary/`.
 
 ## The skills and the command
 
-`skills/` holds four skills, all for reviewing a change - `thurview` authors
-and publishes a review, `thurview-fix` reviews a change and commits the fixes
-that pass,
-`thurview-pr-review` authors a PR/MR review page, publishes its public
-snapshot, and keeps one forge summary linked to it,
-and `thurview-publish` uploads an exported document to the
-user's own cloud. Each is
-installed three ways, and only one of them keeps the
-skill and the command in step:
+`skills/` holds one skill, `thurview-pr-review`, which reviews an opened
+PR/MR on the forge and follows it until merge. It is installed three ways,
+and only one of them keeps the skill and the command in step:
 
-| Route                                              | Tracks                    |
-| -------------------------------------------------- | ------------------------- |
-| `skills@latest add .../thurview --skill thurview`  | `main`, whatever it holds |
-| `skills@latest add .../tree/<tag>/skills/thurview` | that release              |
-| `thurview setup skill`                             | the installed command     |
+| Route                                                        | Tracks                    |
+| ------------------------------------------------------------ | ------------------------- |
+| `skills@latest add .../thurview --skill thurview-pr-review`  | `main`, whatever it holds |
+| `skills@latest add .../tree/<tag>/skills/thurview-pr-review` | that release              |
+| `thurview setup skill`                                       | the installed command     |
 
 Both `skills` routes take `--agent universal claude-code --global --yes`, as the
 README and `docs/INSTALL.md` show: one real copy in `~/.agents/skills`, symlinked into each other

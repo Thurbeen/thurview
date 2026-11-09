@@ -13,6 +13,5 @@
     "sourceMap": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/ui/**"]
+  "include": ["src/**/*.ts"]
 }

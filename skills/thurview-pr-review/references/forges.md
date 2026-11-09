@@ -1,9 +1,8 @@
 # Forges
 
-`thurview pr-review` drives the same seam as `thurview forge`: `gh api` for
-GitHub and `glab api` for GitLab, a self-hosted host owned by whichever CLI is
-authenticated for it. The seam has no merge, close or push, so neither does
-this command.
+`thurview pr-review` drives `gh api` for GitHub and `glab api` for GitLab, a
+self-hosted host owned by whichever CLI is authenticated for it. It has no
+merge, close or push.
 
 ## What each forge does
 
@@ -23,11 +22,11 @@ this command.
 ## What the summary looks like
 
 The summary uses the same compact Markdown on both forges. It opens with the
-next action and confidence on one line, followed by the public review link. Stop, resume, merge and close replace the
+next action and confidence on one line. Stop, resume, merge and close replace the
 action while keeping the reviewed confidence score. Its two-column findings
 table lists severity, category and title beside a `file:line` thread link,
 blocking first. With zero findings it says `No open findings.` and omits the
-table. Full finding detail stays in the inline thread and review page.
+table. Full finding detail stays in the inline thread.
 
 A first pass says `First review`. An edited pass folds `Since this review`
 with resolved, new and still-open counts from that pass; the CLI returns them
@@ -62,8 +61,8 @@ and title, which is how the same finding found on the next push is recognised.
 Every `sync` sets a commit status named `thurview/review` on the head it
 reviewed. It is `success` only at confidence 5 with no open finding, nits and
 agreed threads of other reviewers included, and `failure` otherwise. Its
-description is the score and the open count, and it links the public review
-page, or the change request when the review has no page. A push leaves the
+description is the score and the open count, and it links the change request.
+A push leaves the
 new head with no status until a pass reviews it. The status reports a
 verdict; it approves and merges nothing.
 
@@ -96,12 +95,11 @@ command never does:
 - The status is a commit status, not a check run: GitHub lets only an App
   create check runs, and `gh` is logged in as a user. A ruleset requires
   either the same way. Its description holds the score line, not the whole
-  summary, and it links the review page.
-
+  summary, and it links the change request.
 - No forge approve. A forge approve can arm an auto-merge, and the verdict
-  lives in the summary; `thurview forge submit` is the command for one.
-- GitHub reads the newest 100 review threads (`reviewThreads(last:100)`), the
-  same limit `thurview forge prior` has; GitLab reads every page.
+  lives in the summary.
+- GitHub reads the newest 100 review threads (`reviewThreads(last:100)`);
+  GitLab reads every page.
 - Every call asks the forge who it is (`gh api user`, `glab api user`) to
   tell its own markers from pasted ones, so it needs a token that can read its
   own user; a GitHub App installation token cannot.
@@ -110,7 +108,3 @@ command never does:
   still a finding, never only a risk bullet.
 - GitLab reports no per-thread staleness, and its adapter is driven by stub
   tests but has not been run against a live instance.
-- The CLI sync accepts `reviewUrl` without publishing it, and a pass without
-  one posts the same summary with no link line. The `thurview-pr-review`
-  workflow performs the preflight, publish and link checks before calling
-  sync, on either forge, unless the user asked for no page.

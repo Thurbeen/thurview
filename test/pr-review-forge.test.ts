@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, onTestFinished }
 import { execFile, spawn } from "node:child_process";
 import { decode } from "@toon-format/toon";
 import { promisify } from "node:util";
-import { mkdtemp, writeFile, readFile, chmod, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, readdir, chmod, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -198,6 +198,83 @@ const HEADS = (commits: string[], pushes: [string, string][] = []) => ({
   },
 });
 
+// The whole review lives on the forge: no page is authored, sealed, served or
+// linked, and the commands that once made one are gone.
+describe("thurview, without any page", { timeout: 30_000 }, () => {
+  it("reviews a PR end to end: status, summary and threads, no page link, then follows the push", async () => {
+    await fixtures([
+      { cli: "gh", match: ["pulls/7/comments", "POST"], body: { id: 1 } },
+      { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9, body: "", user: null } },
+      { cli: "gh", match: ["issues/7/comments", "--paginate", "--slurp"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const status = await cli(["pr-review", "status", "--change", "7"], github);
+    expect(status["change"].head).toBe(HEAD);
+    expect(status["review"]).toMatch(/none yet/);
+
+    // A pass written for the old page flow still carries a page link; nothing shows it.
+    const file = join(bin, "pass-no-page.json");
+    await writeFile(
+      file,
+      JSON.stringify({ ...PASS, reviewUrl: "https://reviews.example.com/r/7/", ran: [] }),
+    );
+    const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
+    expect(out["pass"].summary).toBe("created");
+    const logged = await calls();
+    expect(logged.some((c) => c.args.join(" ").includes("pulls/7/comments"))).toBe(true);
+    const summary = logged.find((c) => c.args.join(" ").includes("issues/7/comments --method"))!;
+    const body = JSON.parse(summary.body).body as string;
+    expect(body).toMatch(/^<!-- thurview-pr-review /);
+    expect(body).not.toMatch(/Full review|reviews\.example\.com/);
+    const [st] = await statusCalls();
+    expect(JSON.parse(st!.body).target_url).toBe("https://github.com/acme/web/pull/7");
+
+    // Nothing was written for a page on this machine.
+    expect(await readdir(home)).toEqual([]);
+
+    // The follow loop picks up the next push against the summary it posted.
+    await fixtures([
+      {
+        cli: "gh",
+        match: ["issues/7/comments", "--paginate"],
+        body: [[{ id: 9, user: { login: "bot" }, body: SUMMARY(HEAD) }]],
+      },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      {
+        cli: "gh",
+        match: ["repos/acme/web/pulls/7"],
+        body: PULL({ head: { sha: OLD, ref: "retry", repo: { full_name: "acme/web" } } }),
+      },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const ev = await cli(["pr-review", "wait", "--change", "7"], github);
+    expect(ev["event"]).toMatchObject({ event: "push", since: HEAD, head: OLD });
+  });
+
+  it("has no command that authors, seals, serves or publishes a page", async () => {
+    for (const command of [
+      "scaffold",
+      "publish",
+      "publish-static",
+      "open",
+      "serve",
+      "export",
+      "threads",
+      "forge",
+    ]) {
+      const out = await cli([command], github, 2);
+      expect(JSON.stringify(out)).toMatch(/unknown command/i);
+    }
+  });
+
+  it("ships the PR review skill and nothing else", async () => {
+    const out = await cli(["skill"], github);
+    expect(Object.keys(out["skills"])).toEqual(["thurview-pr-review"]);
+  });
+});
+
 // Each test spawns the CLI through tsx, which takes seconds under load.
 describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
   it("posts each finding as its own review comment, then the one summary", async () => {
@@ -214,7 +291,6 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
       file,
       JSON.stringify({
         ...PASS,
-        reviewUrl: "https://reviews.example.com/r/7/",
         markdownUrl: "https://reviews.example.com/r/7/feedback.md",
       }),
     );
@@ -243,7 +319,7 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
       state: "failure",
       context: "thurview/review",
       description: "Confidence 2/5 · 1 open finding, 1 blocking",
-      target_url: "https://reviews.example.com/r/7/",
+      target_url: "https://github.com/acme/web/pull/7",
     });
   });
 
@@ -266,7 +342,6 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
         ...PASS,
         confidence: 5,
         findings: [],
-        reviewUrl: "https://reviews.example.com/r/7/",
       }),
     );
     const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], github);
@@ -276,7 +351,7 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
         (await calls()).find((c) => c.args.join(" ").includes("issues/comments/9 --method PATCH"))!
           .body,
       ).body,
-    ).toContain("[**Full review**](https://reviews.example.com/r/7/)");
+    ).not.toContain("Full review");
     expect(
       JSON.parse(
         (await calls()).find((c) => c.args.join(" ").includes("issues/comments/9 --method PATCH"))!
@@ -672,13 +747,7 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
       ...base,
     ]);
     const file = join(bin, "pass.json");
-    await writeFile(
-      file,
-      JSON.stringify({
-        ...PASS,
-        reviewUrl: "https://reviews.example.com/r/7/",
-      }),
-    );
+    await writeFile(file, JSON.stringify(PASS));
     const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], gitlab);
     expect(out["pass"].summary).toBe("created");
     const logged = await calls();
@@ -701,12 +770,12 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
         "state=failed",
         "name=thurview/review",
         "description=Confidence 2/5 · 1 open finding, 1 blocking",
-        "target_url=https://reviews.example.com/r/7/",
+        "target_url=https://gitlab.example.com/acme/web/-/merge_requests/7",
       ]),
     );
   });
 
-  it("updates the public link on the same note for the next head", async () => {
+  it("edits the same note for the next head", async () => {
     await fixtures([
       { cli: "glab", match: ["merge_requests/7/notes/9", "PUT"], body: {} },
       {
@@ -723,7 +792,6 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
         ...PASS,
         confidence: 5,
         findings: [],
-        reviewUrl: "https://reviews.example.com/r/7/",
       }),
     );
     const out = await cli(["pr-review", "sync", "--change", "7", "--file", file], gitlab);
@@ -733,7 +801,7 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
     const body = logged
       .find((c) => c.args.join(" ").includes("notes/9 --method PUT"))!
       .args.find((a) => a.startsWith("body="))!;
-    expect(body).toContain("[**Full review**](https://reviews.example.com/r/7/)");
+    expect(body).not.toContain("Full review");
     expect(body).not.toContain("Markdown export");
     expect(body).toContain(HEAD);
   });
@@ -1045,9 +1113,6 @@ describe("the eyes reaction when a review starts", { timeout: 30_000 }, () => {
 });
 
 const GOLDENS = join(ROOT, "test", "fixtures", "pr-summary");
-const PUBLIC_LINKS = {
-  reviewUrl: "https://reviews.example.com/r/7/",
-};
 
 // Assert the Markdown sent by the real CLI, not only the formatter's return value.
 describe("compact summary golden Markdown", { timeout: 30_000 }, () => {
@@ -1178,7 +1243,7 @@ describe("compact summary golden Markdown", { timeout: 30_000 }, () => {
 
   async function run(provider: "github" | "gitlab", p: Record<string, unknown>, code = 0) {
     const file = join(bin, "golden-pass.json");
-    await writeFile(file, JSON.stringify({ ...PASS, ...PUBLIC_LINKS, ...p }));
+    await writeFile(file, JSON.stringify({ ...PASS, ...p }));
     return cli(
       ["pr-review", "sync", "--change", "7", "--file", file],
       provider === "github" ? github : gitlab,
@@ -1255,23 +1320,21 @@ describe("compact summary golden Markdown", { timeout: 30_000 }, () => {
     expect(out.pass.open).toBe(2);
   });
 
-  // The operator who may not publish a page: the skill's own commands, a pass
-  // with no reviewUrl, and the same summary as with a page, less its link.
+  // The skill's own sync commands, run as written, post the one summary.
   it.each([
     ["github", false],
     ["gitlab", false],
     ["github", true],
     ["gitlab", true],
-  ] as const)("the skill's page-less path on %s (edited: %s)", async (provider, edited) => {
+  ] as const)("the skill's sync commands on %s (edited: %s)", async (provider, edited) => {
     const skill = await readFile(join(ROOT, "skills/thurview-pr-review/SKILL.md"), "utf8");
-    const section = skill.split("\n## Without a page\n")[1]?.split("\n## ")[0];
-    expect(section, "the skill documents a page-less path").toBeDefined();
+    const section = skill.split(/\n## \d+\. Sync\n/)[1]?.split("\n## ")[0];
+    expect(section, "the skill documents its sync step").toBeDefined();
     const commands = [...section!.matchAll(/^thurview [^\n]*$/gm)].map(([l]) => l.split(" "));
     expect(commands.map((c) => c.slice(1, 3).join(" "))).toEqual([
       "pr-review sync",
       "pr-review sync",
     ]);
-    expect(section).not.toMatch(/thurview (?:publish|scaffold|open|serve|wait --review)/);
 
     await setup(provider, edited);
     const pass = edited
@@ -1304,10 +1367,8 @@ describe("compact summary golden Markdown", { timeout: 30_000 }, () => {
     expect(body).not.toContain("Full review");
     expect(body).not.toContain("reviews.example.com");
     if (!edited) {
-      const paged = await readFile(join(GOLDENS, `first-${provider}.md`), "utf8");
-      expect(body.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/, "REVIEWED_AT") + "\n").toBe(
-        paged.replace("\n\n[**Full review**](https://reviews.example.com/r/7/)", ""),
-      );
+      const expected = await readFile(join(GOLDENS, `first-${provider}.md`), "utf8");
+      expect(body.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/, "REVIEWED_AT") + "\n").toBe(expected);
     } else expect(body).toContain("Since this review: 0 resolved · 0 new · 2 still open");
     const [status] = await statusCalls();
     const cr =
@@ -1322,7 +1383,7 @@ describe("compact summary golden Markdown", { timeout: 30_000 }, () => {
   it("dry run shows pending locations without inventing thread URLs", async () => {
     await setup("github");
     const file = join(bin, "golden-pass.json");
-    await writeFile(file, JSON.stringify({ ...PASS, ...PUBLIC_LINKS }));
+    await writeFile(file, JSON.stringify(PASS));
     const out = await cli(
       ["pr-review", "sync", "--change", "7", "--file", file, "--dry-run"],
       github,

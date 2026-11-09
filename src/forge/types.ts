@@ -52,21 +52,6 @@ export function qualified(repo: RepoId): string {
   return `${repo.host}/${repo.path}`;
 }
 
-/**
- * What a CI job did. `skipped` and `cancelled` are separate from `failed` and
- * from each other on purpose - a cancelled job ran no assertion, and a green
- * summary that hides one is a lie about coverage.
- */
-export type CheckState = "passed" | "failed" | "cancelled" | "skipped" | "running" | "unknown";
-
-export interface Check {
-  name: string;
-  state: CheckState;
-  /** The forge's own word for it, kept so an unmapped state is still visible. */
-  raw: string;
-  url?: string;
-}
-
 export interface ChangeRequest {
   /** `123` on GitHub, the iid on GitLab. */
   number: string;
@@ -85,24 +70,6 @@ export interface ChangeRequest {
   draft: boolean;
   body: string;
   labels: string[];
-}
-
-/**
- * Who wrote a change request, and what the forge verified about its head.
- * Facts the forge holds, read by thurview and sealed with a page rather than
- * written by the agent; any that could not be read is `unknown`, never a
- * guess. It says who and from where, not whether the change is safe.
- */
-export interface Provenance {
-  /** The head these facts are about; a new push makes them stale. */
-  head: string;
-  author: string;
-  /** Whether the author can push to the repository. */
-  access: "write" | "read" | "unknown";
-  fork: boolean;
-  /** The forge's own verification of the head commit's signature. */
-  signature: "verified" | "unverified" | "unsigned" | "unknown";
-  forge: string;
 }
 
 /** One commit status: `context` names it, as a branch rule requires it. */
@@ -160,24 +127,6 @@ export interface InlineComment {
   body: string;
 }
 
-/** `comment` posts findings without a verdict; the other two are state changes. */
-export type Verdict = "comment" | "approve" | "request-changes";
-
-export interface Submission {
-  verdict: Verdict;
-  body: string;
-  comments: InlineComment[];
-}
-
-export interface SubmitResult {
-  verdict: Verdict;
-  /** Comments the forge accepted. */
-  posted: number;
-  url?: string;
-  /** Anything the forge did differently from what was asked. */
-  notes: string[];
-}
-
 export interface Forge {
   /** `github` or `gitlab`; what `--forge` takes. */
   readonly id: string;
@@ -189,17 +138,9 @@ export interface Forge {
   whoami(repo: RepoId): Promise<string>;
   /** Whether `user` can push to the repository. Any doubt, an error included, is `false`. */
   canWrite(repo: RepoId, user: string): Promise<boolean>;
-  repoFromRemote(url: string): RepoId | null;
-  /** Who wrote the change request and whether the forge verified its head. Never throws. */
-  provenance(repo: RepoId, cr: ChangeRequest): Promise<Provenance>;
   /** A change request number or URL, resolved against `repo`. */
   get(repo: RepoId, ref: string): Promise<ChangeRequest>;
-  /** The ref the forge publishes the head under, so a fork's head can be fetched. */
-  fetchRef(cr: ChangeRequest): string;
-  checks(repo: RepoId, cr: ChangeRequest): Promise<Check[]>;
-  baseline(repo: RepoId, branch: string): Promise<Check[]>;
   prior(repo: RepoId, cr: ChangeRequest): Promise<{ passes: PriorPass[]; threads: PriorThread[] }>;
-  submit(repo: RepoId, cr: ChangeRequest, s: Submission): Promise<SubmitResult>;
   reply(
     repo: RepoId,
     cr: ChangeRequest,
@@ -207,7 +148,6 @@ export interface Forge {
     body: string | undefined,
     resolve: boolean,
   ): Promise<{ replied: boolean; resolved: boolean; notes: string[] }>;
-  permalink(repo: RepoId, sha: string, path: string, from?: number, to?: number): string;
   notes(repo: RepoId, cr: ChangeRequest): Promise<Note[]>;
   postNote(repo: RepoId, cr: ChangeRequest, body: string): Promise<Note>;
   editNote(repo: RepoId, cr: ChangeRequest, id: string, body: string): Promise<void>;

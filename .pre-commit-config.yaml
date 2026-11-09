@@ -20,7 +20,7 @@ repos:
         pass_filenames: false
         always_run: true
       - id: typecheck
-        name: TypeScript (server and UI)
+        name: TypeScript
         entry: pnpm typecheck
         language: system
         types_or: [ts, javascript]

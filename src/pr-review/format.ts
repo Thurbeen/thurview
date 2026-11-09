@@ -76,8 +76,6 @@ const Other = z
     message: "an agreement names the category and severity this review gives it",
   });
 
-const RAN_KINDS = ["search", "test", "mutation", "command", "read"] as const;
-
 const PassSchema = z.object({
   /** The head this pass reviewed; `sync` refuses it once the change request moved on. */
   head: z.string().min(7),
@@ -92,7 +90,6 @@ const PassSchema = z.object({
   security: z.string().trim().min(1).optional(),
   risk: z.array(z.string().min(1)).min(1).max(5),
   change: z.string().min(1),
-  reviewUrl: z.string().url().optional(),
   signoff: z.string().optional(),
   findings: z.array(Finding).default([]),
   fixed: z.array(z.string()).default([]),
@@ -107,64 +104,11 @@ const PassSchema = z.object({
       }),
     )
     .default([]),
-  /** What the review ran to reach its verdict: searches, tests, commands. Shown on the page only. */
-  ran: z
-    .array(
-      z.object({
-        kind: z.enum(RAN_KINDS),
-        what: z.string().trim().min(1),
-        result: z.string().trim().min(1),
-      }),
-    )
-    .default([]),
 });
 
 export type Finding = z.input<typeof Finding>;
 export type Other = z.input<typeof Other>;
 export type Pass = z.input<typeof PassSchema>;
-
-/**
- * What a published page carries of a pass: the verdict and its grounds, as the
- * summary on the change request states them. The link, sign-off and the
- * assessments of earlier findings are for the forge and stay there.
- */
-export interface Verdict {
-  head: string;
-  confidence: number;
-  reason: string;
-  /** absent only on a verdict sealed before every pass carried one */
-  architecture?: string;
-  /** absent when the pass took no view on security and trust */
-  security?: string;
-  risk: string[];
-  change: string;
-  findings: {
-    category: Category;
-    severity: Severity;
-    path: string;
-    line: number;
-    startLine?: number;
-    side?: "head" | "base";
-    title: string;
-    body: string;
-    suggestion?: string;
-  }[];
-  ran: { kind: (typeof RAN_KINDS)[number]; what: string; result: string }[];
-}
-
-export function verdictOf(p: Pass): Verdict {
-  return {
-    head: p.head,
-    confidence: p.confidence,
-    reason: p.reason,
-    architecture: p.architecture,
-    ...(p.security ? { security: p.security } : {}),
-    risk: p.risk,
-    change: p.change,
-    findings: (p.findings ?? []).map(({ id: _id, body, ...f }) => ({ ...f, body: body ?? "" })),
-    ran: p.ran ?? [],
-  };
-}
 
 export function parsePass(text: string, file: string): Pass {
   let raw: unknown;
@@ -450,7 +394,6 @@ export function renderSummary(
     : (statusLine(m) ?? headline(p, author, open));
   const parts = [
     `${marker(SUMMARY_TAG, m)}\n${opening}`,
-    ...(p.reviewUrl ? [`[**Full review**](${p.reviewUrl})`] : []),
     ...(ended ? [afterNote(m.head, ended)] : []),
     p.reason.trim(),
     `**Architecture:** ${p.architecture.trim()}`,

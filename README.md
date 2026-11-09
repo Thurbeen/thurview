@@ -1,26 +1,21 @@
 # thurview
 
-**Your coding agent writes the review; you read it in the browser, anchored to
-the code, and approve it or send it back.**
+**Your coding agent reviews an opened pull or merge request, on the forge,
+and keeps that review current until it merges.**
 
-Every claim links to an exact file and line range at a pinned commit, and
-`publish` refuses evidence that does not hold there. You ask in the document
-and the agent answers in the same thread. Every review leads with the
-architecture - whether the change puts its logic where it belongs, and whether
-a fix removes a cause or patches a symptom - before the bugs it causes.
+The review is one summary comment, edited in place, and one inline thread per
+finding. Every review leads with the architecture - whether the change puts
+its logic where it belongs, and whether a fix removes a cause or patches a
+symptom - before the bugs it causes. On every push it rechecks each of its
+findings, resolves the fixed ones with evidence, and edits the summary.
 
 [![CI](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml/badge.svg)](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/thurview)](https://www.npmjs.com/package/thurview)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![thurview demo: the reader follows an anchor into the code, comments on a line
-range in the diff, reads the agent's answer and requests changes](./media/thurview-demo.gif)
-
-_The reader's half of it; the agent is working off camera._
-
 ## Install
 
-One command installs every skill for Claude Code, Codex, Cursor, OpenCode or
+One command installs the skill for Claude Code, Codex, Cursor, OpenCode or
 any agent that reads the Agent Skills format, through the
 [skills](https://github.com/vercel-labs/skills) CLI:
 
@@ -29,107 +24,62 @@ npx skills@latest add https://github.com/Thurbeen/thurview \
   --skill '*' --agent universal claude-code --global --yes
 ```
 
-You need Node 22 or later and git, plus `gh` for pull requests or `glab` for
-merge requests. Other routes - pinning a release, the command from npm, session
-hooks, upgrading - are in [docs/INSTALL.md](docs/INSTALL.md).
+You need Node 22 or later and git, plus `gh` for GitHub or `glab` for
+GitLab. Other routes - pinning a release, the command from npm, upgrading -
+are in [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Use it
 
-A local branch - ask your agent:
+Ask your agent `Use thurview-pr-review to review <URL>`, or run
+`/thurview-pr-review <number or URL>`.
 
-```text
-Use the thurview skill to review my current branch against up-to-date main
-and open it.
+```mermaid
+flowchart LR
+  R[Review what moved since the last pass] --> S[Sync: one summary, one thread per finding]
+  S --> W[Wait for the next push]
+  W -->|new head| R
+  W -->|merged, closed or stopped| E[Stop]
 ```
 
-An opened PR or MR - ask `Use thurview-pr-review to review <URL>`. It reviews
-the change, publishes a public HTML snapshot and keeps one summary on the
-change request current on every push, with a `thurview/review` status a
-repository can [require before merge](skills/thurview-pr-review/references/forges.md#requiring-the-review).
-Add "without a page" where nothing may be published: the summary and threads
-still land on the forge.
-
-![How a review runs: the agent pins the change to exact commits, writes a walkthrough with every claim anchored to a line range, and publishes it, which checks every anchor and seals a revision; you read it in the browser, ask questions the agent answers in the same thread, and approve or request changes, which sends it back to the agent to fix, re-pin and publish again. For an opened PR or MR, thurview-pr-review checks the publishing setup, reviews the change, seals the page, deploys a public snapshot, edits one linked summary and waits for the next push until the change request is merged, closed or stopped.](./media/process.svg)
-
-What you get in the browser - the walkthrough, the diff, the map, threads, the
-decision and the queue - is in [docs/READER.md](docs/READER.md).
-
-## Skills
-
-| Skill                                                      | For                                                                                                      |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [`thurview`](skills/thurview/SKILL.md)                     | A local branch or commit range: a review you approve or send back.                                       |
-| [`thurview-pr-review`](skills/thurview-pr-review/SKILL.md) | An opened PR or MR: a review page, a public snapshot and one summary on the forge, followed until merge. |
-| [`thurview-fix`](skills/thurview-fix/SKILL.md)             | Review, commit the fixes that pass your tests and lint, report the rest. No browser.                     |
-| [`thurview-publish`](skills/thurview-publish/SKILL.md)     | Put a review in your own Azure, S3, Cloud Storage or Cloudflare Pages behind a link that expires.        |
-
-## Declaring what is in scope
-
-By default every path is readable at the pinned commits. A
-`thurview-scope.yaml` at the repository root turns that into an allowlist:
-
-```yaml
-extensions: [ts, tsx, md, css] # allowed extensions
-filenames: [Dockerfile, Makefile] # allowed whole names, for the extensionless
-exclude: [secrets, "*/test"] # directories or globs, from the first segment
-```
-
-A path is readable when its extension or whole name is listed and no `exclude`
-entry is a prefix of it. `publish` refuses a peek at an excluded file, the
-server and the HTML export answer "excluded by scope" rather than serving it,
-and an entry that cannot match is an error where it is written. The rules live
-in the repository under review, so they guard against showing a reviewer the
-wrong file by accident, not against an author who edits them. The full rules
-are in [docs/SCOPE.md](docs/SCOPE.md).
+Each sync also sets a `thurview/review` commit status on the reviewed head,
+`success` only at confidence 5 with nothing open, so a repository can
+[require it before merge](skills/thurview-pr-review/references/forges.md#requiring-the-review).
+The review never approves, merges, closes or pushes. A reader stops it with
+the `thurview:stop` label or a comment starting `/thurview stop`.
 
 ## CLI
 
-| Command                                                     | Purpose                                                           |
-| ----------------------------------------------------------- | ----------------------------------------------------------------- |
-| `thurview scaffold [--pr N \| --base R --head R]`           | Create a review pinned to exact commits (`--update` re-pins)      |
-| `thurview info [--all]`                                     | Reviews bound to this worktree                                    |
-| `thurview publish [--review ID] [--pass F] [--open]`        | Validate the document and map, seal a revision and its verdict    |
-| `thurview open [--review ID] [--view T]`                    | Start the server if needed and open the browser                   |
-| `thurview wait [--review ID] [--timeout S]`                 | Block until the reader needs the agent                            |
-| `thurview threads list\|get\|reply\|resolve`                | Read and answer threads                                           |
-| `thurview export [<id>] [--out PATH]`                       | Write the published revision as one HTML file                     |
-| `thurview publish-static --check --to cloudflare`           | Check the Cloudflare target, login and project, uploading nothing |
-| `thurview publish-static <id> --out DIR \| --to cloudflare` | Render a read-only snapshot, or deploy it to Cloudflare           |
-| `thurview forge status\|prior\|pass\|submit\|reply`         | Read a change request, and post a review back to it               |
-| `thurview pr-review status\|sync\|wait\|stop\|start`        | Follow a change request until it merges                           |
-| `thurview delete --review ID`                               | Delete a review and what is stored for it                         |
-| `thurview serve` / `thurview stop`                          | Run the server in the foreground / stop the background one        |
-| `thurview setup hooks\|skill\|status`                       | Session hooks, agent skills, install state                        |
-| `thurview update`                                           | Self-update from npm                                              |
+The skill drives these; you rarely type them.
+
+| Command                                                   | Purpose                                                        |
+| --------------------------------------------------------- | -------------------------------------------------------------- |
+| `thurview pr-review status --change N`                    | Where the review stands: heads, open findings, other reviewers |
+| `thurview pr-review sync --change N --file F [--dry-run]` | Post or edit the summary and the finding threads               |
+| `thurview pr-review wait --change N`                      | Block until a push, merge, close or stop                       |
+| `thurview pr-review stop\|start --change N`               | Stop or resume following the change request                    |
+| `thurview setup skill\|status`                            | Link the bundled skill into your agents                        |
+| `thurview update`                                         | Self-update from npm                                           |
 
 thurview is an [AXI](https://axi.md): output is [TOON](https://toonformat.dev),
-errors carry a `help` to act on, and `thurview` with no arguments shows the
-current directory's state. `thurview <command> --help` lists every flag.
+errors carry a `help` to act on, and `thurview <command> --help` lists every
+flag.
 
 ## Configuration
 
-Everything lives under `~/.thurview` (or `$THURVIEW_HOME`) and runs against
-your checkout; the server listens on loopback and, when present, your
-Tailscale address.
+Everything lives under `~/.thurview` (or `$THURVIEW_HOME`); nothing about a
+review is stored there - its state is in hidden markers on the forge.
 
 - **Agent guidance**: `~/.thurview/THURVIEW.md` for you, `THURVIEW.md` at a
   repository root for that repository.
-- **Cloudflare snapshots**: `~/.thurview/cloudflare.json`; see
-  [setup](skills/thurview-pr-review/references/cloudflare-setup.md) and
-  [public static snapshots](skills/thurview/references/lifecycle.md#public-static-snapshots).
-- **Your own cloud**: credentials, permissions and link expiry per provider are
-  in [thurview-publish](skills/thurview-publish/SKILL.md).
+- **Trusted review bots**: `~/.thurview/reviewers.json`, as
+  `{"bots": ["greptile-apps[bot]"]}`, whose threads the review answers.
 
 ## Documentation
 
-- [docs/READER.md](docs/READER.md): every tab, threads, the decision, sharing.
+- [The skill](skills/thurview-pr-review/SKILL.md): the whole review flow.
+- [Forges](skills/thurview-pr-review/references/forges.md): what GitHub and
+  GitLab each do, and how to require the review.
 - [docs/INSTALL.md](docs/INSTALL.md): other install routes and upgrades.
-- [docs/SCOPE.md](docs/SCOPE.md): the scope rules in full.
-- The document format: [authoring](skills/thurview/references/document-authoring.md),
-  [components](skills/thurview/references/components.md),
-  [software map](skills/thurview/references/software-map.md),
-  [lifecycle](skills/thurview/references/lifecycle.md).
-- Forges: [commands and differences](skills/thurview-fix/references/forges.md).
 
 ## Contributing
 
