@@ -9,6 +9,7 @@ this command.
 
 | Step              | GitHub                                     | GitLab                                              |
 | ----------------- | ------------------------------------------ | --------------------------------------------------- |
+| A review starts   | the `eyes` reaction on the pull request    | the `eyes` award emoji on the merge request         |
 | The summary       | one issue comment, `PATCH`ed in place      | one merge request note, `PUT` in place              |
 | A finding         | one review comment, a resolvable thread    | one diff discussion, a resolvable thread            |
 | A line range      | anchored as the range                      | anchored at its last line                           |

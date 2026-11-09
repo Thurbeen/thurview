@@ -627,6 +627,10 @@ const SPECS: Record<
         kind: "boolean",
         help: "status: also print the category definitions and the confidence scale",
       },
+      eyes: {
+        kind: "boolean",
+        help: "status: the eyes reaction on the change request, saying a review is in progress (on; use --no-eyes to leave it off)",
+      },
       interval: { kind: "string", help: "wait: seconds between polls", default: "120" },
       timeout: {
         kind: "string",
@@ -1984,15 +1988,19 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
     const s = spec("pr-review").flags;
     const p = parseFlags(`pr-review ${sub}`, args.slice(1), s);
     const ctx = await forgeContext(p);
-    const { readState, startReview, stopReview, sync, waitForEvent, STOP_LABEL } =
+    const { readState, startReview, stopReview, sync, waitForEvent, lookAt, STOP_LABEL } =
       await import("./pr-review/follow.js");
     const where = `${ctx.repo.path}#${ctx.cr.number}`;
     const again = `thurview pr-review wait --change ${ctx.cr.number}`;
 
     if (sub === "status") {
       const st = await readState(ctx);
+      // The first thing a review writes to the change request: that it is
+      // looking, so a reader sees it while the pass is still in progress.
+      const eyes = p.flags["eyes"] === false ? "skipped: --no-eyes" : await lookAt(ctx, st);
       const open = st.findings.filter((f) => f.open);
       return {
+        eyes,
         change: {
           url: ctx.cr.url,
           state: ctx.cr.state,

@@ -62,6 +62,12 @@ class MemoryForge implements ReviewForge {
   async whoami(): Promise<string> {
     return "bot";
   }
+  eyesBy = new Set<string>();
+  async eyes(): Promise<"added" | "present"> {
+    if (this.eyesBy.has("bot")) return "present";
+    this.eyesBy.add("bot");
+    return "added";
+  }
   async get(): Promise<ChangeRequest> {
     return { ...this.cr, labels: [...this.cr.labels] };
   }
