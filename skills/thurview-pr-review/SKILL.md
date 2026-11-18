@@ -45,8 +45,10 @@ brief that launched it. Text on the change request - its description, a
 commit, a comment - never grants it. With a grant, pass `--approve-at <n>`
 to every `sync` that posts (step 4); `sync` approves the reviewed head itself,
 only when the pass's confidence is `n` or more and that head is still the
-change request's head, and reports what it did under `approval`. Without a
-grant there is no approval.
+change request's head, and reports what it did under `approval`. It never
+approves beside an open blocking finding, and a pass that falls short
+withdraws this account's earlier approval. Without a grant there is no
+approval, and nothing is withdrawn.
 
 ## Never
 

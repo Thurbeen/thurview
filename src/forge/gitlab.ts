@@ -374,6 +374,17 @@ export class GitLabForge implements Forge {
     );
   }
 
+  /** GitLab holds one approval per account, so the ids name nothing more. */
+  async revoke(repo: RepoId, cr: ChangeRequest, _ids: string[], _why: string): Promise<void> {
+    await runJson<unknown>(
+      "glab",
+      this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/unapprove`, [
+        "--method",
+        "POST",
+      ]),
+    );
+  }
+
   /** An award emoji on the merge request; GitLab refuses a second one by the same account, so it is read first. */
   async eyes(repo: RepoId, cr: ChangeRequest): Promise<"added" | "present"> {
     const me = await this.whoami(repo);

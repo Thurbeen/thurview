@@ -67,7 +67,7 @@ new head with no status until a pass reviews it. The status reports a
 verdict; it approves and merges nothing.
 
 **It records the verdict; it is not an access control.** `thurview` sets the
-status with the reviewer's own login, a user, and any account that can push
+status with the reviewer's own login, a user or a GitHub App, and any account that can push
 to the repository can set a status named `thurview/review` too, `success`
 included. Requiring it stops a merge nobody reviewed by mistake: a hand merge
 on a head no pass saw, or before the pass finished. It does not stop someone
@@ -82,8 +82,7 @@ command never does:
   push cannot merge before a pass reviews it. A ruleset can pin a required
   check to the GitHub App expected to set it, and then refuses the same name
   from anyone else. A status set with a user's token cannot be pinned that
-  way, and `thurview` needs a user's token (see Gaps), so leave the source as
-  any.
+  way, so leave the source as any when a user runs the review.
 - **GitLab:** Settings → Merge requests → **Pipelines must succeed**. The status
   joins the head's pipeline, so a `failed` review blocks the merge. This is
   weaker than on GitHub: a head with no status yet is not held back by it.
@@ -98,14 +97,23 @@ command never does:
   summary, and it links the change request.
 - No forge approve unless the requester passed `sync --approve-at <n>`. A
   forge approve can arm an auto-merge, and the verdict lives in the summary.
-  With it, GitHub gets an `APPROVE` review pinned to the reviewed commit and
-  GitLab an approval pinned by `sha`, which GitLab refuses once the head
-  moved; GitLab's approval carries no text.
-- GitHub reads the newest 100 review threads (`reviewThreads(last:100)`);
-  GitLab reads every page.
+  With it, `sync` approves only with no blocking finding open and the
+  confidence at `n` or more, after re-reading the head. GitHub gets an
+  `APPROVE` review on the reviewed commit; it still counts for the pull
+  request after a later push unless the repository dismisses stale approvals.
+  GitLab gets an approval pinned by `sha`, which it refuses once the head
+  moved, and carries no text. A pass that falls short withdraws this
+  account's approvals: a dismissal on GitHub, `unapprove` on GitLab. An
+  approval a maintainer dismissed at the reviewed head is not given again. A
+  refused approval or withdrawal is reported under `approval` and does not
+  fail the pass.
+- GitHub reads the newest 100 review threads (`reviewThreads(last:100)`) and
+  the newest 100 reviews, which is where it finds its own approvals; GitLab
+  reads every page.
 - Every call asks the forge who it is (`gh api user`, `glab api user`) to
   tell its own markers from pasted ones. A GitHub App installation token
-  cannot read its own user: when GitHub refuses the call, `THURVIEW_LOGIN`
+  cannot read its own user: when GitHub refuses the call with a 403,
+  `THURVIEW_LOGIN`
   names the account instead, as the App's `<app-slug>[bot]`. A token that
   can read its user keeps the login GitHub answers, whatever `THURVIEW_LOGIN`
   says.

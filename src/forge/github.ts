@@ -107,7 +107,7 @@ function loginOf(a: Author | null | undefined): string {
 const THREADS_QUERY = `query($owner:String!,$name:String!,$number:Int!){
   repository(owner:$owner,name:$name){
     pullRequest(number:$number){
-      reviews(last:50){nodes{id author{__typename login} state body submittedAt commit{oid}}}
+      reviews(last:100){nodes{id author{__typename login} state body submittedAt commit{oid}}}
       reviewThreads(last:100){nodes{
         id isResolved isOutdated path line diffSide
         comments(first:50){nodes{author{__typename login} body url originalCommit{oid}}}
@@ -143,16 +143,15 @@ export class GitHubForge implements Forge {
       const me = await runJson<{ login: string }>("gh", this.api(repo, ["user"]));
       return me.login;
     } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
       const configured = process.env["THURVIEW_LOGIN"];
-      if (configured) return configured;
-      throw new AxiError(
-        `cannot read this account's login: ${e instanceof Error ? e.message : String(e)}`,
-        "FORGE_ERROR",
-        [
-          "A GitHub App installation token cannot read GET /user: set THURVIEW_LOGIN to the App's login, `<app-slug>[bot]`",
-          "Otherwise check `gh auth status`",
-        ],
-      );
+      const refused = /HTTP 403|not accessible by integration/i.test(why);
+      if (refused && configured) return configured;
+      if (!refused) throw e;
+      throw new AxiError(`cannot read this account's login: ${why}`, "FORGE_ERROR", [
+        "A GitHub App installation token cannot read GET /user: set THURVIEW_LOGIN to the App's login, `<app-slug>[bot]`",
+        "Otherwise check `gh auth status`",
+      ]);
     }
   }
 
@@ -384,6 +383,22 @@ export class GitHubForge implements Forge {
       ]),
       { input: JSON.stringify({ event: "APPROVE", commit_id: sha, body }) },
     );
+  }
+
+  async revoke(repo: RepoId, _cr: ChangeRequest, ids: string[], why: string): Promise<void> {
+    for (const id of ids)
+      await run(
+        "gh",
+        this.api(repo, [
+          "graphql",
+          "-f",
+          "query=mutation($id:ID!,$message:String!){dismissPullRequestReview(input:{pullRequestReviewId:$id,message:$message}){clientMutationId}}",
+          "-f",
+          `id=${id}`,
+          "-f",
+          `message=${why}`,
+        ]),
+      );
   }
 
   /** A pull request is an issue to the reactions API, so this is the issue reactions endpoint. */

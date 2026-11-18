@@ -46,6 +46,7 @@ export type ReviewForge = Pick<
   | "heads"
   | "setStatus"
   | "approve"
+  | "revoke"
   | "eyes"
 >;
 
@@ -96,8 +97,8 @@ export interface ReviewState {
   stop: string | null;
   /** The newest note id on the change request. */
   newest: string;
-  /** Heads this account approved; `null` for an approval the forge pins to no commit. */
-  approved: (string | null)[];
+  /** This account's approvals; `commit` is `null` when the forge pins one to no commit. */
+  approvals: { id: string; commit: string | null; dismissed: boolean }[];
 }
 
 function hasFixedAssessment(finding: FindingState): boolean {
@@ -203,16 +204,16 @@ export async function readState(ctx: Ctx): Promise<ReviewState> {
     : command
       ? `a /thurview stop comment by @${command.author}`
       : null;
-  const approved = prior.passes
-    .filter((p) => p.author === me && p.verdict === "approve")
-    .map((p) => p.commit ?? null);
+  const approvals = prior.passes
+    .filter((p) => p.author === me && (p.verdict === "approve" || p.verdict === "dismissed"))
+    .map((p) => ({ id: p.id, commit: p.commit ?? null, dismissed: p.verdict === "dismissed" }));
   return {
     summary,
     findings,
     others,
     stop,
     newest: maxId(...notes.map((n) => n.id)),
-    approved,
+    approvals,
   };
 }
 
@@ -478,12 +479,12 @@ export async function sync(
     body,
     sinceLastReview,
   };
-  const approval = approvalFor(pass, reviewed, ended, st, opts.approveAt);
-  if (approval) result.approval = approval.why;
-  if (opts.dryRun) {
-    if (approval?.approve) result.approval = `would approve ${reviewed}`;
-    return result;
-  }
+  const approval = approvalFor(pass, reviewed, ended, st, blocking, opts.approveAt);
+  if (approval)
+    result.approval = approval.approve
+      ? `would approve ${reviewed}`
+      : withdrawn(approval.why, approval.revoke.length, "would withdraw");
+  if (opts.dryRun) return result;
 
   const latest = await forge.get(repo, cr.number);
   if (latest.head !== cr.head || latest.state !== cr.state)
@@ -528,8 +529,14 @@ export async function sync(
   if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, result.body);
   else await forge.postNote(repo, cr, result.body);
   await setReviewStatus(ctx, reviewed, pass, open);
-  if (approval?.approve) result.approval = await approveHead(ctx, reviewed, pass);
+  if (approval) result.approval = await applyApproval(ctx, reviewed, pass, approval);
   return result;
+}
+
+interface ApprovalPlan {
+  approve: boolean;
+  why: string;
+  revoke: string[];
 }
 
 function approvalFor(
@@ -537,27 +544,62 @@ function approvalFor(
   head: string,
   ended: { state: string } | null,
   st: ReviewState,
+  blocking: number,
   approveAt: number | undefined,
-): { approve: boolean; why: string } | null {
+): ApprovalPlan | null {
   if (approveAt === undefined) return null;
-  if (ended) return { approve: false, why: `not approved: the change request is ${ended.state}` };
-  if (pass.confidence < approveAt)
+  const live = st.approvals.filter((a) => !a.dismissed).map((a) => a.id);
+  const refuse = (why: string): ApprovalPlan => ({ approve: false, why, revoke: live });
+  if (ended)
     return {
       approve: false,
-      why: `not approved: confidence ${pass.confidence} is below ${approveAt}`,
+      why: `not approved: the change request is ${ended.state}`,
+      revoke: [],
     };
-  if (st.approved.some((sha) => sha === null || sha === head))
-    return { approve: false, why: `already approved ${head}` };
-  return { approve: true, why: `approved ${head}` };
+  if (blocking)
+    return refuse(
+      `not approved: ${blocking} blocking finding${blocking === 1 ? " is" : "s are"} open`,
+    );
+  if (pass.confidence < approveAt)
+    return refuse(`not approved: confidence ${pass.confidence} is below ${approveAt}`);
+  const atHead = st.approvals.filter((a) => a.commit === null || a.commit === head);
+  if (atHead.some((a) => a.dismissed))
+    return {
+      approve: false,
+      why: `not approved: a maintainer dismissed this account's approval of ${head}`,
+      revoke: [],
+    };
+  if (atHead.length) return { approve: false, why: `already approved ${head}`, revoke: [] };
+  return { approve: true, why: `approved ${head}`, revoke: [] };
 }
 
-async function approveHead(ctx: Ctx, head: string, pass: Pass): Promise<string> {
-  const latest = await ctx.forge.get(ctx.repo, ctx.cr.number);
-  if (latest.head !== head || latest.state !== "open")
-    return `not approved: the change request moved to ${latest.head.slice(0, 12)} (${latest.state})`;
-  const body = `Approved at confidence ${pass.confidence}/5 for ${head}: ${pass.reason}${pass.signoff ? `\n\n${pass.signoff}` : ""}`;
-  await ctx.forge.approve(ctx.repo, ctx.cr, head, body);
-  return `approved ${head}`;
+function withdrawn(why: string, count: number, verb: string): string {
+  return count ? `${why}; ${verb} ${count} approval${count === 1 ? "" : "s"}` : why;
+}
+
+/** A refused approval or withdrawal is reported, as eyes is: the pass is already posted. */
+async function applyApproval(
+  ctx: Ctx,
+  head: string,
+  pass: Pass,
+  plan: ApprovalPlan,
+): Promise<string> {
+  try {
+    if (plan.revoke.length) {
+      const message = `${plan.why}${pass.signoff ? `\n\n${pass.signoff}` : ""}`;
+      await ctx.forge.revoke(ctx.repo, ctx.cr, plan.revoke, message);
+      return withdrawn(plan.why, plan.revoke.length, "withdrew");
+    }
+    if (!plan.approve) return plan.why;
+    const latest = await ctx.forge.get(ctx.repo, ctx.cr.number);
+    if (latest.head !== head || latest.state !== "open")
+      return `not approved: the change request moved to ${latest.head.slice(0, 12)} (${latest.state})`;
+    const body = `Approved at confidence ${pass.confidence}/5 for ${head}: ${pass.reason}${pass.signoff ? `\n\n${pass.signoff}` : ""}`;
+    await ctx.forge.approve(ctx.repo, ctx.cr, head, body);
+    return plan.why;
+  } catch (e) {
+    return `failed: ${e instanceof Error ? e.message : String(e)}`;
+  }
 }
 
 /**

@@ -1887,6 +1887,19 @@ describe("a review under a GitHub App installation token", { timeout: 30_000 }, 
     expect(out["review"]).toMatch(/none yet/);
   });
 
+  it("does not swap identity when GET /user fails for another reason", async () => {
+    await fixtures([
+      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { ...userRefused, stderr: "gh: Bad Gateway (HTTP 502)\n" },
+    ]);
+    const out = await cli(["pr-review", "status", "--change", "7", "--no-eyes"], github, 1, {
+      THURVIEW_LOGIN: APP,
+    });
+    expect(JSON.stringify(out)).toContain("502");
+  });
+
   it("names THURVIEW_LOGIN when GET /user is refused and no login is configured", async () => {
     await fixtures([
       { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
@@ -1990,6 +2003,88 @@ describe("approving at a threshold the requester set", { timeout: 30_000 }, () =
     const out = await syncWith(CLEAN, github, ["--approve-at", "6"], 2);
     expect(JSON.stringify(out)).toMatch(/approve-at/);
     expect(await approvals()).toEqual([]);
+  });
+
+  const ownReview = (state: string, commit: string) => ({
+    id: "R1",
+    author: { __typename: "User", login: "bot" },
+    state,
+    body: "",
+    submittedAt: "2026-11-18T00:00:00Z",
+    commit: { oid: commit },
+  });
+  const dismissals = async () =>
+    (await calls()).filter((c) => c.args.join(" ").includes("dismissPullRequestReview"));
+
+  it("withdraws its earlier approval when a later pass falls below the threshold", async () => {
+    await fixtures([
+      { cli: "gh", match: ["dismissPullRequestReview"], body: { data: {} } },
+      ...githubOpen([ownReview("APPROVED", OLD)]),
+    ]);
+    const out = await syncWith({ ...CLEAN, confidence: 4, reason: "A risk is left." }, github, [
+      "--approve-at",
+      "5",
+    ]);
+    expect(out["approval"]).toMatch(/not approved: confidence 4 is below 5; withdrew 1 approval/);
+    const [dismiss] = await dismissals();
+    expect(dismiss!.args).toContain("id=R1");
+    expect(await approvals()).toEqual([]);
+  });
+
+  it("leaves an approval a maintainer dismissed at this head dismissed", async () => {
+    await fixtures(githubOpen([ownReview("DISMISSED", HEAD)]));
+    const out = await syncWith(CLEAN, github, ["--approve-at", "5"]);
+    expect(out["approval"]).toMatch(/dismissed/);
+    expect(await approvals()).toEqual([]);
+  });
+
+  it("never approves beside an open blocking finding, whatever the threshold", async () => {
+    await fixtures([
+      { cli: "gh", match: ["pulls/7/comments", "POST"], body: { id: 1 } },
+      ...githubOpen(),
+    ]);
+    const out = await syncWith(PASS, github, ["--approve-at", "1"]);
+    expect(out["approval"]).toMatch(/not approved: 1 blocking finding is open/);
+    expect(await approvals()).toEqual([]);
+  });
+
+  it("reports an approval the forge refused and keeps the posted pass", async () => {
+    await fixtures([
+      {
+        cli: "gh",
+        match: ["pulls/7/reviews", "POST"],
+        fail: true,
+        stderr: "gh: Can not approve your own pull request (HTTP 422)\n",
+      },
+      ...githubOpen(),
+    ]);
+    const out = await syncWith(CLEAN, github, ["--approve-at", "5"]);
+    expect(out["pass"].summary).toBe("created");
+    expect(out["approval"]).toMatch(/^failed: .*Can not approve your own pull request/);
+  });
+
+  it("withdraws its GitLab approval when a later pass falls below the threshold", async () => {
+    await fixtures([
+      { cli: "glab", match: ["merge_requests/7/unapprove", "POST"], body: {} },
+      { cli: "glab", match: ["merge_requests/7/notes", "POST"], body: { id: 3, body: "" } },
+      { cli: "glab", match: ["merge_requests/7/notes?", "--paginate"], body: "" },
+      { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+      { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
+      {
+        cli: "glab",
+        match: ["merge_requests/7/approvals"],
+        body: { approved_by: [{ user: { username: "bot" } }] },
+      },
+      { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+      { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+    ]);
+    const out = await syncWith({ ...CLEAN, confidence: 4, reason: "A risk is left." }, gitlab, [
+      "--approve-at",
+      "5",
+    ]);
+    expect(out["approval"]).toMatch(/withdrew 1 approval/);
+    const unapprove = (await calls()).find((c) => c.args.join(" ").includes("/unapprove"));
+    expect(unapprove!.args).toContain("POST");
   });
 
   it("approves the reviewed head on GitLab", async () => {
