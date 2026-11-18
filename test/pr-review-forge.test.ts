@@ -1900,6 +1900,22 @@ describe("a review under a GitHub App installation token", { timeout: 30_000 }, 
     expect(JSON.stringify(out)).toContain("502");
   });
 
+  it("does not swap identity on a 403 rate limit", async () => {
+    await fixtures([
+      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      {
+        ...userRefused,
+        stderr: "gh: You have exceeded a secondary rate limit (HTTP 403)\n",
+      },
+    ]);
+    const out = await cli(["pr-review", "status", "--change", "7", "--no-eyes"], github, 1, {
+      THURVIEW_LOGIN: APP,
+    });
+    expect(JSON.stringify(out)).toContain("rate limit");
+  });
+
   it("names THURVIEW_LOGIN when GET /user is refused and no login is configured", async () => {
     await fixtures([
       { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
@@ -2031,10 +2047,10 @@ describe("approving at a threshold the requester set", { timeout: 30_000 }, () =
     expect(await approvals()).toEqual([]);
   });
 
-  it("leaves an approval a maintainer dismissed at this head dismissed", async () => {
+  it("leaves a dismissed approval of this head dismissed", async () => {
     await fixtures(githubOpen([ownReview("DISMISSED", HEAD)]));
     const out = await syncWith(CLEAN, github, ["--approve-at", "5"]);
-    expect(out["approval"]).toMatch(/dismissed/);
+    expect(out["approval"]).toBe(`not approved: this account's approval of ${HEAD} was dismissed`);
     expect(await approvals()).toEqual([]);
   });
 

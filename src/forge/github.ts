@@ -145,7 +145,8 @@ export class GitHubForge implements Forge {
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
       const configured = process.env["THURVIEW_LOGIN"];
-      const refused = /HTTP 403|not accessible by integration/i.test(why);
+      const refused =
+        /HTTP 403|not accessible by integration/i.test(why) && !/rate limit/i.test(why);
       if (refused && configured) return configured;
       if (!refused) throw e;
       throw new AxiError(`cannot read this account's login: ${why}`, "FORGE_ERROR", [

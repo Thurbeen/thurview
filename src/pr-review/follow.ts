@@ -566,7 +566,7 @@ function approvalFor(
   if (atHead.some((a) => a.dismissed))
     return {
       approve: false,
-      why: `not approved: a maintainer dismissed this account's approval of ${head}`,
+      why: `not approved: this account's approval of ${head} was dismissed`,
       revoke: [],
     };
   if (atHead.length) return { approve: false, why: `already approved ${head}`, revoke: [] };

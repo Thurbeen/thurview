@@ -104,7 +104,10 @@ command never does:
   GitLab gets an approval pinned by `sha`, which it refuses once the head
   moved, and carries no text. A pass that falls short withdraws this
   account's approvals: a dismissal on GitHub, `unapprove` on GitLab. An
-  approval a maintainer dismissed at the reviewed head is not given again. A
+  approval of the reviewed head that was dismissed, by a maintainer or by an
+  earlier withdrawal, is not given again at that head. Withdrawal happens only
+  in a `sync` that carries `--approve-at`: a stopped review, or a push not yet
+  reviewed, leaves the last approval standing. A
   refused approval or withdrawal is reported under `approval` and does not
   fail the pass.
 - GitHub reads the newest 100 review threads (`reviewThreads(last:100)`) and
@@ -112,7 +115,8 @@ command never does:
   reads every page.
 - Every call asks the forge who it is (`gh api user`, `glab api user`) to
   tell its own markers from pasted ones. A GitHub App installation token
-  cannot read its own user: when GitHub refuses the call with a 403,
+  cannot read its own user: when GitHub refuses the call with a 403 that is
+  not a rate limit,
   `THURVIEW_LOGIN`
   names the account instead, as the App's `<app-slug>[bot]`. A token that
   can read its user keeps the login GitHub answers, whatever `THURVIEW_LOGIN`
