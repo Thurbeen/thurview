@@ -96,13 +96,19 @@ command never does:
   create check runs, and `gh` is logged in as a user. A ruleset requires
   either the same way. Its description holds the score line, not the whole
   summary, and it links the change request.
-- No forge approve. A forge approve can arm an auto-merge, and the verdict
-  lives in the summary.
+- No forge approve unless the requester passed `sync --approve-at <n>`. A
+  forge approve can arm an auto-merge, and the verdict lives in the summary.
+  With it, GitHub gets an `APPROVE` review pinned to the reviewed commit and
+  GitLab an approval pinned by `sha`, which GitLab refuses once the head
+  moved; GitLab's approval carries no text.
 - GitHub reads the newest 100 review threads (`reviewThreads(last:100)`);
   GitLab reads every page.
 - Every call asks the forge who it is (`gh api user`, `glab api user`) to
-  tell its own markers from pasted ones, so it needs a token that can read its
-  own user; a GitHub App installation token cannot.
+  tell its own markers from pasted ones. A GitHub App installation token
+  cannot read its own user: when GitHub refuses the call, `THURVIEW_LOGIN`
+  names the account instead, as the App's `<app-slug>[bot]`. A token that
+  can read its user keeps the login GitHub answers, whatever `THURVIEW_LOGIN`
+  says.
 - A finding must sit on a line the diff touches. A defect confirmed in an
   untouched caller is anchored on the changed line that reaches it; it is
   still a finding, never only a risk bullet.

@@ -44,7 +44,8 @@ flowchart LR
 Each sync also sets a `thurview/review` commit status on the reviewed head,
 `success` only at confidence 5 with nothing open, so a repository can
 [require it before merge](skills/thurview-pr-review/references/forges.md#requiring-the-review).
-The review never approves, merges, closes or pushes. A reader stops it with
+The review never merges, closes or pushes, and approves only when the requester
+passes `--approve-at <n>` and the pass's confidence reaches it. A reader stops it with
 the `thurview:stop` label or a comment starting `/thurview stop`.
 
 ## CLI
@@ -55,6 +56,7 @@ The skill drives these; you rarely type them.
 | --------------------------------------------------------- | -------------------------------------------------------------- |
 | `thurview pr-review status --change N`                    | Where the review stands: heads, open findings, other reviewers |
 | `thurview pr-review sync --change N --file F [--dry-run]` | Post or edit the summary and the finding threads               |
+| `... sync ... --approve-at S`                             | Also approve the reviewed head at confidence S or more         |
 | `thurview pr-review wait --change N`                      | Block until a push, merge, close or stop                       |
 | `thurview pr-review stop\|start --change N`               | Stop or resume following the change request                    |
 | `thurview setup skill\|status`                            | Link the bundled skill into your agents                        |
@@ -73,6 +75,8 @@ review is stored there - its state is in hidden markers on the forge.
   repository root for that repository.
 - **Trusted review bots**: `~/.thurview/reviewers.json`, as
   `{"bots": ["greptile-apps[bot]"]}`, whose threads the review answers.
+- **GitHub App identity**: `THURVIEW_LOGIN`, the App's `<app-slug>[bot]`,
+  for an installation token, which GitHub refuses `GET /user`.
 
 ## Documentation
 

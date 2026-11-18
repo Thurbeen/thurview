@@ -361,6 +361,19 @@ export class GitLabForge implements Forge {
     );
   }
 
+  /** GitLab's approval carries no text; the summary note already says why. */
+  async approve(repo: RepoId, cr: ChangeRequest, sha: string, _body: string): Promise<void> {
+    await runJson<unknown>(
+      "glab",
+      this.api(repo, `projects/${this.project(repo)}/merge_requests/${cr.number}/approve`, [
+        "--method",
+        "POST",
+        "--raw-field",
+        `sha=${sha}`,
+      ]),
+    );
+  }
+
   /** An award emoji on the merge request; GitLab refuses a second one by the same account, so it is read first. */
   async eyes(repo: RepoId, cr: ChangeRequest): Promise<"added" | "present"> {
     const me = await this.whoami(repo);

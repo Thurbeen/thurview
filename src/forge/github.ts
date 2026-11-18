@@ -139,8 +139,21 @@ export class GitHubForge implements Forge {
   }
 
   async whoami(repo: RepoId): Promise<string> {
-    const me = await runJson<{ login: string }>("gh", this.api(repo, ["user"]));
-    return me.login;
+    try {
+      const me = await runJson<{ login: string }>("gh", this.api(repo, ["user"]));
+      return me.login;
+    } catch (e) {
+      const configured = process.env["THURVIEW_LOGIN"];
+      if (configured) return configured;
+      throw new AxiError(
+        `cannot read this account's login: ${e instanceof Error ? e.message : String(e)}`,
+        "FORGE_ERROR",
+        [
+          "A GitHub App installation token cannot read GET /user: set THURVIEW_LOGIN to the App's login, `<app-slug>[bot]`",
+          "Otherwise check `gh auth status`",
+        ],
+      );
+    }
   }
 
   async canWrite(repo: RepoId, user: string): Promise<boolean> {
@@ -356,6 +369,20 @@ export class GitHubForge implements Forge {
           ...(s.url ? { target_url: s.url } : {}),
         }),
       },
+    );
+  }
+
+  async approve(repo: RepoId, cr: ChangeRequest, sha: string, body: string): Promise<void> {
+    await run(
+      "gh",
+      this.api(repo, [
+        `repos/${repo.path}/pulls/${cr.number}/reviews`,
+        "--method",
+        "POST",
+        "--input",
+        "-",
+      ]),
+      { input: JSON.stringify({ event: "APPROVE", commit_id: sha, body }) },
     );
   }
 

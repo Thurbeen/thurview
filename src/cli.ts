@@ -66,6 +66,18 @@ async function reviewBots(): Promise<string[]> {
   return Array.isArray(config?.bots) ? config.bots.filter((b) => typeof b === "string") : [];
 }
 
+function approveThreshold(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 5)
+    throw new AxiError(
+      `--approve-at takes a confidence score from 1 to 5, not ${value}`,
+      "VALIDATION_ERROR",
+      ["thurview pr-review sync --change <ref> --file <pass.json> --approve-at 5"],
+    );
+  return n;
+}
+
 // ---- commands ----
 
 const SPECS: Record<
@@ -88,6 +100,10 @@ const SPECS: Record<
         help: "sync: the JSON pass to post",
       },
       "dry-run": { kind: "boolean", help: "sync: validate and render, post nothing" },
+      "approve-at": {
+        kind: "string",
+        help: "sync: approve the reviewed head when the pass's confidence is at least this score (1-5); only when the requester granted approval",
+      },
       full: {
         kind: "boolean",
         help: "status: also print the category definitions and the confidence scale",
@@ -318,8 +334,12 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
       const text = await readFile(resolve(process.cwd(), file), "utf8").catch(() => null);
       if (text === null) throw new AxiError(`${file} not found`, "NOT_FOUND", []);
       const dry = bool(p, "dry-run");
+      const approveAt = approveThreshold(str(p, "approve-at"));
       const { parsePass } = await import("./pr-review/format.js");
-      const r = await sync(ctx, parsePass(text, file), { dryRun: dry });
+      const r = await sync(ctx, parsePass(text, file), {
+        dryRun: dry,
+        ...(approveAt === undefined ? {} : { approveAt }),
+      });
       return {
         pass: {
           change: where,
@@ -334,6 +354,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
         duplicates: r.duplicates.length
           ? r.duplicates
           : "0 (no finding already open was found again)",
+        ...(r.approval ? { approval: r.approval } : {}),
         ...(dry ? { body: r.body } : {}),
         help: dry
           ? ["Nothing was posted; re-run without --dry-run to post it"]
@@ -344,7 +365,9 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
               ]
             : [
                 `Run \`${again}\` to block until the next push, merge or stop`,
-                "Never approve, merge or push to the change request; the verdict is the summary",
+                approveAt === undefined
+                  ? "Never approve, merge or push to the change request; the verdict is the summary"
+                  : "Never merge or push to the change request",
               ],
       };
     }

@@ -25,9 +25,9 @@ import {
  * kept on this machine. Every call reads the state back from the forge, which
  * is what lets the loop die and resume anywhere.
  *
- * NEVER approve, merge or push. The seam has no merge and no push, and this
- * module calls neither `submit` nor anything else that changes the change
- * request's own state: the verdict is the summary's confidence.
+ * NEVER merge or push. The seam has no merge and no push. The verdict is the
+ * summary's confidence; a sync approves only when its caller passed a
+ * threshold and the pass met it.
  */
 
 /** The forge methods a follow loop uses, and no other. */
@@ -45,6 +45,7 @@ export type ReviewForge = Pick<
   | "comment"
   | "heads"
   | "setStatus"
+  | "approve"
   | "eyes"
 >;
 
@@ -95,6 +96,8 @@ export interface ReviewState {
   stop: string | null;
   /** The newest note id on the change request. */
   newest: string;
+  /** Heads this account approved; `null` for an approval the forge pins to no commit. */
+  approved: (string | null)[];
 }
 
 function hasFixedAssessment(finding: FindingState): boolean {
@@ -200,7 +203,17 @@ export async function readState(ctx: Ctx): Promise<ReviewState> {
     : command
       ? `a /thurview stop comment by @${command.author}`
       : null;
-  return { summary, findings, others, stop, newest: maxId(...notes.map((n) => n.id)) };
+  const approved = prior.passes
+    .filter((p) => p.author === me && p.verdict === "approve")
+    .map((p) => p.commit ?? null);
+  return {
+    summary,
+    findings,
+    others,
+    stop,
+    newest: maxId(...notes.map((n) => n.id)),
+    approved,
+  };
 }
 
 /**
@@ -229,6 +242,8 @@ export interface SyncResult {
   blocking: number;
   body: string;
   sinceLastReview: { resolved: number; new: number; stillOpen: number };
+  /** What `approveAt` led to; absent when the caller set none. */
+  approval?: string;
 }
 
 /**
@@ -240,7 +255,7 @@ export interface SyncResult {
 export async function sync(
   ctx: Ctx,
   pass: Pass,
-  opts: { dryRun?: boolean } = {},
+  opts: { dryRun?: boolean; approveAt?: number } = {},
 ): Promise<SyncResult> {
   const { forge, repo, cr } = ctx;
   checkPass(pass);
@@ -463,7 +478,12 @@ export async function sync(
     body,
     sinceLastReview,
   };
-  if (opts.dryRun) return result;
+  const approval = approvalFor(pass, reviewed, ended, st, opts.approveAt);
+  if (approval) result.approval = approval.why;
+  if (opts.dryRun) {
+    if (approval?.approve) result.approval = `would approve ${reviewed}`;
+    return result;
+  }
 
   const latest = await forge.get(repo, cr.number);
   if (latest.head !== cr.head || latest.state !== cr.state)
@@ -508,7 +528,36 @@ export async function sync(
   if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, result.body);
   else await forge.postNote(repo, cr, result.body);
   await setReviewStatus(ctx, reviewed, pass, open);
+  if (approval?.approve) result.approval = await approveHead(ctx, reviewed, pass);
   return result;
+}
+
+function approvalFor(
+  pass: Pass,
+  head: string,
+  ended: { state: string } | null,
+  st: ReviewState,
+  approveAt: number | undefined,
+): { approve: boolean; why: string } | null {
+  if (approveAt === undefined) return null;
+  if (ended) return { approve: false, why: `not approved: the change request is ${ended.state}` };
+  if (pass.confidence < approveAt)
+    return {
+      approve: false,
+      why: `not approved: confidence ${pass.confidence} is below ${approveAt}`,
+    };
+  if (st.approved.some((sha) => sha === null || sha === head))
+    return { approve: false, why: `already approved ${head}` };
+  return { approve: true, why: `approved ${head}` };
+}
+
+async function approveHead(ctx: Ctx, head: string, pass: Pass): Promise<string> {
+  const latest = await ctx.forge.get(ctx.repo, ctx.cr.number);
+  if (latest.head !== head || latest.state !== "open")
+    return `not approved: the change request moved to ${latest.head.slice(0, 12)} (${latest.state})`;
+  const body = `Approved at confidence ${pass.confidence}/5 for ${head}: ${pass.reason}${pass.signoff ? `\n\n${pass.signoff}` : ""}`;
+  await ctx.forge.approve(ctx.repo, ctx.cr, head, body);
+  return `approved ${head}`;
 }
 
 /**
