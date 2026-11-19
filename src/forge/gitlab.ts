@@ -413,7 +413,6 @@ export class GitLabForge implements Forge {
     );
   }
 
-  /** An award emoji on the merge request; GitLab refuses a second one by the same account, so it is read first. */
   /** Pipeline jobs and external statuses alike are commit statuses on GitLab, latest per name. */
   async ci(repo: RepoId, sha: string): Promise<CiCheck[]> {
     const out = await run(
@@ -431,6 +430,7 @@ export class GitLabForge implements Forge {
     }));
   }
 
+  /** An award emoji on the merge request; GitLab refuses a second one by the same account, so it is read first. */
   async eyes(repo: RepoId, cr: ChangeRequest): Promise<"added" | "present"> {
     const me = await this.whoami(repo);
     const base = `projects/${this.project(repo)}/merge_requests/${cr.number}/award_emoji`;

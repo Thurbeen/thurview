@@ -444,18 +444,20 @@ export class GitHubForge implements Forge {
 
   /** Check runs, from Actions or any App, then the commit statuses older integrations set. */
   async ci(repo: RepoId, sha: string): Promise<CiCheck[]> {
-    const pages = await runJson<{ check_runs: RestCheckRun[] }[]>(
-      "gh",
-      this.api(repo, [
-        `repos/${repo.path}/commits/${sha}/check-runs?per_page=100`,
-        "--paginate",
-        "--slurp",
-      ]),
-    );
-    const combined = await runJson<{ statuses?: RestCommitStatus[] }>(
-      "gh",
-      this.api(repo, [`repos/${repo.path}/commits/${sha}/status`]),
-    );
+    const [pages, combined] = await Promise.all([
+      runJson<{ check_runs: RestCheckRun[] }[]>(
+        "gh",
+        this.api(repo, [
+          `repos/${repo.path}/commits/${sha}/check-runs?per_page=100`,
+          "--paginate",
+          "--slurp",
+        ]),
+      ),
+      runJson<{ statuses?: RestCommitStatus[] }>(
+        "gh",
+        this.api(repo, [`repos/${repo.path}/commits/${sha}/status`]),
+      ),
+    ]);
     return [
       ...pages
         .flatMap((p) => p.check_runs)
