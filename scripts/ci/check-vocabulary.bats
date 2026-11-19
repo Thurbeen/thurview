@@ -77,3 +77,11 @@ track() {
   run "$CHECKER"
   [ "$status" -eq 0 ]
 }
+
+@test "fails rather than passes when it cannot search" {
+  cd "$BATS_TEST_TMPDIR" || exit 1
+  mkdir -p outside && cd outside || exit 1
+  GIT_CEILING_DIRECTORIES="$BATS_TEST_TMPDIR" run "$CHECKER"
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"No caller-specific vocabulary"* ]]
+}

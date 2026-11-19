@@ -10,10 +10,18 @@ set -euo pipefail
 banned='fleet|thurbox|thurbeen|mission[ -]control'
 own_address='Thurbeen/thurview|owner = "Thurbeen"'
 
-hits=$(git grep -n -I -i -E "$banned" -- . \
+if matches=$(git grep -n -I -i -E "$banned" -- . \
     ':!pnpm-lock.yaml' \
     ':!scripts/ci/check-vocabulary.sh' \
-    ':!scripts/ci/check-vocabulary.bats' |
+    ':!scripts/ci/check-vocabulary.bats'); then
+    :
+else
+    search_status=$?
+    no_match_status=1
+    [ "$search_status" -eq "$no_match_status" ] || exit "$search_status"
+fi
+
+hits=$(printf '%s\n' "$matches" |
     sed -E "s#${own_address}##g" |
     grep -i -E "$banned" || true)
 
