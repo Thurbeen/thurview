@@ -75,14 +75,12 @@ review is stored there - its state is in hidden markers on the forge.
   repository root for that repository.
 - **Trusted review bots**: `~/.thurview/reviewers.json`, as
   `{"bots": ["greptile-apps[bot]"]}`, whose threads the review answers.
-- **Identity**: a review runs as the account `gh` or `glab` is logged in as,
-  your own. thurview never looks for App tokens or keys and never falls back
-  to an App. The GitHub App identity is for one case only: an unattended Fleet
-  review whose brief grants it, with the App's installation token and
-  `THURVIEW_LOGIN` (the App's `<app-slug>[bot]`, since GitHub refuses it
-  `GET /user`) set in that task's environment by the Fleet review TaskConfig.
-  Every other run keeps your own login and never approves without
-  `--approve-at`.
+- **Identity**: a review runs as the account `gh` or `glab` is logged in as.
+  thurview never looks for App tokens or keys and never falls back to an App.
+  A caller that runs it under a GitHub App installation token sets that token
+  and `THURVIEW_LOGIN`, the App's `<app-slug>[bot]`, in the environment
+  itself, since GitHub refuses the token `GET /user`. Approval needs
+  `--approve-at` either way.
 
 ## Documentation
 
