@@ -389,8 +389,9 @@ App credentials happen to be at hand.
 
 When `status` or `sync` fails because it cannot read this account's login
 (GitHub refuses `GET /user` to an App installation token), stop and report
-it. Outside that Fleet case, ask the user to log `gh` in as their own
-account; do not set or guess `THURVIEW_LOGIN`.
+it. Outside that Fleet case, ask the user to unset `GH_TOKEN` and
+`GITHUB_TOKEN` and log `gh` in as their own account; do not set or guess
+`THURVIEW_LOGIN`.
 
 ## 6. Follow
 

@@ -104,7 +104,7 @@ command never does:
   GitLab gets an approval pinned by `sha`, which it refuses once the head
   moved, and carries no text. A pass that falls short withdraws this
   account's approvals: a dismissal on GitHub, `unapprove` on GitLab. An
-  approval of the reviewed head that was dismissed, by a maintainer or by an
+  approval `sync` gave the reviewed head that was dismissed, by a maintainer or by an
   earlier withdrawal, is not given again at that head. Withdrawal happens only
   in a `sync` that carries `--approve-at`: a stopped review, or a push not yet
   reviewed, leaves the last approval standing. A

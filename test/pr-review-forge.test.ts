@@ -1916,18 +1916,7 @@ describe("a review under a GitHub App installation token", { timeout: 30_000 }, 
     expect(JSON.stringify(out)).toContain("rate limit");
   });
 
-  it("names THURVIEW_LOGIN when GET /user is refused and no login is configured", async () => {
-    await fixtures([
-      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
-      { cli: "gh", match: ["graphql"], body: NO_THREADS },
-      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
-      userRefused,
-    ]);
-    const out = await cli(["pr-review", "status", "--change", "7", "--no-eyes"], github, 1);
-    expect(JSON.stringify(out)).toContain("THURVIEW_LOGIN");
-  });
-
-  it("sends a refused GET /user back to the user's own gh login, keeping the App for Fleet reviews", async () => {
+  it("sends a refused GET /user back to the user's own gh login, never to the App", async () => {
     await fixtures([
       { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
       { cli: "gh", match: ["graphql"], body: NO_THREADS },
@@ -1936,9 +1925,10 @@ describe("a review under a GitHub App installation token", { timeout: 30_000 }, 
     ]);
     const out = await cli(["pr-review", "status", "--change", "7", "--no-eyes"], github, 1);
     const help = JSON.stringify(out["help"]);
+    expect(help).toMatch(/unset GH_TOKEN and GITHUB_TOKEN/);
     expect(help).toMatch(/gh auth login.*your own account/);
-    expect(help).toMatch(/THURVIEW_LOGIN.*only.*unattended Fleet review/);
-    expect(help.indexOf("gh auth login")).toBeLessThan(help.indexOf("THURVIEW_LOGIN"));
+    expect(help).not.toContain("THURVIEW_LOGIN");
+    expect(help).not.toContain("[bot]");
   });
 });
 
@@ -2062,10 +2052,23 @@ describe("approving at a threshold the requester set", { timeout: 30_000 }, () =
   });
 
   it("leaves a dismissed approval of this head dismissed", async () => {
-    await fixtures(githubOpen([ownReview("DISMISSED", HEAD)]));
+    await fixtures(
+      githubOpen([
+        { ...ownReview("DISMISSED", HEAD), body: `Approved at confidence 5/5 for ${HEAD}: ok` },
+      ]),
+    );
     const out = await syncWith(CLEAN, github, ["--approve-at", "5"]);
     expect(out["approval"]).toBe(`not approved: this account's approval of ${HEAD} was dismissed`);
     expect(await approvals()).toEqual([]);
+  });
+
+  it("approves a head where only this account's dismissed request for changes sits", async () => {
+    await fixtures(
+      githubOpen([{ ...ownReview("DISMISSED", HEAD), body: "Please split this file." }]),
+    );
+    const out = await syncWith(CLEAN, github, ["--approve-at", "5"]);
+    expect(out["approval"]).toBe(`approved ${HEAD}`);
+    expect(await approvals()).toHaveLength(1);
   });
 
   it("never approves beside an open blocking finding, whatever the threshold", async () => {

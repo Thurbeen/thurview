@@ -24,10 +24,6 @@ import {
  * edited in place; one thread per finding, resolved when it is fixed; nothing
  * kept on this machine. Every call reads the state back from the forge, which
  * is what lets the loop die and resume anywhere.
- *
- * NEVER merge or push. The seam has no merge and no push. The verdict is the
- * summary's confidence; a sync approves only when its caller passed a
- * threshold and the pass met it.
  */
 
 /** The forge methods a follow loop uses, and no other. */
@@ -205,7 +201,12 @@ export async function readState(ctx: Ctx): Promise<ReviewState> {
       ? `a /thurview stop comment by @${command.author}`
       : null;
   const approvals = prior.passes
-    .filter((p) => p.author === me && (p.verdict === "approve" || p.verdict === "dismissed"))
+    .filter(
+      (p) =>
+        p.author === me &&
+        (p.verdict === "approve" ||
+          (p.verdict === "dismissed" && p.body.startsWith(APPROVAL_PREFIX))),
+    )
     .map((p) => ({ id: p.id, commit: p.commit ?? null, dismissed: p.verdict === "dismissed" }));
   return {
     summary,
@@ -533,6 +534,8 @@ export async function sync(
   return result;
 }
 
+const APPROVAL_PREFIX = "Approved at confidence ";
+
 interface ApprovalPlan {
   approve: boolean;
   why: string;
@@ -577,7 +580,6 @@ function withdrawn(why: string, count: number, verb: string): string {
   return count ? `${why}; ${verb} ${count} approval${count === 1 ? "" : "s"}` : why;
 }
 
-/** A refused approval or withdrawal is reported, as eyes is: the pass is already posted. */
 async function applyApproval(
   ctx: Ctx,
   head: string,
@@ -594,7 +596,7 @@ async function applyApproval(
     const latest = await ctx.forge.get(ctx.repo, ctx.cr.number);
     if (latest.head !== head || latest.state !== "open")
       return `not approved: the change request moved to ${latest.head.slice(0, 12)} (${latest.state})`;
-    const body = `Approved at confidence ${pass.confidence}/5 for ${head}: ${pass.reason}${pass.signoff ? `\n\n${pass.signoff}` : ""}`;
+    const body = `${APPROVAL_PREFIX}${pass.confidence}/5 for ${head}: ${pass.reason}${pass.signoff ? `\n\n${pass.signoff}` : ""}`;
     await ctx.forge.approve(ctx.repo, ctx.cr, head, body);
     return plan.why;
   } catch (e) {
