@@ -107,7 +107,7 @@ function loginOf(a: Author | null | undefined): string {
 const THREADS_QUERY = `query($owner:String!,$name:String!,$number:Int!){
   repository(owner:$owner,name:$name){
     pullRequest(number:$number){
-      reviews(last:50){nodes{id author{__typename login} state body submittedAt commit{oid}}}
+      reviews(last:100){nodes{id author{__typename login} state body submittedAt commit{oid}}}
       reviewThreads(last:100){nodes{
         id isResolved isOutdated path line diffSide
         comments(first:50){nodes{author{__typename login} body url originalCommit{oid}}}
@@ -139,8 +139,21 @@ export class GitHubForge implements Forge {
   }
 
   async whoami(repo: RepoId): Promise<string> {
-    const me = await runJson<{ login: string }>("gh", this.api(repo, ["user"]));
-    return me.login;
+    try {
+      const me = await runJson<{ login: string }>("gh", this.api(repo, ["user"]));
+      return me.login;
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      const configured = process.env["THURVIEW_LOGIN"];
+      const refused =
+        /HTTP 403|not accessible by integration/i.test(why) && !/rate limit/i.test(why);
+      if (refused && configured) return configured;
+      if (!refused) throw e;
+      throw new AxiError(`cannot read this account's login: ${why}`, "FORGE_ERROR", [
+        "gh is using an App installation token: unset GH_TOKEN and GITHUB_TOKEN",
+        "Then check `gh auth status`, and `gh auth login` as your own account",
+      ]);
+    }
   }
 
   async canWrite(repo: RepoId, user: string): Promise<boolean> {
@@ -357,6 +370,36 @@ export class GitHubForge implements Forge {
         }),
       },
     );
+  }
+
+  async approve(repo: RepoId, cr: ChangeRequest, sha: string, body: string): Promise<void> {
+    await run(
+      "gh",
+      this.api(repo, [
+        `repos/${repo.path}/pulls/${cr.number}/reviews`,
+        "--method",
+        "POST",
+        "--input",
+        "-",
+      ]),
+      { input: JSON.stringify({ event: "APPROVE", commit_id: sha, body }) },
+    );
+  }
+
+  async revoke(repo: RepoId, _cr: ChangeRequest, ids: string[], why: string): Promise<void> {
+    for (const id of ids)
+      await run(
+        "gh",
+        this.api(repo, [
+          "graphql",
+          "-f",
+          "query=mutation($id:ID!,$message:String!){dismissPullRequestReview(input:{pullRequestReviewId:$id,message:$message}){clientMutationId}}",
+          "-f",
+          `id=${id}`,
+          "-f",
+          `message=${why}`,
+        ]),
+      );
   }
 
   /** A pull request is an issue to the reactions API, so this is the issue reactions endpoint. */

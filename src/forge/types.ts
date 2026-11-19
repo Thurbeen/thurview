@@ -23,6 +23,9 @@
  *   comment   one inline comment, which opens one resolvable thread
  *   setStatus the review's verdict as a commit status on one sha, which a
  *             branch rule can require: it reports, and merges nothing
+ *   approve   approve one sha, only when the requester set a confidence
+ *             threshold and the pass met it
+ *   revoke    withdraw this account's approvals once a pass falls short
  *   eyes      the eyes reaction on the change request itself, by this
  *             account, once: what tells a reader a review is in progress
  *             before anything is posted
@@ -149,6 +152,10 @@ export interface Forge {
   /** The new thread URL, when the forge returns one. */
   comment(repo: RepoId, cr: ChangeRequest, c: InlineComment): Promise<string | void>;
   setStatus(repo: RepoId, cr: ChangeRequest, sha: string, s: ReviewStatusCheck): Promise<void>;
+  /** Approve the change request at `sha`, with `body` as the approval's text. */
+  approve(repo: RepoId, cr: ChangeRequest, sha: string, body: string): Promise<void>;
+  /** Withdraw this account's approvals, by the ids `prior` gave them. */
+  revoke(repo: RepoId, cr: ChangeRequest, ids: string[], why: string): Promise<void>;
   /**
    * Add this account's eyes reaction to the change request, unless it is
    * already there. Other accounts' reactions are read past and never removed.

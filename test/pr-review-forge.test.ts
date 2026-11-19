@@ -28,9 +28,16 @@ const dirs: string[] = [];
 
 type Out = Record<string, any>;
 
-async function cli(args: string[], cwd: string, expectCode = 0): Promise<Out> {
+async function cli(
+  args: string[],
+  cwd: string,
+  expectCode = 0,
+  extraEnv: Record<string, string> = {},
+): Promise<Out> {
   const env = {
     ...process.env,
+    THURVIEW_LOGIN: "",
+    ...extraEnv,
     THURVIEW_HOME: home,
     PATH: `${bin}:${process.env["PATH"]}`,
     FORGE_RESPONSES: responses,
@@ -1833,3 +1840,306 @@ for (const provider of ["github", "gitlab"] as const) {
     });
   });
 }
+
+describe("a review under a GitHub App installation token", { timeout: 30_000 }, () => {
+  const APP = "thurbeen-agents[bot]";
+  const userRefused = {
+    cli: "gh",
+    match: ["api", "user"],
+    fail: true,
+    stderr: "gh: Resource not accessible by integration (HTTP 403)\n",
+  };
+
+  it("finds its own summary through THURVIEW_LOGIN when GET /user is refused", async () => {
+    await fixtures([
+      {
+        cli: "gh",
+        match: ["issues/7/comments", "--paginate"],
+        body: [[{ id: 9, user: { login: APP }, body: SUMMARY(OLD) }]],
+      },
+      { cli: "gh", match: ["issues/7/reactions", "--paginate"], body: [[]] },
+      { cli: "gh", match: ["issues/7/reactions", "POST"], body: { id: 1, content: "eyes" } },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      userRefused,
+    ]);
+    const out = await cli(["pr-review", "status", "--change", "7"], github, 0, {
+      THURVIEW_LOGIN: APP,
+    });
+    expect(out["review"]).toMatchObject({ reviewedHead: OLD, pushedSince: true });
+    expect(out["eyes"]).toBe("added");
+  });
+
+  it("keeps the login GET /user answers for a user token, whatever THURVIEW_LOGIN says", async () => {
+    await fixtures([
+      {
+        cli: "gh",
+        match: ["issues/7/comments", "--paginate"],
+        body: [[{ id: 9, user: { login: APP }, body: SUMMARY(OLD) }]],
+      },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["api", "user"], body: { login: "dev-user" } },
+    ]);
+    const out = await cli(["pr-review", "status", "--change", "7", "--no-eyes"], github, 0, {
+      THURVIEW_LOGIN: APP,
+    });
+    expect(out["review"]).toMatch(/none yet/);
+  });
+
+  it("does not swap identity when GET /user fails for another reason", async () => {
+    await fixtures([
+      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { ...userRefused, stderr: "gh: Bad Gateway (HTTP 502)\n" },
+    ]);
+    const out = await cli(["pr-review", "status", "--change", "7", "--no-eyes"], github, 1, {
+      THURVIEW_LOGIN: APP,
+    });
+    expect(JSON.stringify(out)).toContain("502");
+  });
+
+  it("does not swap identity on a 403 rate limit", async () => {
+    await fixtures([
+      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      {
+        ...userRefused,
+        stderr: "gh: You have exceeded a secondary rate limit (HTTP 403)\n",
+      },
+    ]);
+    const out = await cli(["pr-review", "status", "--change", "7", "--no-eyes"], github, 1, {
+      THURVIEW_LOGIN: APP,
+    });
+    expect(JSON.stringify(out)).toContain("rate limit");
+  });
+
+  it("sends a refused GET /user back to the user's own gh login, never to the App", async () => {
+    await fixtures([
+      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      userRefused,
+    ]);
+    const out = await cli(["pr-review", "status", "--change", "7", "--no-eyes"], github, 1);
+    const help = JSON.stringify(out["help"]);
+    expect(help).toMatch(/unset GH_TOKEN and GITHUB_TOKEN/);
+    expect(help).toMatch(/gh auth login.*your own account/);
+    expect(help).not.toContain("THURVIEW_LOGIN");
+    expect(help).not.toContain("[bot]");
+  });
+});
+
+describe("approving at a threshold the requester set", { timeout: 30_000 }, () => {
+  const CLEAN = { ...PASS, confidence: 5, reason: "Nothing open.", findings: [] };
+  const githubOpen = (reviews: unknown[] = []) => [
+    { cli: "gh", match: ["pulls/7/reviews", "POST"], body: { id: 77, state: "APPROVED" } },
+    { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9, body: "", user: null } },
+    { cli: "gh", match: ["issues/7/comments", "--paginate", "--slurp"], body: [[]] },
+    {
+      cli: "gh",
+      match: ["graphql"],
+      body: {
+        data: {
+          repository: {
+            pullRequest: { reviews: { nodes: reviews }, reviewThreads: { nodes: [] } },
+          },
+        },
+      },
+    },
+    { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+    { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+  ];
+  const approvals = async () =>
+    (await calls()).filter((c) =>
+      /pulls\/7\/reviews|merge_requests\/7\/approve\b/.test(c.args.join(" ")),
+    );
+
+  async function syncWith(pass: object, cwd: string, extra: string[] = [], code = 0) {
+    const file = join(bin, "pass-approve.json");
+    await writeFile(file, JSON.stringify(pass));
+    return cli(["pr-review", "sync", "--change", "7", "--file", file, ...extra], cwd, code);
+  }
+
+  it("approves the reviewed head on GitHub when confidence meets --approve-at", async () => {
+    await fixtures(githubOpen());
+    const out = await syncWith(CLEAN, github, ["--approve-at", "5"]);
+    expect(out["approval"]).toMatch(/^approved /);
+    const [approve] = await approvals();
+    expect(approve!.args.join(" ")).toContain("repos/acme/web/pulls/7/reviews --method POST");
+    const sent = JSON.parse(approve!.body);
+    expect(sent).toMatchObject({ event: "APPROVE", commit_id: HEAD });
+    expect(sent.body).toContain("confidence 5/5");
+    expect(sent.body).toContain(PASS.signoff);
+    expect(JSON.stringify(out["help"])).not.toMatch(/Never approve/);
+  });
+
+  it("does not approve below the threshold", async () => {
+    await fixtures(githubOpen());
+    const out = await syncWith({ ...CLEAN, confidence: 4, reason: "A risk is left." }, github, [
+      "--approve-at",
+      "5",
+    ]);
+    expect(out["approval"]).toMatch(/not approved: confidence 4 is below 5/);
+    expect(await approvals()).toEqual([]);
+  });
+
+  it("never approves without --approve-at, even at confidence 5", async () => {
+    await fixtures(githubOpen());
+    const out = await syncWith(CLEAN, github);
+    expect(out["approval"]).toBeUndefined();
+    expect(await approvals()).toEqual([]);
+  });
+
+  it("approves nothing on a dry run", async () => {
+    await fixtures(githubOpen());
+    const out = await syncWith(CLEAN, github, ["--approve-at", "5", "--dry-run"]);
+    expect(out["approval"]).toMatch(/would approve/);
+    expect(await approvals()).toEqual([]);
+  });
+
+  it("does not approve the same head twice", async () => {
+    await fixtures(
+      githubOpen([
+        {
+          id: "R1",
+          author: { __typename: "User", login: "bot" },
+          state: "APPROVED",
+          body: "",
+          submittedAt: "2026-11-18T00:00:00Z",
+          commit: { oid: HEAD },
+        },
+      ]),
+    );
+    const out = await syncWith(CLEAN, github, ["--approve-at", "5"]);
+    expect(out["approval"]).toMatch(/already approved/);
+    expect(await approvals()).toEqual([]);
+  });
+
+  it("refuses a threshold outside 1 to 5", async () => {
+    await fixtures(githubOpen());
+    const out = await syncWith(CLEAN, github, ["--approve-at", "6"], 2);
+    expect(JSON.stringify(out)).toMatch(/approve-at/);
+    expect(await approvals()).toEqual([]);
+  });
+
+  const ownReview = (state: string, commit: string) => ({
+    id: "R1",
+    author: { __typename: "User", login: "bot" },
+    state,
+    body: "",
+    submittedAt: "2026-11-18T00:00:00Z",
+    commit: { oid: commit },
+  });
+  const dismissals = async () =>
+    (await calls()).filter((c) => c.args.join(" ").includes("dismissPullRequestReview"));
+
+  it("withdraws its earlier approval when a later pass falls below the threshold", async () => {
+    await fixtures([
+      { cli: "gh", match: ["dismissPullRequestReview"], body: { data: {} } },
+      ...githubOpen([ownReview("APPROVED", OLD)]),
+    ]);
+    const out = await syncWith({ ...CLEAN, confidence: 4, reason: "A risk is left." }, github, [
+      "--approve-at",
+      "5",
+    ]);
+    expect(out["approval"]).toMatch(/not approved: confidence 4 is below 5; withdrew 1 approval/);
+    const [dismiss] = await dismissals();
+    expect(dismiss!.args).toContain("id=R1");
+    expect(await approvals()).toEqual([]);
+  });
+
+  it("leaves a dismissed approval of this head dismissed", async () => {
+    await fixtures(
+      githubOpen([
+        { ...ownReview("DISMISSED", HEAD), body: `Approved at confidence 5/5 for ${HEAD}: ok` },
+      ]),
+    );
+    const out = await syncWith(CLEAN, github, ["--approve-at", "5"]);
+    expect(out["approval"]).toBe(`not approved: this account's approval of ${HEAD} was dismissed`);
+    expect(await approvals()).toEqual([]);
+  });
+
+  it("approves a head where only this account's dismissed request for changes sits", async () => {
+    await fixtures(
+      githubOpen([{ ...ownReview("DISMISSED", HEAD), body: "Please split this file." }]),
+    );
+    const out = await syncWith(CLEAN, github, ["--approve-at", "5"]);
+    expect(out["approval"]).toBe(`approved ${HEAD}`);
+    expect(await approvals()).toHaveLength(1);
+  });
+
+  it("never approves beside an open blocking finding, whatever the threshold", async () => {
+    await fixtures([
+      { cli: "gh", match: ["pulls/7/comments", "POST"], body: { id: 1 } },
+      ...githubOpen(),
+    ]);
+    const out = await syncWith(PASS, github, ["--approve-at", "1"]);
+    expect(out["approval"]).toMatch(/not approved: 1 blocking finding is open/);
+    expect(await approvals()).toEqual([]);
+  });
+
+  it("reports an approval the forge refused and keeps the posted pass", async () => {
+    await fixtures([
+      {
+        cli: "gh",
+        match: ["pulls/7/reviews", "POST"],
+        fail: true,
+        stderr: "gh: Can not approve your own pull request (HTTP 422)\n",
+      },
+      ...githubOpen(),
+    ]);
+    const out = await syncWith(CLEAN, github, ["--approve-at", "5"]);
+    expect(out["pass"].summary).toBe("created");
+    expect(out["approval"]).toMatch(/^failed: .*Can not approve your own pull request/);
+  });
+
+  it("withdraws its GitLab approval when a later pass falls below the threshold", async () => {
+    await fixtures([
+      { cli: "glab", match: ["merge_requests/7/unapprove", "POST"], body: {} },
+      { cli: "glab", match: ["merge_requests/7/notes", "POST"], body: { id: 3, body: "" } },
+      { cli: "glab", match: ["merge_requests/7/notes?", "--paginate"], body: "" },
+      { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+      { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
+      {
+        cli: "glab",
+        match: ["merge_requests/7/approvals"],
+        body: { approved_by: [{ user: { username: "bot" } }] },
+      },
+      { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+      { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+    ]);
+    const out = await syncWith({ ...CLEAN, confidence: 4, reason: "A risk is left." }, gitlab, [
+      "--approve-at",
+      "5",
+    ]);
+    expect(out["approval"]).toMatch(/withdrew 1 approval/);
+    const unapprove = (await calls()).find((c) => c.args.join(" ").includes("/unapprove"));
+    expect(unapprove!.args).toContain("POST");
+  });
+
+  it("approves the reviewed head on GitLab", async () => {
+    await fixtures([
+      { cli: "glab", match: ["merge_requests/7/approve", "POST"], body: { id: 7 } },
+      { cli: "glab", match: ["merge_requests/7/notes", "POST"], body: { id: 3, body: "" } },
+      { cli: "glab", match: ["merge_requests/7/notes?", "--paginate"], body: "" },
+      { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+      { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
+      { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+      { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+      { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+    ]);
+    const out = await syncWith(CLEAN, gitlab, ["--approve-at", "5"]);
+    expect(out["approval"]).toMatch(/^approved /);
+    const [approve] = await approvals();
+    expect(approve!.args).toEqual(
+      expect.arrayContaining([
+        "projects/acme%2Fweb/merge_requests/7/approve",
+        "POST",
+        `sha=${HEAD}`,
+      ]),
+    );
+  });
+});
