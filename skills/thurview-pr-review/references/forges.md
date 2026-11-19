@@ -120,7 +120,9 @@ command never does:
   `THURVIEW_LOGIN`
   names the account instead, as the App's `<app-slug>[bot]`. A token that
   can read its user keeps the login GitHub answers, whatever `THURVIEW_LOGIN`
-  says.
+  says. `THURVIEW_LOGIN` is set only by the Fleet review TaskConfig for an
+  unattended review whose brief runs it as the App; every other run keeps
+  the user's own login.
 - A finding must sit on a line the diff touches. A defect confirmed in an
   untouched caller is anchored on the changed line that reaches it; it is
   still a finding, never only a risk bullet.

@@ -377,10 +377,20 @@ answers `approval: would approve <head>` or why not; the real sync approves
 after the summary and the status, never twice for one head, and never on a
 merged or closed change request.
 
-When `status` or `sync` fails because it cannot read this account's login,
-the token is a GitHub App installation token, which GitHub refuses `GET
-/user`. Ask the operator to set `THURVIEW_LOGIN` to the App's login
-(`<app-slug>[bot]`); do not guess it.
+### Identity
+
+The review runs as the account `gh` or `glab` is logged in as: the user's
+own. The GitHub App identity (`<app-slug>[bot]`) is for one case only, an
+unattended Fleet review whose brief grants it; that task's environment then
+carries the App's token and `THURVIEW_LOGIN`. A human-requested review, an
+interactive run or any other command never switches to the App, never mints
+or reads an App token or key, and never sets `THURVIEW_LOGIN`, even when
+App credentials happen to be at hand.
+
+When `status` or `sync` fails because it cannot read this account's login
+(GitHub refuses `GET /user` to an App installation token), stop and report
+it. Outside that Fleet case, ask the user to log `gh` in as their own
+account; do not set or guess `THURVIEW_LOGIN`.
 
 ## 6. Follow
 

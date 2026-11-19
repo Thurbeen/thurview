@@ -150,8 +150,8 @@ export class GitHubForge implements Forge {
       if (refused && configured) return configured;
       if (!refused) throw e;
       throw new AxiError(`cannot read this account's login: ${why}`, "FORGE_ERROR", [
-        "A GitHub App installation token cannot read GET /user: set THURVIEW_LOGIN to the App's login, `<app-slug>[bot]`",
-        "Otherwise check `gh auth status`",
+        "A review runs as your own account: check `gh auth status`, then `gh auth login` as your own account",
+        "THURVIEW_LOGIN, the App's `<app-slug>[bot]`, is only for an unattended Fleet review whose brief runs it as the GitHub App",
       ]);
     }
   }
