@@ -2,6 +2,7 @@ import { AxiError } from "axi-sdk-js";
 import { run, runJson, ok } from "./run.js";
 import type {
   ChangeRequest,
+  CiCheck,
   Forge,
   InlineComment,
   Note,
@@ -40,6 +41,45 @@ interface HeadsPayload {
  * porcelain: `gh pr view` answers a different question per version, and the
  * REST and GraphQL payloads are the contract this adapter is written against.
  */
+
+interface RestCheckRun {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url?: string | null;
+}
+
+interface RestCommitStatus {
+  context: string;
+  state: string;
+  target_url?: string | null;
+}
+
+function checkRunState(r: RestCheckRun): CiCheck["state"] {
+  if (r.status === "in_progress") return "running";
+  if (r.status === "waiting") return "waiting";
+  if (r.status !== "completed") return "queued";
+  switch (r.conclusion) {
+    case "success":
+    case "neutral":
+      return "passed";
+    case "skipped":
+      return "skipped";
+    case "cancelled":
+    case "stale":
+      return "cancelled";
+    case "action_required":
+      return "waiting";
+    default:
+      return "failed";
+  }
+}
+
+function commitStatusState(state: string): CiCheck["state"] {
+  if (state === "success") return "passed";
+  if (state === "pending") return "running";
+  return "failed";
+}
 
 interface RestPull {
   number: number;
@@ -400,6 +440,32 @@ export class GitHubForge implements Forge {
           `message=${why}`,
         ]),
       );
+  }
+
+  /** Check runs, from Actions or any App, then the commit statuses older integrations set. */
+  async ci(repo: RepoId, sha: string): Promise<CiCheck[]> {
+    const pages = await runJson<{ check_runs: RestCheckRun[] }[]>(
+      "gh",
+      this.api(repo, [
+        `repos/${repo.path}/commits/${sha}/check-runs?per_page=100`,
+        "--paginate",
+        "--slurp",
+      ]),
+    );
+    const combined = await runJson<{ statuses?: RestCommitStatus[] }>(
+      "gh",
+      this.api(repo, [`repos/${repo.path}/commits/${sha}/status`]),
+    );
+    return [
+      ...pages
+        .flatMap((p) => p.check_runs)
+        .map((r) => ({ name: r.name, state: checkRunState(r), url: r.html_url ?? undefined })),
+      ...(combined.statuses ?? []).map((st) => ({
+        name: st.context,
+        state: commitStatusState(st.state),
+        url: st.target_url ?? undefined,
+      })),
+    ];
   }
 
   /** A pull request is an issue to the reactions API, so this is the issue reactions endpoint. */

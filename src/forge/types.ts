@@ -29,6 +29,8 @@
  *   eyes      the eyes reaction on the change request itself, by this
  *             account, once: what tells a reader a review is in progress
  *             before anything is posted
+ *   ci        every check the forge's CI runs or ran on one sha, so a review
+ *             reads those results instead of running the same checks again
  *
  * WHAT IS NOT HERE, deliberately: merge, close, push. A review comments; the
  * maintainer merges. A seam with no merge method cannot be talked into one.
@@ -71,6 +73,17 @@ export interface ReviewStatusCheck {
   state: "success" | "failure";
   /** One short line; GitHub cuts a status description at 140 characters. */
   description: string;
+  url?: string;
+}
+
+/**
+ * One CI check on a commit: a GitHub check run or commit status, a GitLab
+ * job or external status. `waiting` is one that will not start until someone
+ * acts: a manual job, or a run held for approval.
+ */
+export interface CiCheck {
+  name: string;
+  state: "queued" | "running" | "passed" | "failed" | "cancelled" | "skipped" | "waiting";
   url?: string;
 }
 
@@ -161,4 +174,6 @@ export interface Forge {
    * already there. Other accounts' reactions are read past and never removed.
    */
   eyes(repo: RepoId, cr: ChangeRequest): Promise<"added" | "present">;
+  /** Every CI check on `sha`, latest per name, in the order the forge lists them. */
+  ci(repo: RepoId, sha: string): Promise<CiCheck[]>;
 }

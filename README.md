@@ -52,15 +52,15 @@ the `thurview:stop` label or a comment starting `/thurview stop`.
 
 The skill drives these; you rarely type them.
 
-| Command                                                   | Purpose                                                        |
-| --------------------------------------------------------- | -------------------------------------------------------------- |
-| `thurview pr-review status --change N`                    | Where the review stands: heads, open findings, other reviewers |
-| `thurview pr-review sync --change N --file F [--dry-run]` | Post or edit the summary and the finding threads               |
-| `... sync ... --approve-at S`                             | Also approve the reviewed head when its status passes          |
-| `thurview pr-review wait --change N`                      | Block until a push, merge, close or stop                       |
-| `thurview pr-review stop\|start --change N`               | Stop or resume following the change request                    |
-| `thurview setup skill\|status`                            | Link the bundled skill into your agents                        |
-| `thurview update`                                         | Self-update from npm                                           |
+| Command                                                   | Purpose                                                                   |
+| --------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `thurview pr-review status --change N`                    | Where the review stands: heads, CI checks, open findings, other reviewers |
+| `thurview pr-review sync --change N --file F [--dry-run]` | Post or edit the summary and the finding threads                          |
+| `... sync ... --approve-at S`                             | Also approve the reviewed head when its status passes                     |
+| `thurview pr-review wait --change N`                      | Block until a push, merge, close or stop                                  |
+| `thurview pr-review stop\|start --change N`               | Stop or resume following the change request                               |
+| `thurview setup skill\|status`                            | Link the bundled skill into your agents                                   |
+| `thurview update`                                         | Self-update from npm                                                      |
 
 thurview is an [AXI](https://axi.md): output is [TOON](https://toonformat.dev),
 errors carry a `help` to act on, and `thurview <command> --help` lists every

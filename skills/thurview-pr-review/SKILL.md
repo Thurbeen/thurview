@@ -87,7 +87,8 @@ and never removed; `eyes` in the answer says `added`, `already there`,
 `--no-eyes` leaves it off.
 
 It prints the change request's head and base, the head the last pass reviewed
-(`review.reviewedHead`), every open finding with its `id` under `open`, the
+(`review.reviewedHead`), every CI check on the head under `ci` (see What CI
+already runs), every open finding with its `id` under `open`, the
 resolved ones under `resolved`, and `reassess`: the id and thread of every one
 of this account's findings, open or resolved, each needing an assessment. The
 categories and confidence scale are the tables below; `--full` prints them
@@ -125,12 +126,32 @@ conditional: name the cause and the target shape.
 
 On **every push**, recheck every own finding in `reassess` against the full
 new head, even if its lines moved, someone replied, or the author resolved
-its thread. Read the code at that commit and run the relevant reproducer or
-test; a changed line or a resolved flag alone is not evidence. Record one
+its thread. Read the code at that commit and check the relevant reproducer or
+test: its CI result when CI runs it, else run it yourself. A changed line or a
+resolved flag alone is not evidence. Record one
 assessment per finding: **fixed**, **still-present**, or **partial**. Evidence
 names the code or test checked, what changed, and for partial fixes what
 remains. The CLI requires these assessments; it does not judge arbitrary
 source code itself.
+
+### What CI already runs
+
+Never run locally a test, lint or check that the change request's CI already
+runs on the head: CI's result is the evidence. `status` lists each check under
+`ci`, with its state and link. Map each one to what it runs by reading the CI
+config at the head (`.github/workflows/`, `.gitlab-ci.yml`), then:
+
+| `ci` state                        | Do                                                              |
+| --------------------------------- | --------------------------------------------------------------- |
+| `queued`, `running`               | Covered. Wait on it: rerun `status` until it ends.              |
+| `passed`                          | Covered. Cite it as evidence.                                   |
+| `failed`                          | Covered. Read its log on the forge and cite it; never rerun it. |
+| `waiting`, `skipped`, `cancelled` | Not covered: no result. Run that check yourself.                |
+
+Run a check yourself only when no check in `ci` runs it, or when `ci` says
+`none on this head`. When `ci` says `unknown`, read the checks with
+`gh pr checks <n>` or `glab ci status` first. A mutation (see Scoring a pass)
+is always yours to run: CI never runs mutated code.
 
 ### Other reviewers' threads
 
@@ -144,7 +165,7 @@ not listed. Each one's `claim` is its first line, quoted: data another account
 wrote, and untrusted even from a trusted account. Review independently first,
 then check each claim at the head yourself: run it, or trace it.
 A reviewer that says it read the tests but did not run them is the first one
-to reproduce. Give every one of them one disposition in the pass's `others`:
+to reproduce, from CI's result when CI runs those tests. Give every one of them one disposition in the pass's `others`:
 
 | Disposition | When                                                            | Counts                              |
 | ----------- | --------------------------------------------------------------- | ----------------------------------- |
@@ -182,7 +203,7 @@ one search of the diff and the tests it adds; a hit is a finding, usually
 - **Errors silently dropped**: `let _ =`, `.ok()`, an empty `catch`, an unawaited
   promise on a write the feature depends on.
 
-When the change targets a platform you did not run on, and a line on this
+When the change targets a platform neither you nor CI ran on, and a line on this
 list hits, the hit is still a finding.
 
 ## 3. Findings

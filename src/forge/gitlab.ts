@@ -2,6 +2,7 @@ import { AxiError } from "axi-sdk-js";
 import { run, runJson, ok } from "./run.js";
 import type {
   ChangeRequest,
+  CiCheck,
   Forge,
   InlineComment,
   Note,
@@ -86,6 +87,33 @@ function ndjson<T>(out: string): T[] {
     .split("\n")
     .filter((l) => l.trim())
     .flatMap((l) => JSON.parse(l) as T | T[]);
+}
+
+const QUEUED_JOB = new Set([
+  "created",
+  "pending",
+  "waiting_for_resource",
+  "preparing",
+  "scheduled",
+]);
+
+function jobState(status: string): CiCheck["state"] {
+  if (QUEUED_JOB.has(status)) return "queued";
+  switch (status) {
+    case "running":
+      return "running";
+    case "success":
+      return "passed";
+    case "canceled":
+    case "canceling":
+      return "cancelled";
+    case "skipped":
+      return "skipped";
+    case "manual":
+      return "waiting";
+    default:
+      return "failed";
+  }
 }
 
 function iidOf(ref: string): string {
@@ -386,6 +414,23 @@ export class GitLabForge implements Forge {
   }
 
   /** An award emoji on the merge request; GitLab refuses a second one by the same account, so it is read first. */
+  /** Pipeline jobs and external statuses alike are commit statuses on GitLab, latest per name. */
+  async ci(repo: RepoId, sha: string): Promise<CiCheck[]> {
+    const out = await run(
+      "glab",
+      this.api(
+        repo,
+        `projects/${this.project(repo)}/repository/commits/${sha}/statuses?per_page=100`,
+        ["--paginate", "--output", "ndjson"],
+      ),
+    );
+    return ndjson<{ name: string; status: string; target_url?: string | null }>(out).map((j) => ({
+      name: j.name,
+      state: jobState(j.status),
+      url: j.target_url ?? undefined,
+    }));
+  }
+
   async eyes(repo: RepoId, cr: ChangeRequest): Promise<"added" | "present"> {
     const me = await this.whoami(repo);
     const base = `projects/${this.project(repo)}/merge_requests/${cr.number}/award_emoji`;

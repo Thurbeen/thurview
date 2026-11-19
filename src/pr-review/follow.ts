@@ -1,5 +1,5 @@
 import { AxiError } from "axi-sdk-js";
-import type { ChangeRequest, Forge, Note, PriorThread, RepoId } from "../forge/types.js";
+import type { ChangeRequest, CiCheck, Forge, Note, PriorThread, RepoId } from "../forge/types.js";
 import type { Category, Severity } from "./categories.js";
 import {
   bareSummary,
@@ -44,6 +44,7 @@ export type ReviewForge = Pick<
   | "approve"
   | "revoke"
   | "eyes"
+  | "ci"
 >;
 
 export interface Ctx {
@@ -231,6 +232,20 @@ export async function lookAt(ctx: Ctx, st: ReviewState): Promise<string> {
     return (await ctx.forge.eyes(ctx.repo, ctx.cr)) === "added" ? "added" : "already there";
   } catch (e) {
     return `failed: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+export type CiReport = { head: string; checks: CiCheck[] } | string;
+
+/** What CI runs on the head, without the review's own status, so the review never runs it again. */
+export async function ciAt(ctx: Ctx): Promise<CiReport> {
+  try {
+    const checks = (await ctx.forge.ci(ctx.repo, ctx.cr.head)).filter(
+      (c) => c.name !== REVIEW_STATUS,
+    );
+    return checks.length ? { head: ctx.cr.head, checks } : "none on this head";
+  } catch (e) {
+    return `unknown: ${e instanceof Error ? e.message : String(e)}`;
   }
 }
 
