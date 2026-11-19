@@ -92,6 +92,18 @@ jobs:
       - name: Check conventional commits
         run: scripts/ci/check-conventional-commits.sh
 
+  vocabulary:
+    name: Caller-agnostic vocabulary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install bats-core
+        run: sudo apt-get update && sudo apt-get install -y bats
+      - name: Test the vocabulary checker
+        run: bats scripts/ci/check-vocabulary.bats
+      - name: Check vocabulary
+        run: scripts/ci/check-vocabulary.sh
+
   markdown-lint:
     name: Markdown Lint
     needs: changes
@@ -123,6 +135,7 @@ jobs:
       - changes
       - check
       - conventional-commits
+      - vocabulary
       - markdown-lint
       - shellcheck
     runs-on: ubuntu-latest

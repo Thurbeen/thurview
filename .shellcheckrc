@@ -1,4 +1,4 @@
-# ShellCheck configuration for thurbox shell scripts.
+# ShellCheck configuration for this repository's shell scripts.
 # Run by the `shellcheck` pre-commit hook and the CI `shellcheck` job.
 #
 # The disabled checks below flag patterns that are intentional, idiomatic,
@@ -18,5 +18,5 @@ disable=SC2015
 disable=SC2155
 
 # SC3043: `local` is undefined in strict POSIX sh, but every real-world sh
-#         (dash, busybox, ash) supports it and install.sh relies on it.
+#         (dash, busybox, ash) supports it.
 disable=SC3043
