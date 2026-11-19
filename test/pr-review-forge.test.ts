@@ -2071,6 +2071,51 @@ describe("approving at a threshold the requester set", { timeout: 30_000 }, () =
     expect(await approvals()).toHaveLength(1);
   });
 
+  describe("under a GitHub App installation token with THURVIEW_LOGIN", () => {
+    const APP = "thurbeen-agents[bot]";
+    const asApp = (reviews: unknown[] = []) => [
+      ...githubOpen(reviews).filter((f) => f.match.join(" ") !== "api user"),
+      {
+        cli: "gh",
+        match: ["api", "user"],
+        fail: true,
+        stderr: "gh: Resource not accessible by integration (HTTP 403)\n",
+      },
+    ];
+    const syncAsApp = async (extra: string[]) => {
+      const file = join(bin, "pass-app.json");
+      await writeFile(file, JSON.stringify(CLEAN));
+      return cli(["pr-review", "sync", "--change", "7", "--file", file, ...extra], github, 0, {
+        THURVIEW_LOGIN: APP,
+      });
+    };
+
+    it("dry-runs a sync without failing on GET /user", async () => {
+      await fixtures(asApp());
+      const out = await syncAsApp(["--dry-run", "--approve-at", "5"]);
+      expect(out["approval"]).toBe(`would approve ${HEAD}`);
+      expect(await approvals()).toEqual([]);
+    });
+
+    it("posts the pass and approves, then sees its own approval as the App", async () => {
+      await fixtures(asApp());
+      expect((await syncAsApp(["--approve-at", "5"]))["approval"]).toBe(`approved ${HEAD}`);
+      await fixtures(
+        asApp([
+          {
+            id: "R9",
+            author: { __typename: "Bot", login: "thurbeen-agents" },
+            state: "APPROVED",
+            body: `Approved at confidence 5/5 for ${HEAD}: ok`,
+            submittedAt: "2026-11-18T00:00:00Z",
+            commit: { oid: HEAD },
+          },
+        ]),
+      );
+      expect((await syncAsApp(["--approve-at", "5"]))["approval"]).toBe(`already approved ${HEAD}`);
+    });
+  });
+
   it("never approves beside an open blocking finding, whatever the threshold", async () => {
     await fixtures([
       { cli: "gh", match: ["pulls/7/comments", "POST"], body: { id: 1 } },
