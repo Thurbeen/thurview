@@ -1842,7 +1842,7 @@ for (const provider of ["github", "gitlab"] as const) {
 }
 
 describe("a review under a GitHub App installation token", { timeout: 30_000 }, () => {
-  const APP = "thurbeen-agents[bot]";
+  const APP = "review-app[bot]";
   const userRefused = {
     cli: "gh",
     match: ["api", "user"],
@@ -2072,7 +2072,7 @@ describe("approving at a threshold the requester set", { timeout: 30_000 }, () =
   });
 
   describe("under a GitHub App installation token with THURVIEW_LOGIN", () => {
-    const APP = "thurbeen-agents[bot]";
+    const APP = "review-app[bot]";
     const asApp = (reviews: unknown[] = []) => [
       ...githubOpen(reviews).filter((f) => f.match.join(" ") !== "api user"),
       {
@@ -2104,7 +2104,7 @@ describe("approving at a threshold the requester set", { timeout: 30_000 }, () =
         asApp([
           {
             id: "R9",
-            author: { __typename: "Bot", login: "thurbeen-agents" },
+            author: { __typename: "Bot", login: "review-app" },
             state: "APPROVED",
             body: `Approved at confidence 5/5 for ${HEAD}: ok`,
             submittedAt: "2026-11-18T00:00:00Z",
