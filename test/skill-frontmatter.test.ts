@@ -66,3 +66,34 @@ describe("SKILL.md frontmatter", () => {
     expect(() => loadFrontmatter(broken)).toThrow(/mapping/);
   });
 });
+
+describe("the skill's token budget", () => {
+  const dir = `${repoRoot}skills/thurview-pr-review/`;
+  const skill = readFileSync(`${dir}SKILL.md`, "utf8");
+  const bytes = (file: string) => Buffer.byteLength(readFileSync(`${dir}${file}`, "utf8"));
+
+  it.each([
+    ["SKILL.md", 19_000],
+    ["references/architecture.md", 9_000],
+    ["references/security.md", 5_700],
+    ["references/testing.md", 6_500],
+  ])("%s stays under %d bytes", (file, budget) => {
+    expect(bytes(file)).toBeLessThanOrEqual(budget);
+  });
+
+  it("follows a change request on the wait command's own timing, not a one-minute wake", () => {
+    const wait = skill.match(/^thurview pr-review wait[^\n]*$/m)?.[0];
+    expect(wait).toBe("thurview pr-review wait --change <ref>");
+  });
+
+  it("numbers its steps without a gap", () => {
+    const steps = [...skill.matchAll(/^## (\d+)\. /gm)].map(([, n]) => Number(n));
+    expect(steps).toEqual(steps.map((_, i) => i));
+    expect(steps.length).toBeGreaterThan(4);
+  });
+
+  it("reads the security and testing references only when the change calls for them", () => {
+    expect(skill).toMatch(/only when[^.]*\n?[^.]*references\/security\.md/);
+    expect(skill).toMatch(/only when[^.]*\n?[^.]*references\/testing\.md/);
+  });
+});
