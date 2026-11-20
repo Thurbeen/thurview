@@ -43,6 +43,28 @@ response; a dry run has no new thread yet and shows the location without
 inventing a URL. Older threads without a reported URL also show an unlinked
 location.
 
+## What `sync` does with a pass
+
+- **Budgets.** The 120 words count the authored `reason`, `architecture`,
+  `security`, `change`, `risk` and `signoff`, folded text included, before
+  rendering, so Markdown or HTML cannot hide words. Generated rows, links,
+  counts and notes in `others` are outside it, and so is a guard.
+- **Assessments.** A `fixed` one gets a reply with the commit and the
+  evidence, then its thread is resolved. A thread the author resolved still
+  gets that first confirmation. A `partial` one gets a reply with what
+  remains and stays open. A resolved thread whose finding is still present
+  is flagged in the summary and counts against confidence.
+- **Retries.** A failed resolution leaves the old summary intact, and a
+  retry at the same head does not duplicate replies or findings.
+- **After a merge or close.** `sync` accepts the head that was reviewed as
+  long as the change request once had it as its head, and edits only the
+  summary: no new thread, reply or resolution. The summary opens with
+  `reviewed after the merge` (or `close`), never `Next: merge`, and says
+  when the merged head is not the one reviewed.
+- **Other reviewers.** An agreed thread is a row of the findings table,
+  linked to their thread and credited; the rest are a second table with the
+  note.
+
 ## Where the state lives
 
 The summary carries

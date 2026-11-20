@@ -1,9 +1,8 @@
 # Recommending a guard
 
-A review ends; a test stays. When a finding names a concern that nothing in
-the repository holds in place, the review also sketches the guard that would:
-the test, rule or policy that fails the next time someone makes the same
-mistake. The team adds it and CI runs it. The review never does.
+A review ends; a test stays. A guard is the test, rule or policy that fails
+the next time someone makes the same mistake. The review sketches it, the
+team adds it, CI runs it.
 
 ## When a finding carries one
 
@@ -22,19 +21,20 @@ change removes or weakens a guard that existed.
 
 ## The kinds
 
-| Kind            | Guards                                                                                     | Reach for                                                                                     |
-| --------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `architecture`  | A layering rule, a forbidden import, a module boundary, a dependency cycle.                | dependency-cruiser, ArchUnitTS; import-linter; ArchUnit; depguard; a lint rule on imports     |
-| `property`      | An invariant that holds for every input: a round trip, an ordering, a bound.               | fast-check; Hypothesis; proptest; jqwik; rapid                                                |
-| `mutation`      | The strength of the tests around critical logic, where passing proves little.              | Stryker; mutmut; cargo-mutants; PIT - scoped to the module, on a schedule                     |
-| `contract`      | An API, event or schema that another service or team consumes.                             | Pact; an OpenAPI or JSON Schema diff check; `buf breaking`                                    |
-| `fuzz`          | A parser, decoder or handler of bytes it does not control.                                 | `go test -fuzz`; cargo-fuzz; Atheris; Jazzer; a property test fed arbitrary bytes             |
-| `snapshot`      | A rendered or serialized output whose every change should be seen in review.               | the runner's snapshot; insta; syrupy; ApprovalTests                                           |
-| `fitness`       | A measurable design decision: a budget, a size or complexity limit, a recorded ADR.        | a test or script asserting the number, beside the ADR that says why                           |
-| `security`      | A vulnerability class or misconfiguration that can recur: a static rule, a scan, a policy. | a Semgrep rule, a CodeQL query; a secret or dependency scan; OPA, Conftest or Checkov for IaC |
-| `metamorphic`   | Logic with no known right answer, where related inputs must give related outputs.          | the repo's own runner: permute, scale or duplicate the input and compare the two outputs      |
-| `resilience`    | Behaviour when a dependency is slow, down or wrong: timeout, retry, fallback.              | a fault-injecting test double; Toxiproxy; a chaos experiment for a deployed system            |
-| `accessibility` | A UI's roles, labels, contrast and keyboard path.                                          | axe-core in the component or browser tests; pa11y; Lighthouse CI                              |
+<!-- prettier-ignore -->
+| Kind | Guards | Reach for |
+| --- | --- | --- |
+| `architecture` | A layering rule, a forbidden import, a module boundary, a dependency cycle. | dependency-cruiser, ArchUnitTS; import-linter; ArchUnit; depguard; a lint rule on imports |
+| `property` | An invariant that holds for every input: a round trip, an ordering, a bound. | fast-check; Hypothesis; proptest; jqwik; rapid |
+| `mutation` | The strength of the tests around critical logic, where passing proves little. | Stryker; mutmut; cargo-mutants; PIT - scoped to the module, on a schedule |
+| `contract` | An API, event or schema that another service or team consumes. | Pact; an OpenAPI or JSON Schema diff check; `buf breaking` |
+| `fuzz` | A parser, decoder or handler of bytes it does not control. | `go test -fuzz`; cargo-fuzz; Atheris; Jazzer; a property test fed arbitrary bytes |
+| `snapshot` | A rendered or serialized output whose every change should be seen in review. | the runner's snapshot; insta; syrupy; ApprovalTests |
+| `fitness` | A measurable design decision: a budget, a size or complexity limit, a recorded ADR. | a test or script asserting the number, beside the ADR that says why |
+| `security` | A vulnerability class or misconfiguration that can recur: a static rule, a scan, a policy. | a Semgrep rule, a CodeQL query; a secret or dependency scan; OPA, Conftest or Checkov for IaC |
+| `metamorphic` | Logic with no known right answer, where related inputs must give related outputs. | the repo's own runner: permute, scale or duplicate the input and compare the two outputs |
+| `resilience` | Behaviour when a dependency is slow, down or wrong: timeout, retry, fallback. | a fault-injecting test double; Toxiproxy; a chaos experiment for a deployed system |
+| `accessibility` | A UI's roles, labels, contrast and keyboard path. | axe-core in the component or browser tests; pa11y; Lighthouse CI |
 
 Which finding tends to carry which:
 
@@ -92,29 +92,6 @@ module.exports = {
     },
   ],
 };
-```
-
-An invariant, for Hypothesis:
-
-```python
-# tests/test_money.py
-@given(st.integers(min_value=0), st.integers(min_value=1, max_value=12))
-def test_split_loses_no_cent(total, parts):
-    assert sum(split(total, parts)) == total
-```
-
-A recurring vulnerability class, for Semgrep:
-
-```yaml
-# .semgrep/sql.yml
-rules:
-  - id: no-sql-built-by-format
-    languages: [python]
-    severity: ERROR
-    message: Pass values as query parameters, never by string formatting.
-    pattern-either:
-      - pattern: $DB.execute(f"...", ...)
-      - pattern: $DB.execute("..." % ..., ...)
 ```
 
 ## Proportion

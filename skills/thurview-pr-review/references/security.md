@@ -44,16 +44,17 @@ you checked, and stop here.
 Each row is something a diff shows and a trace confirms: follow the value
 from where the outsider controls it to where it acts.
 
-| Class           | In the diff                                                                                                 | Confirm with                                                                     |
-| --------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Authentication  | A new route, handler, job or consumer; a token compared, parsed or minted; a session changed.               | The guard that runs before it, and that every sibling route has the same one.    |
-| Authorization   | An object fetched by an id from the request; a role or tenant read from input.                              | The ownership or tenant check between the lookup and the use, on every path.     |
-| Secrets         | A key, token or password in code, config, a log line, an error, a URL or a test fixture.                    | Where the value comes from, where it is printed, and who can read that place.    |
-| Injection       | Input concatenated into SQL, a shell command, a path, HTML, a template, a regex, a header or a prompt.      | The sink's own escaping or parameter API, and whether this call uses it.         |
-| SSRF            | A URL, host or redirect target taken from input and fetched from inside the network.                        | An allowlist applied after parsing and after redirects, not a prefix match.      |
-| Deserialization | Untrusted bytes handed to a format that builds objects or runs code: pickle, YAML load, native serializers. | The loader used, and a schema that validates before anything is constructed.     |
-| Supply chain    | A new or bumped dependency, an unpinned action or image, a script run at install or in CI, a lockfile edit. | Who publishes it, what it runs, the pin (a full commit or digest), the lockfile. |
-| Least privilege | A wider scope, role, permission, CORS origin, bucket policy, token lifetime, or a `*`.                      | What the code needs versus what it now holds; the narrowest grant that works.    |
+<!-- prettier-ignore -->
+| Class | In the diff | Confirm with |
+| --- | --- | --- |
+| Authentication | A new route, handler, job or consumer; a token compared, parsed or minted; a session changed. | The guard that runs before it, and that every sibling route has the same one. |
+| Authorization | An object fetched by an id from the request; a role or tenant read from input. | The ownership or tenant check between the lookup and the use, on every path. |
+| Secrets | A key, token or password in code, config, a log line, an error, a URL or a test fixture. | Where the value comes from, where it is printed, and who can read that place. |
+| Injection | Input concatenated into SQL, a shell command, a path, HTML, a template, a regex, a header or a prompt. | The sink's own escaping or parameter API, and whether this call uses it. |
+| SSRF | A URL, host or redirect target taken from input and fetched from inside the network. | An allowlist applied after parsing and after redirects, not a prefix match. |
+| Deserialization | Untrusted bytes handed to a format that builds objects or runs code: pickle, YAML load, native serializers. | The loader used, and a schema that validates before anything is constructed. |
+| Supply chain | A new or bumped dependency, an unpinned action or image, a script run at install or in CI, a lockfile edit. | Who publishes it, what it runs, the pin (a full commit or digest), the lockfile. |
+| Least privilege | A wider scope, role, permission, CORS origin, bucket policy, token lifetime, or a `*`. | What the code needs versus what it now holds; the narrowest grant that works. |
 
 ## Writing the finding
 
