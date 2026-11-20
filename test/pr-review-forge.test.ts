@@ -2203,3 +2203,124 @@ describe("approving at a threshold the requester set", { timeout: 30_000 }, () =
     );
   });
 });
+
+describe("CI is independent of the review", { timeout: 30_000 }, () => {
+  const CLEAN = { ...PASS, confidence: 5, reason: "Nothing open.", findings: [] };
+  const RED_CI = [
+    {
+      cli: "gh",
+      match: ["check-runs"],
+      body: { check_runs: [{ name: "test", status: "completed", conclusion: "failure" }] },
+    },
+    { cli: "gh", match: ["/commits/", "/status"], body: { state: "failure", statuses: [] } },
+    { cli: "gh", match: ["actions/runs"], body: { workflow_runs: [{ conclusion: "failure" }] } },
+    { cli: "glab", match: ["pipelines"], body: [{ id: 1, sha: HEAD, status: "failed" }] },
+  ];
+  const readsCi = (c: { args: string[] }) => {
+    const line = c.args.join(" ");
+    return (
+      /check-runs|check-suites|actions\/runs|pipelines|statusCheckRollup|\/commits\/[^ ]*\/status/.test(
+        line,
+      ) ||
+      (line.includes("/statuses/") && !line.includes("POST"))
+    );
+  };
+
+  async function sync(cwd: string) {
+    const file = join(bin, "pass-ci.json");
+    await writeFile(file, JSON.stringify(CLEAN));
+    return cli(["pr-review", "sync", "--change", "7", "--file", file, "--approve-at", "5"], cwd);
+  }
+
+  it("approves on GitHub from its own findings while the head's CI is red, and never asks for CI", async () => {
+    await fixtures([
+      ...RED_CI,
+      { cli: "gh", match: ["pulls/7/reviews", "POST"], body: { id: 77, state: "APPROVED" } },
+      { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9, body: "", user: null } },
+      { cli: "gh", match: ["issues/7/comments", "--paginate", "--slurp"], body: [[]] },
+      {
+        cli: "gh",
+        match: ["graphql"],
+        body: {
+          data: {
+            repository: {
+              pullRequest: { reviews: { nodes: [] }, reviewThreads: { nodes: [] } },
+            },
+          },
+        },
+      },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const out = await sync(github);
+    expect(out["approval"]).toBe(`approved ${HEAD}`);
+    expect((await logged()).filter(readsCi)).toEqual([]);
+  });
+
+  it("approves on GitLab from its own findings while the head's pipeline failed, and never asks for it", async () => {
+    await fixtures([
+      ...RED_CI,
+      { cli: "glab", match: ["merge_requests/7/approve", "POST"], body: { id: 7 } },
+      { cli: "glab", match: ["merge_requests/7/notes", "POST"], body: { id: 3, body: "" } },
+      { cli: "glab", match: ["merge_requests/7/notes?", "--paginate"], body: "" },
+      { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+      { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
+      { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+      { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+      { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+    ]);
+    const out = await sync(gitlab);
+    expect(out["approval"]).toBe(`approved ${HEAD}`);
+    expect((await logged()).filter(readsCi)).toEqual([]);
+  });
+
+  it("starts a GitHub review without reading the head's CI or sending the reviewer to it", async () => {
+    await fixtures([
+      ...RED_CI,
+      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const out = await cli(["pr-review", "status", "--change", "7", "--no-eyes"], github);
+    expect(out).not.toHaveProperty("ci");
+    expect(JSON.stringify(out["help"])).not.toMatch(/\bCI\b|rerun|run the .*(tests|checks)/i);
+    expect((await logged()).filter(readsCi)).toEqual([]);
+  });
+
+  it("starts a GitLab review without reading the head's pipeline", async () => {
+    await fixtures([
+      ...RED_CI,
+      { cli: "glab", match: ["merge_requests/7/notes?", "--paginate"], body: "" },
+      { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+      { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
+      { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+      { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+      { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+    ]);
+    const out = await cli(["pr-review", "status", "--change", "7", "--no-eyes"], gitlab);
+    expect(out).not.toHaveProperty("ci");
+    expect((await logged()).filter(readsCi)).toEqual([]);
+  });
+
+  it("reports a push as soon as it lands, without waiting on the head's CI", async () => {
+    await fixtures([
+      ...RED_CI,
+      {
+        cli: "gh",
+        match: ["issues/7/comments", "--paginate"],
+        body: [[{ id: 9, user: { login: "bot" }, body: SUMMARY(HEAD) }]],
+      },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      {
+        cli: "gh",
+        match: ["repos/acme/web/pulls/7"],
+        body: PULL({ head: { sha: OLD, ref: "retry", repo: { full_name: "acme/web" } } }),
+      },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const ev = await cli(["pr-review", "wait", "--change", "7", "--timeout", "1"], github);
+    expect(ev["event"]).toMatchObject({ event: "push", since: HEAD, head: OLD });
+    expect((await logged()).filter(readsCi)).toEqual([]);
+  });
+});
