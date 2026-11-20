@@ -42,6 +42,12 @@ repos:
         language: system
         files: ^scripts/ci/
         pass_filenames: false
+      - id: vocabulary
+        name: Caller-agnostic vocabulary
+        entry: scripts/ci/check-vocabulary.sh
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: rumdl-check
         name: Markdown lint check
         entry: rumdl check .

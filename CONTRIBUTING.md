@@ -29,6 +29,12 @@ Before pushing, run `pnpm check`: the type-check, format check and end-to-end
 suite CI runs, plus `rumdl check .`, `shellcheck` on the scripts and
 `bats scripts/ci/*.bats`.
 
+The skill and the command take every caller-specific choice - identity,
+approval threshold, guidance - as an argument, flag or environment variable,
+so they name no orchestrator, session tool or organization of a caller.
+`scripts/ci/check-vocabulary.sh` holds that line in CI; extend its `banned`
+list when a new caller's vocabulary should stay out.
+
 ## Layout
 
 - `README.md`: the introduction, install, use and CLI table;
