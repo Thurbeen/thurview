@@ -85,3 +85,23 @@ track() {
   [ "$status" -ne 0 ]
   [[ "$output" != *"No caller-specific vocabulary"* ]]
 }
+
+@test "accepts a banned term inside a longer word" {
+  track docs/a.md 'A fleeting state; the Fleetwood Mac album.'
+  run "$CHECKER"
+  [ "$status" -eq 0 ]
+}
+
+@test "accepts the repository's own address in any case" {
+  track package.json '"url": "https://github.com/thurbeen/thurview"'
+  run "$CHECKER"
+  [ "$status" -eq 0 ]
+}
+
+@test "checks the whole repository when run from a subdirectory" {
+  track .shellcheckrc '# ShellCheck configuration for thurbox shell scripts.'
+  cd skills/s || exit 1
+  run "$CHECKER"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *".shellcheckrc:1:"* ]]
+}
