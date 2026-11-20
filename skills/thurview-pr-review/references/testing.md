@@ -57,8 +57,8 @@ Which finding tends to carry which:
   first. A property test in the runner already there beats a new framework.
 - **A new tool is a cost, and a supply-chain change.** Say in the finding's
   body that it is new. Name no version: the team checks the registry.
-- **Fit the language.** The table's first names are for JS/TS, then Python,
-  Rust, the JVM and Go; pick the one for the code under review.
+- **Fit the language.** Each row mixes ecosystems in no fixed order; pick the
+  tool that exists for the code under review.
 - **One guard per finding**, the cheapest that catches the mistake. An
   architecture test over a mutation run; a lint rule over an architecture
   test when one line says it.

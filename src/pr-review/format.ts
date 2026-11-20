@@ -59,9 +59,10 @@ const Guard = z.object({
     .optional(),
   sketch: z
     .string()
-    .trim()
-    .min(1, "is required: the test, rule or config to add, as code")
-    .refine((text) => text.split("\n").length <= GUARD_SKETCH_LINES, {
+    .refine((text) => text.trim().length > 0, {
+      message: "is required: the test, rule or config to add, as code",
+    })
+    .refine((text) => withoutBlankEdges(text).split("\n").length <= GUARD_SKETCH_LINES, {
       message: `is over ${GUARD_SKETCH_LINES} lines: sketch the one case that matters, not a suite`,
     }),
 });
@@ -268,7 +269,7 @@ export function renderFinding(f: Finding, signoff: string | undefined, forge: st
 }
 
 function renderGuard(g: NonNullable<Finding["guard"]>): string {
-  const sketch = g.sketch.trim();
+  const sketch = withoutBlankEdges(g.sketch);
   const fence = "`".repeat(Math.max(3, longestBacktickRun(sketch) + 1));
   return [
     "<details>",
@@ -280,6 +281,10 @@ function renderGuard(g: NonNullable<Finding["guard"]>): string {
     "",
     "</details>",
   ].join("\n");
+}
+
+function withoutBlankEdges(text: string): string {
+  return text.replace(/^(?:[ \t]*\r?\n)+|\s+$/g, "");
 }
 
 function longestBacktickRun(text: string): number {

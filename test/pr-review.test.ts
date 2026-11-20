@@ -769,6 +769,21 @@ describe("a finding's guard", () => {
     expect(body).toContain("````ts\n```\n</details>\n```\n````");
   });
 
+  it.each(["  - id: x\n    languages: [py]", "\tdef f():\n\t\treturn 1", "\n\n  a\n    b\n\n"])(
+    "posts every line of the sketch as written, indentation included",
+    async (sketch) => {
+      const forge = new MemoryForge();
+      await pass(forge, {
+        confidence: 2,
+        findings: [{ ...UNBOUNDED, guard: { ...GUARD, sketch } }],
+      });
+      const posted = forge.threads[0]!.messages[0]!.body.split("\n");
+      const written = sketch.split("\n").filter((line) => line.trim());
+      for (const line of written) expect(posted).toContain(line);
+      expect(posted[posted.indexOf(written[0]!) - 1]).toBe("```ts");
+    },
+  );
+
   it("has every kind documented in the testing reference, word for word", () => {
     const doc = readFileSync(
       join(ROOT, "skills/thurview-pr-review/references/testing.md"),
