@@ -137,7 +137,8 @@ source code itself.
 ### What CI already runs
 
 Never run locally a test, lint or check that the change request's CI already
-runs on the head: CI's result is the evidence. `status` lists each check under
+runs on the head: CI's result is the evidence, unless the change rewrites what
+CI runs (below). `status` lists each check under
 `ci`, with its state and link. Map each one to what it runs by reading the CI
 config at the head (`.github/workflows/`, `.gitlab-ci.yml`), then:
 
@@ -153,6 +154,14 @@ Run a check yourself only when no check in `ci` runs it, or when `ci` says
 `none on this head`. When `ci` says `unknown`, read the checks with
 `gh pr checks <n>` or `glab ci status` first. A mutation (see Scoring a pass)
 is always yours to run: CI never runs mutated code.
+
+**When the change rewrites what CI runs, trust no check.** When the diff
+touches CI config (`.github/workflows/`, `.gitlab-ci.yml` and what it
+includes) or a script or test command a CI job runs (a manifest script, a
+task-runner target, a script the config calls), no check in `ci` counts as
+covered, whatever its state. Run the checks yourself, and review the changed
+scripts and tests as you run them. Skip a job that needs a runner, OS or
+environment you do not have, and name it and why in a `risk` bullet.
 
 ### Other reviewers' threads
 

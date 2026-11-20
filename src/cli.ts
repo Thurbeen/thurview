@@ -330,7 +330,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
               ? "No CI check on this head: run the repository's own tests and gates yourself"
               : "CI could not be read: read it with `gh pr checks` or `glab ci status` before running any check yourself"
             : ci.checks.some(ciCovers)
-              ? "Do not rerun locally a check CI runs: read each one in `ci`, and its log on the forge; run only what no check in `ci` covers"
+              ? "Do not rerun locally a check CI runs: read each one in `ci`, and its log on the forge; run only what no check in `ci` covers. When the diff changes CI config or a script or test command CI runs, trust no check and run them yourself"
               : "No CI check on this head has a result or is under way: run the checks in `ci` yourself",
           ...(st.others.length
             ? [

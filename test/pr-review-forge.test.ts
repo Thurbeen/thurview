@@ -735,6 +735,7 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
     expect(skill).toMatch(
       /Never run locally a test, lint or check that the change request's CI already\s+runs/,
     );
+    expect(skill).toMatch(/When the change rewrites what CI runs, trust no check/);
   });
 
   it("says when the head has no CI, so the review runs the checks itself", async () => {
