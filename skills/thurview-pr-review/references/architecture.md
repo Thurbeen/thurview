@@ -58,10 +58,37 @@ at `<base>` to tell what the change introduced from what it inherited.
 | Interface bent to a caller | A parameter, option or flag added to a shared function that one caller passes.                              | Callers of the function, and which of them pass it.                                 |
 | Bypassed seam              | A caller reaching into another module's internals, or around the interface it already has.                  | Other callers of the same internals; the interface they were meant to use.          |
 | Hidden coupling            | Module-level mutable state, a singleton, an init order the change starts to depend on.                      | Every reader and writer of that state.                                              |
+| Foreign storage access     | A query, client or connection to a table, bucket, topic or cache that another service or module owns.       | The owner: who migrates that schema, and its other readers and writers.             |
+| Second writer              | A new write path to data that already has an owner.                                                         | Every writer of the field or table; the invariant each one must now repeat.         |
+| Contract changed in place  | A field removed, renamed, retyped or made required in an API, event or schema, with no version or overlap.  | Its consumers at head; when they live in another repository, a risk bullet.         |
+| Low cohesion               | A module gaining a second reason to change: an unrelated function in `utils`, a type serving two domains.   | Importers of the new symbol against importers of the old ones.                      |
+| Speculative generality     | An interface, layer, option or config with one implementation and one caller.                               | Implementations and callers at head: `git grep -n -e '<name>' <head> --`            |
+| One-way door               | A migration that drops or rewrites data, a persisted id or format, a public name - with no way back.        | The down path, and every reader of the old shape.                                   |
 
 A text search finds names, not meaning, so the rules in
 [Searching the code](searching.md) hold here too: open each hit, and name the
 search beside the claim it supports.
+
+## Failure modes and operability
+
+A design that only works when everything works is a design defect. For every
+call the change adds across a process or network boundary, and every write:
+
+- **Timeout and retry**: is there a timeout; is the retry bounded, backed off,
+  and safe to repeat - idempotent, or keyed?
+- **Partial failure**: two writes with no transaction or outbox - what state
+  is left when the process dies between them, and who repairs it?
+- **Bounds**: a queue, cache, loop, batch or fan-out that grows with input and
+  has no limit.
+- **Seeing it**: does the failure path log or count what an operator needs -
+  which item, which dependency - with no secret in it?
+- **Undoing it**: a flag, a rollback, a migration that runs both ways. What
+  does reverting this change leave behind?
+
+A "no" on a line the diff adds is a `reliability` finding, or `architecture`
+when the shape itself forces the failure. Several of these have a guard - a
+`resilience` check, a `contract` test, a `fitness` function - per
+[Recommending a guard](testing.md).
 
 ## Writing the finding
 
@@ -76,6 +103,9 @@ It carries three things, each pointing at `path:line` at the head:
 - **The step**: the smallest change that moves toward the target, and whether
   it belongs in this change or a follow-up. A target nobody can take a step
   toward is an opinion.
+- **The guard**, when the rule can be checked by a machine: an
+  `architecture` test or a `fitness` function that keeps the next change from
+  reintroducing it, per [Recommending a guard](testing.md).
 
 Example: _The `retries === 0` guard patches one caller; `upload()` and
 `sync()` each decide retry policy (`git grep -n -e 'retries' <head>` → 4 sites

@@ -46,7 +46,9 @@ list when a new caller's vocabulary should stay out.
   the closed category set, and the follow loop, all on the forge seam.
 - `skills/thurview-pr-review/`: the one skill. `SKILL.md` is the review flow;
   `references/` holds the forge differences, the architecture lens every
-  review leads with, and the search recipes.
+  review leads with, the security lens, the guards a review recommends
+  (their kinds are the closed set in `src/pr-review/categories.ts`), and the
+  search recipes.
 - `test/pr-review.test.ts`: the summary, markers and follow loop against an
   in-memory forge.
 - `test/pr-review-forge.test.ts`: the CLI end to end with a fake `gh` and

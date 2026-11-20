@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import * as g from "./git.js";
 import { parseFlags, helpFor, str, bool, type FlagSpec, type Parsed } from "./flags.js";
 import { forgeFor, repoOf, type ChangeRequest, type Forge, type RepoId } from "./forge/index.js";
-import { CATEGORIES, CONFIDENCE } from "./pr-review/categories.js";
+import { CATEGORIES, CONFIDENCE, GUARDS } from "./pr-review/categories.js";
 import { VERSION } from "./version.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -106,7 +106,7 @@ const SPECS: Record<
       },
       full: {
         kind: "boolean",
-        help: "status: also print the category definitions and the confidence scale",
+        help: "status: also print the category definitions, the confidence scale and the guard kinds",
       },
       eyes: {
         kind: "boolean",
@@ -308,6 +308,7 @@ const commands: Record<string, (args: string[]) => Promise<Out>> = {
                 Object.entries(CATEGORIES).map(([k, v]) => [k, v.definition]),
               ),
               confidence: CONFIDENCE,
+              guards: Object.fromEntries(Object.entries(GUARDS).map(([k, v]) => [k, v.guards])),
             }
           : {}),
         help: [

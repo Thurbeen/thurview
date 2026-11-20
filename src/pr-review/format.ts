@@ -4,6 +4,8 @@ import { AxiError } from "axi-sdk-js";
 import {
   CATEGORIES,
   CATEGORY_IDS,
+  GUARDS,
+  GUARD_KINDS,
   SEVERITIES,
   type Category,
   type Severity,
@@ -20,6 +22,7 @@ import {
 export const SUMMARY_WORDS = 120;
 /** A finding's visible lines, its suggestion block excluded and its sign-off included. */
 export const FINDING_LINES = 5;
+export const GUARD_SKETCH_LINES = 15;
 
 const SUMMARY_TAG = "thurview-pr-review";
 const FINDING_TAG = "thurview-finding";
@@ -42,6 +45,28 @@ export interface FindingMarker {
   severity: Severity;
 }
 
+const Guard = z.object({
+  kind: z.enum(GUARD_KINDS),
+  tool: z
+    .string()
+    .trim()
+    .min(1)
+    .max(40)
+    .regex(/^[^\r\n]*$/, "is one line: the tool that runs the guard"),
+  lang: z
+    .string()
+    .regex(/^[A-Za-z0-9+#.-]{1,20}$/, "is a fence language such as ts, py or yaml")
+    .optional(),
+  sketch: z
+    .string()
+    .refine((text) => text.trim().length > 0, {
+      message: "is required: the test, rule or config to add, as code",
+    })
+    .refine((text) => withoutBlankEdges(text).split("\n").length <= GUARD_SKETCH_LINES, {
+      message: `is over ${GUARD_SKETCH_LINES} lines: sketch the one case that matters, not a suite`,
+    }),
+});
+
 const Finding = z.object({
   id: z
     .string()
@@ -56,6 +81,7 @@ const Finding = z.object({
   title: z.string().min(1),
   body: z.string().default(""),
   suggestion: z.string().optional(),
+  guard: Guard.optional(),
 });
 
 /**
@@ -130,6 +156,7 @@ export function parsePass(text: string, file: string): Pass {
         `category is one of ${CATEGORY_IDS.join(", ")}; severity is one of ${SEVERITIES.join(", ")}`,
         "confidence is 1-5; risk holds 1 to 5 bullets",
         "architecture is one line: whether the change fits the design, or the defect it introduces",
+        `a finding's guard has a kind, one of ${GUARD_KINDS.join(", ")}, a tool, and a sketch of at most ${GUARD_SKETCH_LINES} lines`,
       ],
     );
   checkPass(parsed.data);
@@ -236,8 +263,36 @@ export function renderFinding(f: Finding, signoff: string | undefined, forge: st
     const fence = forge === "gitlab" ? `\`\`\`suggestion:-${above}+0` : "```suggestion";
     parts.push(`${fence}\n${f.suggestion.replace(/\n$/, "")}\n\`\`\``);
   }
+  if (f.guard) parts.push(renderGuard(f.guard));
   if (signoff) parts.push(signoff);
   return parts.join("\n");
+}
+
+function renderGuard(g: NonNullable<Finding["guard"]>): string {
+  const sketch = withoutBlankEdges(g.sketch);
+  const fence = "`".repeat(Math.max(3, longestBacktickRun(sketch) + 1));
+  return [
+    "<details>",
+    `<summary>Guard: ${GUARDS[g.kind].label} · ${escapeHtml(g.tool.trim())}</summary>`,
+    "",
+    `${fence}${g.lang ?? ""}`,
+    sketch,
+    fence,
+    "",
+    "</details>",
+  ].join("\n");
+}
+
+function withoutBlankEdges(text: string): string {
+  return text.replace(/^(?:[ \t]*\r?\n)+|\s+$/g, "");
+}
+
+function longestBacktickRun(text: string): number {
+  return Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 export interface OpenFinding {
@@ -273,17 +328,13 @@ export interface SummaryUpdate {
 }
 
 function tableText(text: string): string {
-  return text
-    .trim()
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
+  return escapeHtml(text.trim())
     .replace(/\|/g, "\\|")
     .replace(/[\r\n]/g, " ");
 }
 
 function code(text: string): string {
-  const fence = "`".repeat(Math.max(0, ...(text.match(/`+/g) ?? []).map((s) => s.length)) + 1);
+  const fence = "`".repeat(longestBacktickRun(text) + 1);
   return `${fence}${text}${fence}`;
 }
 

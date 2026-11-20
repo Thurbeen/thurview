@@ -2324,3 +2324,81 @@ describe("CI is independent of the review", { timeout: 30_000 }, () => {
     expect((await logged()).filter(readsCi)).toEqual([]);
   });
 });
+
+describe(
+  "a finding's guard, the test that would hold its fix in place",
+  { timeout: 30_000 },
+  () => {
+    const GUARDED = {
+      ...PASS,
+      findings: [
+        {
+          ...PASS.findings[0]!,
+          guard: {
+            kind: "property",
+            tool: "fast-check",
+            lang: "ts",
+            sketch:
+              "fc.assert(fc.property(fc.integer({ min: 400, max: 499 }), (status) =>\n  attemptsFor(status) === 1));",
+          },
+        },
+      ],
+    };
+    const FOLDED =
+      "<details>\n<summary>Guard: Property test · fast-check</summary>\n\n```ts\nfc.assert(fc.property(fc.integer({ min: 400, max: 499 }), (status) =>\n  attemptsFor(status) === 1));\n```\n\n</details>";
+
+    async function syncGuarded(cwd: string) {
+      const file = join(bin, "pass-guard.json");
+      await writeFile(file, JSON.stringify(GUARDED));
+      return cli(["pr-review", "sync", "--change", "7", "--file", file], cwd);
+    }
+
+    it("is posted folded in the finding's thread on GitHub, and runs nothing", async () => {
+      await fixtures([
+        { cli: "gh", match: ["pulls/7/comments", "POST"], body: { id: 1 } },
+        { cli: "gh", match: ["issues/7/comments", "POST"], body: { id: 9, body: "", user: null } },
+        { cli: "gh", match: ["issues/7/comments", "--paginate", "--slurp"], body: [[]] },
+        { cli: "gh", match: ["graphql"], body: NO_THREADS },
+        { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+        { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+      ]);
+      await syncGuarded(github);
+      const all = await logged();
+      const inline = all.find((c) => c.args.join(" ").includes("pulls/7/comments"))!;
+      const body: string = JSON.parse(inline.body).body;
+      expect(body).toContain(FOLDED);
+      expect(body.indexOf("```suggestion")).toBeLessThan(body.indexOf("<details>"));
+      expect(body.trimEnd().split("\n").at(-1)).toBe("— the agent");
+      expect(all.every((c) => c.cli === "gh")).toBe(true);
+    });
+
+    it("is posted folded in the finding's discussion on GitLab", async () => {
+      await fixtures([
+        { cli: "glab", match: ["merge_requests/7/discussions", "POST"], body: { id: "d1" } },
+        { cli: "glab", match: ["merge_requests/7/notes", "POST"], body: { id: 3, body: "" } },
+        { cli: "glab", match: ["merge_requests/7/notes?", "--paginate", "ndjson"], body: "" },
+        { cli: "glab", match: ["auth", "status", "gitlab.example.com"], body: "" },
+        { cli: "glab", match: ["merge_requests/7/discussions?"], body: [] },
+        { cli: "glab", match: ["merge_requests/7/approvals"], body: { approved_by: [] } },
+        { cli: "glab", match: ["projects/acme%2Fweb/merge_requests/7"], body: MR },
+        { cli: "glab", match: ["api", "user"], body: { username: "bot" } },
+      ]);
+      await syncGuarded(gitlab);
+      const discussion = (await calls()).find((c) =>
+        c.args.join(" ").includes("discussions --method"),
+      )!;
+      expect(JSON.parse(discussion.body).body).toContain(FOLDED);
+    });
+
+    it("names the guard kinds when status is asked for the full tables", async () => {
+      await fixtures([
+        { cli: "gh", match: ["issues/7/comments", "--paginate", "--slurp"], body: [[]] },
+        { cli: "gh", match: ["graphql"], body: NO_THREADS },
+        { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+        { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+      ]);
+      const out = await cli(["pr-review", "status", "--change", "7", "--full"], github);
+      expect(Object.keys(out["guards"])).toContain("property");
+    });
+  },
+);

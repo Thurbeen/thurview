@@ -9,12 +9,13 @@ import type {
   RepoId,
   ReviewStatusCheck,
 } from "../src/forge/types.js";
-import { CATEGORIES, SEVERITIES, CONFIDENCE } from "../src/pr-review/categories.js";
+import { CATEGORIES, SEVERITIES, CONFIDENCE, GUARDS } from "../src/pr-review/categories.js";
 import {
   parsePass,
   renderSummary,
   summaryWords,
   SUMMARY_WORDS,
+  GUARD_SKETCH_LINES,
   type Pass,
 } from "../src/pr-review/format.js";
 import {
@@ -671,6 +672,132 @@ describe("inline findings", () => {
     const forge = new MemoryForge();
     await pass(forge, { findings: [{ ...UNBOUNDED, severity: "nit", category: "docs" }] });
     expect(forge.threads[0]!.messages[0]!.body).toContain("nit: **Docs:**");
+  });
+});
+
+describe("a finding's guard", () => {
+  const GUARD = {
+    kind: "property" as const,
+    tool: "fast-check",
+    lang: "ts",
+    sketch:
+      "fc.assert(fc.property(fc.integer({ min: 400, max: 499 }), (s) =>\n  attemptsFor(s) === 1));",
+  };
+  const guarded = (guard: object) =>
+    JSON.stringify({ ...base, confidence: 2, findings: [{ ...UNBOUNDED, guard }] });
+
+  it("is folded under the fix, with its kind, tool and sketch", async () => {
+    const forge = new MemoryForge();
+    await pass(forge, {
+      confidence: 2,
+      signoff: "— the agent",
+      findings: [{ ...UNBOUNDED, guard: GUARD }],
+    });
+    const body = forge.threads[0]!.messages[0]!.body;
+    expect(body).toContain(
+      `Return on any status below 500.\n<details>\n<summary>Guard: Property test · fast-check</summary>\n\n\`\`\`ts\n${GUARD.sketch}\n\`\`\`\n\n</details>\n— the agent`,
+    );
+  });
+
+  it("stays outside the finding's line budget, which still holds the claim and the fix", () => {
+    const body = "one\ntwo\nthree\nfour";
+    expect(() => parsePass(guarded(GUARD), "pass.json")).not.toThrow();
+    expect(() =>
+      parsePass(
+        JSON.stringify({
+          ...base,
+          confidence: 2,
+          findings: [{ ...UNBOUNDED, body, guard: GUARD }],
+        }),
+        "pass.json",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      parsePass(
+        JSON.stringify({
+          ...base,
+          confidence: 2,
+          findings: [{ ...UNBOUNDED, body: `${body}\nfive`, guard: GUARD }],
+        }),
+        "pass.json",
+      ),
+    ).toThrow(/budget/);
+  });
+
+  it("is one of a closed set of kinds", () => {
+    expect(() => parsePass(guarded({ ...GUARD, kind: "unit" }), "pass.json")).toThrow(/guard/);
+    expect(Object.keys(GUARDS)).toEqual([
+      "architecture",
+      "property",
+      "mutation",
+      "contract",
+      "fuzz",
+      "snapshot",
+      "fitness",
+      "security",
+      "metamorphic",
+      "resilience",
+      "accessibility",
+    ]);
+  });
+
+  it("is a sketch, not a test suite: a bounded number of lines", () => {
+    const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i}`).join("\n");
+    expect(() =>
+      parsePass(guarded({ ...GUARD, sketch: lines(GUARD_SKETCH_LINES) }), "pass.json"),
+    ).not.toThrow();
+    expect(() =>
+      parsePass(guarded({ ...GUARD, sketch: lines(GUARD_SKETCH_LINES + 1) }), "pass.json"),
+    ).toThrow(/sketch/);
+    expect(() => parsePass(guarded({ ...GUARD, sketch: " " }), "pass.json")).toThrow(/sketch/);
+  });
+
+  it("cannot break out of its fold or its fence", async () => {
+    expect(() =>
+      parsePass(guarded({ ...GUARD, tool: "x</summary>\n</details>" }), "pass.json"),
+    ).toThrow(/tool/);
+    expect(() => parsePass(guarded({ ...GUARD, lang: "ts\n```" }), "pass.json")).toThrow(/lang/);
+    const forge = new MemoryForge();
+    await pass(forge, {
+      confidence: 2,
+      findings: [
+        { ...UNBOUNDED, guard: { ...GUARD, tool: "<b>x</b>", sketch: "```\n</details>\n```" } },
+      ],
+    });
+    const body = forge.threads[0]!.messages[0]!.body;
+    expect(body).toContain("<summary>Guard: Property test · &lt;b&gt;x&lt;/b&gt;</summary>");
+    expect(body).toContain("````ts\n```\n</details>\n```\n````");
+  });
+
+  it.each(["  - id: x\n    languages: [py]", "\tdef f():\n\t\treturn 1", "\n\n  a\n    b\n\n"])(
+    "posts every line of the sketch as written, indentation included",
+    async (sketch) => {
+      const forge = new MemoryForge();
+      await pass(forge, {
+        confidence: 2,
+        findings: [{ ...UNBOUNDED, guard: { ...GUARD, sketch } }],
+      });
+      const posted = forge.threads[0]!.messages[0]!.body.split("\n");
+      const written = sketch.split("\n").filter((line) => line.trim());
+      for (const line of written) expect(posted).toContain(line);
+      expect(posted[posted.indexOf(written[0]!) - 1]).toBe("```ts");
+    },
+  );
+
+  it("has every kind documented in the testing reference, word for word", () => {
+    const doc = readFileSync(
+      join(ROOT, "skills/thurview-pr-review/references/testing.md"),
+      "utf8",
+    ).replace(/ {2,}/g, " ");
+    for (const [id, g] of Object.entries(GUARDS))
+      expect(doc).toContain(`| \`${id}\` | ${g.guards} |`);
+  });
+
+  it("is named in the skill's pass example", () => {
+    const skill = readFileSync(join(ROOT, "skills/thurview-pr-review/SKILL.md"), "utf8");
+    expect(skill).toContain('"guard": {');
+    expect(skill).toContain("references/testing.md");
+    expect(skill).toContain("references/security.md");
   });
 });
 
