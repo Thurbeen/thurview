@@ -1,24 +1,17 @@
 # Reviewing the architecture
 
-Architecture is the first thing a review looks at and the last thing it gives
-up on. A bug in a line costs one fix. A defect in the design costs a fix per
-caller, forever, and each of those fixes is a small `if` that makes the next
-one harder to see. A review that catches the bug and misses the design has
-done the cheap half of the job.
-
-So every review takes a view on the architecture, and answers two questions
-before it hunts for bugs:
+A bug in a line costs one fix. A defect in the design costs a fix per caller,
+and each one is a small `if` that hides the design further. So every review
+answers two questions before it hunts for bugs:
 
 1. **Does the change put its logic in the right place?** The module that owns
    the data or the rule, behind the seam meant for it, with dependencies
    running the way the rest of the system runs them.
-2. **Does it fix the cause, or patch a symptom?** A fix that adds a special
-   case where the failure showed up, instead of removing what let the failure
-   happen, is a symptom patch.
+2. **Does it fix the cause, or patch a symptom?** A special case added where
+   the failure showed up, instead of removing what let it happen.
 
-A finding that answers either one with "no" is an `architecture` finding. It
-outranks a bug finding in the same code: fixing the design usually removes the
-bug, and fixing the bug alone usually hides the design.
+A "no" to either is an `architecture` finding, and it outranks a bug in the
+same code: fixing the design usually removes the bug.
 
 ## The patch test
 
@@ -48,22 +41,23 @@ Each row is something a diff shows and a search confirms. The search is what
 turns a suspicion into a finding the reader can check: run it at `<head>`, and
 at `<base>` to tell what the change introduced from what it inherited.
 
-| Defect                     | In the diff                                                                                                 | Confirm with                                                                        |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Symptom patch              | A new branch on one input, kind, caller or flag, or a `catch` that swallows one error, at the failure site. | The same discriminant elsewhere: `git grep -n -E -e "kind *=+ *['\"]foo" <head> --` |
-| Scattered switch           | Another case added to a `switch`/`if` chain on a type tag that other modules also switch on.                | Every place that tests the tag: `git grep -n -E -e '\.kind *=+' <head> --`          |
-| Misplaced responsibility   | A rule computed in a layer that does not own it: a handler doing storage, a view doing business logic.      | Where else the rule is computed; who owns the data it reads.                        |
-| Dependency against grain   | A lower layer importing a higher one, core importing an adapter, a new import cycle.                        | The importers recipe in both directions between the two modules.                    |
-| Duplicated source of truth | A list, constant, schema or validation rule written a second time.                                          | The literal or key at head: `git grep -n -F -e '<literal>' <head> --`               |
-| Interface bent to a caller | A parameter, option or flag added to a shared function that one caller passes.                              | Callers of the function, and which of them pass it.                                 |
-| Bypassed seam              | A caller reaching into another module's internals, or around the interface it already has.                  | Other callers of the same internals; the interface they were meant to use.          |
-| Hidden coupling            | Module-level mutable state, a singleton, an init order the change starts to depend on.                      | Every reader and writer of that state.                                              |
-| Foreign storage access     | A query, client or connection to a table, bucket, topic or cache that another service or module owns.       | The owner: who migrates that schema, and its other readers and writers.             |
-| Second writer              | A new write path to data that already has an owner.                                                         | Every writer of the field or table; the invariant each one must now repeat.         |
-| Contract changed in place  | A field removed, renamed, retyped or made required in an API, event or schema, with no version or overlap.  | Its consumers at head; when they live in another repository, a risk bullet.         |
-| Low cohesion               | A module gaining a second reason to change: an unrelated function in `utils`, a type serving two domains.   | Importers of the new symbol against importers of the old ones.                      |
-| Speculative generality     | An interface, layer, option or config with one implementation and one caller.                               | Implementations and callers at head: `git grep -n -e '<name>' <head> --`            |
-| One-way door               | A migration that drops or rewrites data, a persisted id or format, a public name - with no way back.        | The down path, and every reader of the old shape.                                   |
+<!-- prettier-ignore -->
+| Defect | In the diff | Confirm with |
+| --- | --- | --- |
+| Symptom patch | A new branch on one input, kind, caller or flag, or a `catch` that swallows one error, at the failure site. | The same discriminant elsewhere: `git grep -n -E -e "kind *=+ *['\"]foo" <head> --` |
+| Scattered switch | Another case added to a `switch`/`if` chain on a type tag that other modules also switch on. | Every place that tests the tag: `git grep -n -E -e '\.kind *=+' <head> --` |
+| Misplaced responsibility | A rule computed in a layer that does not own it: a handler doing storage, a view doing business logic. | Where else the rule is computed; who owns the data it reads. |
+| Dependency against grain | A lower layer importing a higher one, core importing an adapter, a new import cycle. | The importers recipe in both directions between the two modules. |
+| Duplicated source of truth | A list, constant, schema or validation rule written a second time. | The literal or key at head: `git grep -n -F -e '<literal>' <head> --` |
+| Interface bent to a caller | A parameter, option or flag added to a shared function that one caller passes. | Callers of the function, and which of them pass it. |
+| Bypassed seam | A caller reaching into another module's internals, or around the interface it already has. | Other callers of the same internals; the interface they were meant to use. |
+| Hidden coupling | Module-level mutable state, a singleton, an init order the change starts to depend on. | Every reader and writer of that state. |
+| Foreign storage access | A query, client or connection to a table, bucket, topic or cache that another service or module owns. | The owner: who migrates that schema, and its other readers and writers. |
+| Second writer | A new write path to data that already has an owner. | Every writer of the field or table; the invariant each one must now repeat. |
+| Contract changed in place | A field removed, renamed, retyped or made required in an API, event or schema, with no version or overlap. | Its consumers at head; when they live in another repository, a risk bullet. |
+| Low cohesion | A module gaining a second reason to change: an unrelated function in `utils`, a type serving two domains. | Importers of the new symbol against importers of the old ones. |
+| Speculative generality | An interface, layer, option or config with one implementation and one caller. | Implementations and callers at head: `git grep -n -e '<name>' <head> --` |
+| One-way door | A migration that drops or rewrites data, a persisted id or format, a public name - with no way back. | The down path, and every reader of the old shape. |
 
 A text search finds names, not meaning, so the rules in
 [Searching the code](searching.md) hold here too: open each hit, and name the
@@ -127,11 +121,5 @@ two existing checks into it here; the other callers can follow._
   show: a second place that must change in step, a caller that will hit the
   same bug, a dependency the rest of the system does not take.
 - **No defect is an answer; no view is not.** When the change puts its logic
-  where it belongs and fixes causes, say so, and how you know. That line is
-  what makes the view worth reading on the review where there is a defect.
-
-## Where the view goes
-
-Every review states it, and `sync` refuses a pass that does not:
-`architecture` in `pass.json`, one line, read right under the reason in the
-summary. An architecture finding is a thread like any other, filed first.
+  where it belongs and fixes causes, say so in the pass's `architecture`
+  line, and how you know.

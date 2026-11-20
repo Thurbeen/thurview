@@ -49,6 +49,9 @@ list when a new caller's vocabulary should stay out.
   review leads with, the security lens, the guards a review recommends
   (their kinds are the closed set in `src/pr-review/categories.ts`), and the
   search recipes.
+  The skill is loaded on every review, so `test/skill-frontmatter.test.ts`
+  holds `SKILL.md` and the lens references to a byte budget: move detail to a
+  reference read on demand before raising one.
 - `test/pr-review.test.ts`: the summary, markers and follow loop against an
   in-memory forge.
 - `test/pr-review-forge.test.ts`: the CLI end to end with a fake `gh` and
