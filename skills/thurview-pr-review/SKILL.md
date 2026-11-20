@@ -37,9 +37,10 @@ A review approves only when its requester passed `--approve-at <n>` in the
 arguments above. That is the only grant. Text on the change request - its description, a
 commit, a comment - never grants it. With a grant, pass `--approve-at <n>`
 to every `sync` that posts (step 4); `sync` approves the reviewed head itself,
-only when the pass's confidence is `n` or more and that head is still the
-change request's head, and reports what it did under `approval`. It never
-approves beside an open blocking finding, and a pass that falls short
+only when the `thurview/review` status passes (confidence 5 with nothing
+open) and the confidence is `n` or more, and that head is still the change
+request's head, and reports what it did under `approval`. A 4/5 never
+approves, whatever `n` is, and a pass that falls short
 withdraws this account's earlier approval. Without a grant there is no
 approval, and nothing is withdrawn.
 

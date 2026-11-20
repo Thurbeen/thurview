@@ -480,7 +480,7 @@ export async function sync(
     body,
     sinceLastReview,
   };
-  const approval = approvalFor(pass, reviewed, ended, st, blocking, opts.approveAt);
+  const approval = approvalFor(pass, reviewed, ended, st, open, opts.approveAt);
   if (approval)
     result.approval = approval.approve
       ? `would approve ${reviewed}`
@@ -547,7 +547,7 @@ function approvalFor(
   head: string,
   ended: { state: string } | null,
   st: ReviewState,
-  blocking: number,
+  open: OpenFinding[],
   approveAt: number | undefined,
 ): ApprovalPlan | null {
   if (approveAt === undefined) return null;
@@ -559,12 +559,17 @@ function approvalFor(
       why: `not approved: the change request is ${ended.state}`,
       revoke: [],
     };
+  const blocking = open.filter((f) => f.severity === "blocking").length;
   if (blocking)
     return refuse(
       `not approved: ${blocking} blocking finding${blocking === 1 ? " is" : "s are"} open`,
     );
   if (pass.confidence < approveAt)
     return refuse(`not approved: confidence ${pass.confidence} is below ${approveAt}`);
+  if (!passes(pass, open))
+    return refuse(
+      `not approved: confidence ${pass.confidence}/5 with ${openFindings(open)}; ${REVIEW_STATUS} passes only at 5/5 with nothing open`,
+    );
   const atHead = st.approvals.filter((a) => a.commit === null || a.commit === head);
   if (atHead.some((a) => a.dismissed))
     return {
@@ -604,21 +609,22 @@ async function applyApproval(
   }
 }
 
-/**
- * The verdict as a status on the head it judged, after the summary it repeats:
- * success only at 5 with nothing open. A push leaves the new head without one
- * until a pass reviews it, so a branch rule requiring it holds every head.
- */
-async function setReviewStatus(ctx: Ctx, sha: string, pass: Pass, open: OpenFinding[]) {
+function passes(pass: Pass, open: OpenFinding[]): boolean {
+  return pass.confidence === 5 && !open.length;
+}
+
+function openFindings(open: OpenFinding[]): string {
   const blocking = open.filter((f) => f.severity === "blocking").length;
-  const clean = pass.confidence === 5 && !open.length;
-  const counts = open.length
+  return open.length
     ? `${open.length} open finding${open.length === 1 ? "" : "s"}${blocking ? `, ${blocking} blocking` : ""}`
     : "no open findings";
+}
+
+async function setReviewStatus(ctx: Ctx, sha: string, pass: Pass, open: OpenFinding[]) {
   await ctx.forge.setStatus(ctx.repo, ctx.cr, sha, {
     context: REVIEW_STATUS,
-    state: clean ? "success" : "failure",
-    description: `Confidence ${pass.confidence}/5 · ${counts}`,
+    state: passes(pass, open) ? "success" : "failure",
+    description: `Confidence ${pass.confidence}/5 · ${openFindings(open)}`,
     url: ctx.cr.url,
   });
 }
