@@ -52,6 +52,57 @@ export const CATEGORIES = {
 export type Category = keyof typeof CATEGORIES;
 export const CATEGORY_IDS = Object.keys(CATEGORIES) as [Category, ...Category[]];
 
+export const GUARDS = {
+  architecture: {
+    label: "Architecture test",
+    guards: "A layering rule, a forbidden import, a module boundary, a dependency cycle.",
+  },
+  property: {
+    label: "Property test",
+    guards: "An invariant that holds for every input: a round trip, an ordering, a bound.",
+  },
+  mutation: {
+    label: "Mutation testing",
+    guards: "The strength of the tests around critical logic, where passing proves little.",
+  },
+  contract: {
+    label: "Contract test",
+    guards: "An API, event or schema that another service or team consumes.",
+  },
+  fuzz: {
+    label: "Fuzz target",
+    guards: "A parser, decoder or handler of bytes it does not control.",
+  },
+  snapshot: {
+    label: "Snapshot test",
+    guards: "A rendered or serialized output whose every change should be seen in review.",
+  },
+  fitness: {
+    label: "Fitness function",
+    guards: "A measurable design decision: a budget, a size or complexity limit, a recorded ADR.",
+  },
+  security: {
+    label: "Security check",
+    guards:
+      "A vulnerability class or misconfiguration that can recur: a static rule, a scan, a policy.",
+  },
+  metamorphic: {
+    label: "Metamorphic test",
+    guards: "Logic with no known right answer, where related inputs must give related outputs.",
+  },
+  resilience: {
+    label: "Resilience check",
+    guards: "Behaviour when a dependency is slow, down or wrong: timeout, retry, fallback.",
+  },
+  accessibility: {
+    label: "Accessibility check",
+    guards: "A UI's roles, labels, contrast and keyboard path.",
+  },
+} as const;
+
+export type GuardKind = keyof typeof GUARDS;
+export const GUARD_KINDS = Object.keys(GUARDS) as [GuardKind, ...GuardKind[]];
+
 /** `blocking` must be fixed before merge; `nit` is taste, and says so. */
 export const SEVERITIES = ["blocking", "non-blocking", "nit"] as const;
 export type Severity = (typeof SEVERITIES)[number];

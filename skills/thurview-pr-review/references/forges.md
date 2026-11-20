@@ -13,6 +13,7 @@ merge, close or push.
 | A finding         | one review comment, a resolvable thread    | one diff discussion, a resolvable thread            |
 | A line range      | anchored as the range                      | anchored at its last line                           |
 | A suggestion      | ` ```suggestion ` over the range           | ` ```suggestion:-N+0 ` reaching back over the range |
+| A guard           | a folded `<details>` under the fix         | the same                                            |
 | Resolving a fixed | a reply, then `resolveReviewThread`        | a reply, then `PUT .../discussions/<id>` resolved   |
 | The stop label    | `thurview:stop` among the pull's labels    | `thurview:stop` among the merge request's labels    |
 | The stop command  | an issue comment starting `/thurview stop` | a top-level note starting `/thurview stop`          |

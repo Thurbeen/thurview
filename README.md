@@ -17,6 +17,13 @@ architecture (boundaries, coupling, contracts, data ownership), security
 supply chain), correctness of intent, failure modes, operability,
 maintainability and simplicity.
 
+Security is reviewed from a threat model: the trust boundaries the change
+touches, and what an outsider can do at each. And when a finding names a
+concern that no test holds in place, its thread carries a **guard**: a sketch
+of the test that would, in the repository's own language and tooling - an
+architecture test, a property test, a contract test, a fuzz target, a static
+rule, a policy. thurview recommends and sketches these; it never runs them.
+
 [![CI](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml/badge.svg)](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/thurview)](https://www.npmjs.com/package/thurview)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -95,6 +102,11 @@ review is stored there - its state is in hidden markers on the forge.
 ## Documentation
 
 - [The skill](skills/thurview-pr-review/SKILL.md): the whole review flow.
+- The lenses:
+  [architecture](skills/thurview-pr-review/references/architecture.md),
+  [security](skills/thurview-pr-review/references/security.md) and
+  [guards](skills/thurview-pr-review/references/testing.md), the tests a
+  review recommends.
 - [Forges](skills/thurview-pr-review/references/forges.md): what GitHub and
   GitLab each do, and how to require the review.
 - [docs/INSTALL.md](docs/INSTALL.md): other install routes and upgrades.
