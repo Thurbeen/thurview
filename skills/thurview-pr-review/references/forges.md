@@ -99,7 +99,9 @@ command never does:
   forge approve can arm an auto-merge, and the verdict lives in the summary.
   With it, `sync` approves only when the `thurview/review` status passes
   (confidence 5, nothing open) and the confidence is at `n` or more, after
-  re-reading the head: an approval never sits beside a failing status. GitHub gets an
+  re-reading the head: an approval never sits beside a failing status. It
+  never reads the head's CI checks or pipeline, so CI neither blocks nor
+  grants an approval. GitHub gets an
   `APPROVE` review on the reviewed commit; it still counts for the pull
   request after a later push unless the repository dismisses stale approvals.
   GitLab gets an approval pinned by `sha`, which it refuses once the head
