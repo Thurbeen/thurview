@@ -46,12 +46,14 @@ interface RestCheckRun {
   name: string;
   status: string;
   conclusion: string | null;
+  started_at?: string | null;
   html_url?: string | null;
 }
 
 interface RestCommitStatus {
   context: string;
   state: string;
+  updated_at?: string | null;
   target_url?: string | null;
 }
 
@@ -70,15 +72,36 @@ function checkRunState(r: RestCheckRun): CiCheck["state"] {
       return "cancelled";
     case "action_required":
       return "waiting";
-    default:
+    case "failure":
+    case "timed_out":
+    case "startup_failure":
       return "failed";
+    default:
+      return "unknown";
   }
 }
 
 function commitStatusState(state: string): CiCheck["state"] {
-  if (state === "success") return "passed";
-  if (state === "pending") return "running";
-  return "failed";
+  switch (state) {
+    case "success":
+      return "passed";
+    case "pending":
+      return "running";
+    case "failure":
+    case "error":
+      return "failed";
+    default:
+      return "unknown";
+  }
+}
+
+function latestPerName(checks: (CiCheck & { at: string })[]): CiCheck[] {
+  const latest = new Map<string, CiCheck & { at: string }>();
+  for (const c of checks) {
+    const seen = latest.get(c.name);
+    if (!seen || c.at > seen.at) latest.set(c.name, c);
+  }
+  return [...latest.values()].map(({ at: _, ...c }) => c);
 }
 
 interface RestPull {
@@ -458,16 +481,22 @@ export class GitHubForge implements Forge {
         this.api(repo, [`repos/${repo.path}/commits/${sha}/status`]),
       ),
     ]);
-    return [
-      ...pages
-        .flatMap((p) => p.check_runs)
-        .map((r) => ({ name: r.name, state: checkRunState(r), url: r.html_url ?? undefined })),
+    return latestPerName([
+      ...pages.flatMap((p) =>
+        p.check_runs.map((r) => ({
+          name: r.name,
+          state: checkRunState(r),
+          url: r.html_url ?? undefined,
+          at: r.started_at ?? "",
+        })),
+      ),
       ...(combined.statuses ?? []).map((st) => ({
         name: st.context,
         state: commitStatusState(st.state),
         url: st.target_url ?? undefined,
+        at: st.updated_at ?? "",
       })),
-    ];
+    ]);
   }
 
   /** A pull request is an issue to the reactions API, so this is the issue reactions endpoint. */

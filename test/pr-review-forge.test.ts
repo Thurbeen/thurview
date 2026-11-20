@@ -753,6 +753,76 @@ describe("thurview pr-review, on GitHub", { timeout: 30_000 }, () => {
     const status = await cli(["pr-review", "status", "--change", "7"], github);
     expect(status["ci"]).toMatch(/^none/);
   });
+
+  it("keeps the latest result when a check run and a commit status share a name", async () => {
+    await fixtures([
+      {
+        cli: "gh",
+        match: [`commits/${HEAD}/check-runs`],
+        body: [
+          {
+            total_count: 1,
+            check_runs: [
+              {
+                name: "Test",
+                status: "completed",
+                conclusion: "success",
+                started_at: "2026-11-19T10:05:00Z",
+                html_url: "https://ci/new",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        cli: "gh",
+        match: [`commits/${HEAD}/status`],
+        body: {
+          statuses: [
+            {
+              context: "Test",
+              state: "failure",
+              updated_at: "2026-11-19T10:00:00Z",
+              target_url: "https://ci/old",
+            },
+          ],
+        },
+      },
+      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const status = await cli(["pr-review", "status", "--change", "7"], github);
+    expect(status["ci"].checks).toEqual([{ name: "Test", state: "passed", url: "https://ci/new" }]);
+  });
+
+  it("tells the review to run the checks itself when none of them produced a result", async () => {
+    await fixtures([
+      {
+        cli: "gh",
+        match: [`commits/${HEAD}/check-runs`],
+        body: [
+          {
+            total_count: 2,
+            check_runs: [
+              { name: "Test", status: "completed", conclusion: "action_required" },
+              { name: "Lint", status: "completed", conclusion: "cancelled" },
+            ],
+          },
+        ],
+      },
+      { cli: "gh", match: [`commits/${HEAD}/status`], body: { statuses: [] } },
+      { cli: "gh", match: ["issues/7/comments", "--paginate"], body: [[]] },
+      { cli: "gh", match: ["graphql"], body: NO_THREADS },
+      { cli: "gh", match: ["repos/acme/web/pulls/7"], body: PULL() },
+      { cli: "gh", match: ["api", "user"], body: { login: "bot" } },
+    ]);
+    const status = await cli(["pr-review", "status", "--change", "7"], github);
+    const help = status["help"].join("\n");
+    expect(help).not.toMatch(/do not rerun/i);
+    expect(help).toMatch(/no CI check on this head has a result or is under way/i);
+  });
 });
 
 const MR = {
@@ -983,6 +1053,8 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
           { name: "lint", status: "running", target_url: "https://ci/2" },
           { name: "docs", status: "pending", target_url: "https://ci/3" },
           { name: "deploy", status: "manual", target_url: "https://ci/4" },
+          { name: "external", status: "waiting_for_callback", target_url: "https://ci/5" },
+          { name: "future", status: "a_status_gitlab_adds_later", target_url: "https://ci/6" },
           { name: "thurview/review", status: "failed", target_url: "https://x" },
         ),
       },
@@ -997,6 +1069,8 @@ describe("thurview pr-review, on a self-hosted GitLab", { timeout: 30_000 }, () 
         { name: "lint", state: "running", url: "https://ci/2" },
         { name: "docs", state: "queued", url: "https://ci/3" },
         { name: "deploy", state: "waiting", url: "https://ci/4" },
+        { name: "external", state: "running", url: "https://ci/5" },
+        { name: "future", state: "unknown", url: "https://ci/6" },
       ],
     });
     expect(status["help"].join("\n")).toMatch(/do not rerun/i);

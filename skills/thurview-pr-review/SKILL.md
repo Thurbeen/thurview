@@ -147,6 +147,7 @@ config at the head (`.github/workflows/`, `.gitlab-ci.yml`), then:
 | `passed`                          | Covered. Cite it as evidence.                                   |
 | `failed`                          | Covered. Read its log on the forge and cite it; never rerun it. |
 | `waiting`, `skipped`, `cancelled` | Not covered: no result. Run that check yourself.                |
+| `unknown`                         | Read it on the forge; until it shows a result, run it yourself. |
 
 Run a check yourself only when no check in `ci` runs it, or when `ci` says
 `none on this head`. When `ci` says `unknown`, read the checks with

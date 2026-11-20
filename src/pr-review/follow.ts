@@ -237,6 +237,13 @@ export async function lookAt(ctx: Ctx, st: ReviewState): Promise<string> {
 
 export type CiReport = { head: string; checks: CiCheck[] } | string;
 
+const COVERING_STATES = new Set<CiCheck["state"]>(["queued", "running", "passed", "failed"]);
+
+/** A check that is under way or has a result stands in for running it locally. */
+export function ciCovers(check: CiCheck): boolean {
+  return COVERING_STATES.has(check.state);
+}
+
 /** What CI runs on the head, without the review's own status, so the review never runs it again. */
 export async function ciAt(ctx: Ctx): Promise<CiReport> {
   try {

@@ -79,11 +79,13 @@ export interface ReviewStatusCheck {
 /**
  * One CI check on a commit: a GitHub check run or commit status, a GitLab
  * job or external status. `waiting` is one that will not start until someone
- * acts: a manual job, or a run held for approval.
+ * acts: a manual job, or a run held for approval. `unknown` is a state the
+ * forge reported that this adapter does not know.
  */
 export interface CiCheck {
   name: string;
-  state: "queued" | "running" | "passed" | "failed" | "cancelled" | "skipped" | "waiting";
+  state:
+    "queued" | "running" | "passed" | "failed" | "cancelled" | "skipped" | "waiting" | "unknown";
   url?: string;
 }
 
@@ -174,6 +176,6 @@ export interface Forge {
    * already there. Other accounts' reactions are read past and never removed.
    */
   eyes(repo: RepoId, cr: ChangeRequest): Promise<"added" | "present">;
-  /** Every CI check on `sha`, latest per name, in the order the forge lists them. */
+  /** Every CI check on `sha`, one per name with its latest result, in the order the forge lists them. */
   ci(repo: RepoId, sha: string): Promise<CiCheck[]>;
 }

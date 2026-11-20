@@ -101,6 +101,7 @@ function jobState(status: string): CiCheck["state"] {
   if (QUEUED_JOB.has(status)) return "queued";
   switch (status) {
     case "running":
+    case "waiting_for_callback":
       return "running";
     case "success":
       return "passed";
@@ -111,8 +112,10 @@ function jobState(status: string): CiCheck["state"] {
       return "skipped";
     case "manual":
       return "waiting";
-    default:
+    case "failed":
       return "failed";
+    default:
+      return "unknown";
   }
 }
 
