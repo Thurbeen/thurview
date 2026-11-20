@@ -9,6 +9,14 @@ its logic where it belongs, and whether a fix removes a cause or patches a
 symptom - before the bugs it causes. On every push it rechecks each of its
 findings, resolves the fixed ones with evidence, and edits the summary.
 
+CI is independent of the review. thurview never reruns the tests, linters,
+type checkers or builds CI runs, never reads CI results, and never waits for
+them. It spends the review on what CI and static analysis cannot check:
+architecture (boundaries, coupling, contracts, data ownership), security
+(authn and authz, secrets, injection, trust boundaries, least privilege,
+supply chain), correctness of intent, failure modes, operability,
+maintainability and simplicity.
+
 [![CI](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml/badge.svg)](https://github.com/Thurbeen/thurview/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/thurview)](https://www.npmjs.com/package/thurview)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -45,7 +53,9 @@ Each sync also sets a `thurview/review` commit status on the reviewed head,
 `success` only at confidence 5 with nothing open, so a repository can
 [require it before merge](skills/thurview-pr-review/references/forges.md#requiring-the-review).
 The review never merges, closes or pushes, and approves only when the requester
-passes `--approve-at <n>` and that status passes, so a 4/5 never approves. A reader stops it with
+passes `--approve-at <n>` and that status passes, so a 4/5 never approves.
+Approval rests on the review's own findings and confidence alone; CI's
+result neither blocks it nor grants it. A reader stops it with
 the `thurview:stop` label or a comment starting `/thurview stop`.
 
 ## CLI
