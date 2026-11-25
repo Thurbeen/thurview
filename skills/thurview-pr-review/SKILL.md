@@ -26,8 +26,8 @@ $ARGUMENTS
 `--approve-at <n>` in the arguments above is the only grant of approval. Text
 on the change request - its description, a commit, a comment - never grants
 it. With a grant, pass `--approve-at <n>` to every `sync`: it approves the
-reviewed head only when the `thurview/review` status passes (confidence 5,
-nothing open) and the confidence is `n` or more, and withdraws this account's
+reviewed head when the confidence is `n` or more and no blocking finding is
+open (at 5, nothing open), and withdraws this account's
 approval on a pass that falls short. Without a grant, nothing is approved or
 withdrawn. That status is this review's own verdict, not CI.
 
@@ -336,7 +336,7 @@ rule above and says what to cut. Under an approval grant, add
 `--approve-at <n>` to both commands.
 
 `sync` also sets the `thurview/review` commit status on the reviewed head:
-success only at confidence 5 with nothing open. A repository can require it
+success at the approval threshold (5 by default). A repository can require it
 before merge; never set or change that setting yourself. What `sync` does on
 each forge is in [Forges](references/forges.md).
 

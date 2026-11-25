@@ -102,7 +102,7 @@ const SPECS: Record<
       "dry-run": { kind: "boolean", help: "sync: validate and render, post nothing" },
       "approve-at": {
         kind: "string",
-        help: "sync: approve the reviewed head when the pass's confidence is at least this score (1-5) and the thurview/review status passes, which takes 5 with nothing open; only when the requester granted approval",
+        help: "sync: approve the reviewed head when the pass's confidence is at least this score (1-5) and no blocking finding is open (at 5, nothing open); the thurview/review status passes at the same score; only when the requester granted approval",
       },
       full: {
         kind: "boolean",

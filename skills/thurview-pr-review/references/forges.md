@@ -82,8 +82,9 @@ and title, which is how the same finding found on the next push is recognised.
 ## Requiring the review
 
 Every `sync` sets a commit status named `thurview/review` on the head it
-reviewed. It is `success` only at confidence 5 with no open finding, nits and
-agreed threads of other reviewers included, and `failure` otherwise. Its
+reviewed. It is `success` at confidence 5 with no open finding, nits and
+agreed threads of other reviewers included, or, under `--approve-at <n>` below
+5, at confidence `n` or more with no blocking finding open; `failure` otherwise. Its
 description is the score and the open count, and it links the change request.
 A push leaves the
 new head with no status until a pass reviews it. The status reports a
@@ -120,8 +121,8 @@ command never does:
   summary, and it links the change request.
 - No forge approve unless the requester passed `sync --approve-at <n>`. A
   forge approve can arm an auto-merge, and the verdict lives in the summary.
-  With it, `sync` approves only when the `thurview/review` status passes
-  (confidence 5, nothing open) and the confidence is at `n` or more, after
+  With it, `sync` approves only when the `thurview/review` status passes at
+  that threshold (confidence `n` or more, nothing blocking open), after
   re-reading the head: an approval never sits beside a failing status. It
   never reads the head's CI checks or pipeline, so CI neither blocks nor
   grants an approval. GitHub gets an

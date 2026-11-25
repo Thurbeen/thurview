@@ -57,10 +57,12 @@ flowchart LR
 ```
 
 Each sync also sets a `thurview/review` commit status on the reviewed head,
-`success` only at confidence 5 with nothing open, so a repository can
+`success` at confidence 5 with nothing open, or at `--approve-at <n>` or more
+with no blocking finding open, so a repository can
 [require it before merge](skills/thurview-pr-review/references/forges.md#requiring-the-review).
 The review never merges, closes or pushes, and approves only when the requester
-passes `--approve-at <n>` and that status passes, so a 4/5 never approves.
+passes `--approve-at <n>` and that status passes: 5 by default, 4 to approve a
+4/5 whose open findings are non-blocking.
 Approval rests on the review's own findings and confidence alone; CI's
 result neither blocks it nor grants it. A reader stops it with
 the `thurview:stop` label or a comment starting `/thurview stop`.

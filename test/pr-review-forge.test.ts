@@ -1986,18 +1986,29 @@ describe("approving at a threshold the requester set", { timeout: 30_000 }, () =
     expect(await approvals()).toEqual([]);
   });
 
-  it("does not approve a 4/5 its own status fails, even under --approve-at 4", async () => {
+  const fourWithANit = {
+    ...PASS,
+    confidence: 4,
+    reason: "Works; two guards are untested.",
+    findings: [{ ...PASS.findings[0]!, category: "tests", severity: "non-blocking" }],
+  };
+
+  it("approves a 4/5 with a non-blocking finding open under --approve-at 4, and its status passes", async () => {
     await fixtures(githubOpen());
-    const fourWithANit = {
-      ...PASS,
-      confidence: 4,
-      reason: "Works; two guards are untested.",
-      findings: [{ ...PASS.findings[0]!, category: "tests", severity: "non-blocking" }],
-    };
     const out = await syncWith(fourWithANit, github, ["--approve-at", "4"]);
     const [status] = (await statusCalls()).map((c) => JSON.parse(c.body));
+    expect(status).toMatchObject({ context: "thurview/review", state: "success" });
+    expect(out["approval"]).toMatch(/^approved /);
+    const [approve] = await approvals();
+    expect(JSON.parse(approve!.body).body).toContain("confidence 4/5");
+  });
+
+  it("fails the status of a 4/5 when no threshold is set", async () => {
+    await fixtures(githubOpen());
+    const out = await syncWith(fourWithANit, github);
+    const [status] = (await statusCalls()).map((c) => JSON.parse(c.body));
     expect(status).toMatchObject({ context: "thurview/review", state: "failure" });
-    expect(out["approval"]).toMatch(/^not approved: confidence 4\/5 with 1 open finding/);
+    expect(out["approval"]).toBeUndefined();
     expect(await approvals()).toEqual([]);
   });
 
