@@ -495,7 +495,7 @@ export async function sync(
   if (ended) {
     if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, body);
     else await forge.postNote(repo, cr, body);
-    await setReviewStatus(ctx, reviewed, pass, open);
+    await setReviewStatus(ctx, reviewed, pass, open, opts.approveAt);
     return result;
   }
   for (const { id, f } of fresh) {
@@ -529,7 +529,7 @@ export async function sync(
   result.body = renderSummary(pass, marker, cr.author, open, update);
   if (st.summary) await forge.editNote(repo, cr, st.summary.note.id, result.body);
   else await forge.postNote(repo, cr, result.body);
-  await setReviewStatus(ctx, reviewed, pass, open);
+  await setReviewStatus(ctx, reviewed, pass, open, opts.approveAt);
   if (approval) result.approval = await applyApproval(ctx, reviewed, pass, approval);
   return result;
 }
@@ -566,9 +566,9 @@ function approvalFor(
     );
   if (pass.confidence < approveAt)
     return refuse(`not approved: confidence ${pass.confidence} is below ${approveAt}`);
-  if (!passes(pass, open))
+  if (!passes(pass, open, approveAt))
     return refuse(
-      `not approved: confidence ${pass.confidence}/5 with ${openFindings(open)}; ${REVIEW_STATUS} passes only at 5/5 with nothing open`,
+      `not approved: confidence ${pass.confidence}/5 with ${openFindings(open)}; ${REVIEW_STATUS} passes at 5/5 only with nothing open`,
     );
   const atHead = st.approvals.filter((a) => a.commit === null || a.commit === head);
   if (atHead.some((a) => a.dismissed))
@@ -609,8 +609,13 @@ async function applyApproval(
   }
 }
 
-function passes(pass: Pass, open: OpenFinding[]): boolean {
-  return pass.confidence === 5 && !open.length;
+const DEFAULT_PASS_AT = 5;
+
+function passes(pass: Pass, open: OpenFinding[], passAt = DEFAULT_PASS_AT): boolean {
+  return (
+    pass.confidence >= passAt &&
+    open.every((f) => passAt < DEFAULT_PASS_AT && f.severity !== "blocking")
+  );
 }
 
 function openFindings(open: OpenFinding[]): string {
@@ -620,10 +625,16 @@ function openFindings(open: OpenFinding[]): string {
     : "no open findings";
 }
 
-async function setReviewStatus(ctx: Ctx, sha: string, pass: Pass, open: OpenFinding[]) {
+async function setReviewStatus(
+  ctx: Ctx,
+  sha: string,
+  pass: Pass,
+  open: OpenFinding[],
+  passAt: number | undefined,
+) {
   await ctx.forge.setStatus(ctx.repo, ctx.cr, sha, {
     context: REVIEW_STATUS,
-    state: passes(pass, open) ? "success" : "failure",
+    state: passes(pass, open, passAt) ? "success" : "failure",
     description: `Confidence ${pass.confidence}/5 · ${openFindings(open)}`,
     url: ctx.cr.url,
   });
